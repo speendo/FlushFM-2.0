@@ -1,0 +1,4 @@
+# LittleFS filesystem content
+#
+# Web UI files (HTML/CSS/JS) served by the configuration REST server
+# are placed here. PlatformIO uploads this directory to LittleFS flash.

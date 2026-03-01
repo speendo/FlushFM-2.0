@@ -1,0 +1,11 @@
+# Project-specific libraries
+#
+# Each component is placed here as a separate PlatformIO library
+# following the structure defined in requirements/guidelines/build-system.md.
+#
+# Example:
+#   lib/
+#   └── AudioPlayer/
+#       ├── src/
+#       ├── include/
+#       └── library.json
