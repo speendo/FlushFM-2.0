@@ -15,6 +15,8 @@ Defines how FlushFM 2.0 manages system-level state and coordinates between compo
 
 1. **Centralized system state:** A single SystemController component owns and manages the main system state machine with states: OFF (sleeping), STARTING (initializing WiFi), CONNECTED (WiFi ready, no audio), STREAMING (playing audio), ERROR (recoverable failures). Transitions are bidirectional between adjacent states as appropriate.
 
+2. **Error recovery strategy:** Graceful degradation with limited retries. Errors are displayed on screen when possible. Light sensor OFF always takes priority and can interrupt error recovery at any time, clearing error state for fresh restart on next activation.
+
 2. **Component-local state:** Individual components own their internal state. State may be readable via public getter methods for debugging and status purposes, but other components must not directly modify another component's state.
 
 3. **State transitions are explicit:** State changes are triggered by specific events or conditions. Avoid continuous polling – use event-driven design with callbacks, interrupts, or timer expiration events where time-based transitions are needed (e.g. sleep timeout).

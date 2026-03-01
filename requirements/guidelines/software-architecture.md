@@ -19,7 +19,7 @@ Defines the software framework stack, task architecture, power management strate
 
 2. **Arduino-ESP32** – hardware abstraction, WiFi, NVS, I2S, SPI, ADC
 
-3. **ESP32-audioI2S** (schreibfaul1) – HTTP streaming, audio decoding (MP3/AAC), I2S output. Wrapped behind an `IAudioPlayer` interface to allow library substitution without affecting the rest of the system.
+3. **ESP32-audioI2S** (schreibfaul1) – HTTP streaming, audio decoding (multiple formats: MP3, AAC, FLAC, WAV), I2S output. Wrapped behind an `IAudioPlayer` interface to allow library substitution without affecting the rest of the system.
 
 4. **TFT_eSPI** – ILI9341 display driver via SPI
 
@@ -37,8 +37,9 @@ Defines the software framework stack, task architecture, power management strate
    - REST configuration server (AsyncWebServer, only active when requested)
 
 8. **Core 1 – Audio tasks:**
-   - ESP32-audioI2S (pinned to Core 1)
+   - ESP32-audioI2S (pinned to Core 1 via custom task wrapper)
    - HTTP stream fetching, audio decoding, I2S DMA output, PSRAM buffer management (all handled internally by the library)
+   - **Note:** Core 1 pinning requires early verification – the library's internal task behavior needs testing to confirm effective core isolation.
 
 9. **Inter-task communication** via FreeRTOS queues and mutexes only – no shared global variables. See concurrency guideline.
 
