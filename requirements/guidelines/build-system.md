@@ -75,7 +75,7 @@ Defines the PlatformIO project structure conventions, build configuration best p
 6. **Library dependencies:** All external libraries declared in `platformio.ini` with explicit version pinning to ensure reproducible builds:
    ```ini
    lib_deps = 
-     schreibfaul1/ESP32-audioI2S@^3.0.0
+     https://github.com/schreibfaul1/ESP32-audioI2S#3.0.12
      bodmer/TFT_eSPI@^2.5.0
      esphome/AsyncTCP-esphome@^2.0.0
    ```
@@ -128,7 +128,7 @@ default_envs = debug
 
 [common]
 lib_deps = 
-  schreibfaul1/ESP32-audioI2S@^3.0.0
+  https://github.com/schreibfaul1/ESP32-audioI2S#3.0.12
   bodmer/TFT_eSPI@^2.5.0
   esphome/AsyncTCP-esphome@^2.0.0
 

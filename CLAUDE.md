@@ -26,6 +26,7 @@ It is read automatically at the start of each session.
 - Never install anything without explicit permission
 - Try to aim for solutions that use sparse resources on an ESP32 efficiently - only head for less efficient solutions if and only if this would vastly improve readibality and/or clarity of the code
 - When unsure about requirements and/or implementation details: ask user before implementing and if possible suggest possible solutions
+- Whenever the functionality changes (e.g. new features implemented, changes in the pinout, etc.), update the documentation according to `requirements/guidelines/documentation.md`
 
 ---
 
@@ -38,6 +39,7 @@ FlushFM 2.0/
 ├── requirements/
 │   ├── guidelines/                    ← Coding rules, architecture decisions
 │   │   ├── _template.md
+│   │   ├── documentation.md
 │   │   ├── hardware.md
 │   │   ├── software-architecture.md
 │   │   ├── modularity.md
@@ -47,7 +49,7 @@ FlushFM 2.0/
 │   │   └── debug.md
 │   └── user-stories/                  ← One file per user story
 │       └── _template.md
-└── docs/                              ← (future) Technical documentation, schematics
+└── docs/                              ← Technical documentation (features, hardware, pinout, tested setups)
 ```
 
 ---
