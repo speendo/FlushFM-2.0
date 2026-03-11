@@ -1,14 +1,16 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <Audio.h>
 
+#include "AudioPlayerESP32.h"
+#include "IAudioPlayer.h"
 #include "config.h"
 #include "debug.h"
 
 // ---------------------------------------------------------------------------
-// Audio instance
+// Audio – concrete instance wired here; rest of code depends on interface only
 // ---------------------------------------------------------------------------
-static Audio s_audio;
+static AudioPlayerESP32 s_playerImpl(I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
+static IAudioPlayer& s_audio = s_playerImpl;
 
 // ---------------------------------------------------------------------------
 // Runtime state
@@ -35,6 +37,28 @@ void audio_showstreamtitle(const char* info);
 void audio_bitrate(const char* info);
 
 // ---------------------------------------------------------------------------
+// Audio task – runs at priority 2 to prevent buffer underruns while allowing
+// the watchdog and WiFi/TCP stack to get CPU time.
+// begin() is called here (not in setup()) so the Audio object is
+// initialized on the same core that calls loop() – required for thread safety.
+// ---------------------------------------------------------------------------
+static void audioTask(void* /*param*/) {
+    if (!s_audio.begin()) {
+        ERROR_LOG("Audio init failed inside task – check I2S wiring (BCK=%d WS=%d DOUT=%d)",
+                  I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
+    } else {
+        s_audio.setVolumeSteps(AUDIO_VOLUME_STEPS);
+        s_audio.setVolume(AUDIO_VOLUME_DEFAULT);
+        PROD_LOG("Audio initialized in task (BCK=%d WS=%d DOUT=%d volume=%d/%d)",
+                 I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN, AUDIO_VOLUME_DEFAULT, AUDIO_VOLUME_STEPS);
+    }
+    for (;;) {
+        s_audio.loop();
+        vTaskDelay(pdMS_TO_TICKS(1));  // Feed watchdog; 1 ms is short enough for audio continuity
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Arduino entry points
 // ---------------------------------------------------------------------------
 
@@ -47,27 +71,36 @@ void setup() {
         delay(10);
     }
 
-    PROD_LOG("Hello FlushFM – US-0001 Audio Streaming Test");
+    PROD_LOG("Hello FlushFM – US-0002 Audio Output Chain");
     printBoardInfo();
 
     // Register WiFi event handlers for graceful reconnection
     WiFi.onEvent(onWiFiDisconnect, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
     WiFi.onEvent(onWiFiConnect,    ARDUINO_EVENT_WIFI_STA_GOT_IP);
 
-    // Initialize audio library
-    // I2S pins are placeholder values – will be finalized when PCM5102A
-    // hardware is connected (see docs/pinout.md)
-    s_audio.setPinout(I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
-    s_audio.setVolume(0); // No audio hardware connected for this test
-    PROD_LOG("ESP32-audioI2S initialized (BCK=%d WS=%d DOUT=%d)",
-             I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
+    // Audio is fully initialized inside audioTask (thread-safety: same core as loop()).
+    // Spawn dedicated audio task on Core 0
+    const BaseType_t res = xTaskCreatePinnedToCore(
+        audioTask,
+        "AudioTask",
+        AUDIO_TASK_STACK_SIZE,
+        nullptr,
+        AUDIO_TASK_PRIORITY,
+        nullptr,
+        AUDIO_TASK_CORE
+    );
+    if (res != pdPASS) {
+        ERROR_LOG("Failed to create audio task – falling back to loop()");
+    } else {
+        PROD_LOG("Audio task started (core=%d priority=%d)",
+                 AUDIO_TASK_CORE, AUDIO_TASK_PRIORITY);
+    }
 
     printHelp();
 }
 
 void loop() {
-    s_audio.loop();
-
+    // Audio is handled by audioTask; loop() is Serial-only.
     static char cmdBuf[SERIAL_CMD_BUF_SIZE];
     if (readLine(cmdBuf, sizeof(cmdBuf))) {
         processCommand(cmdBuf);
@@ -125,18 +158,35 @@ static void processCommand(const char* line) {
         if (!arg || *arg == '\0') { ERROR_LOG("Usage: play <url>"); return; }
         if (!s_wifi_connected) { ERROR_LOG("Not connected to WiFi – run 'connect' first"); return; }
         PROD_LOG("Connecting to stream: %s", arg);
-        s_audio.connecttohost(arg);
+        s_audio.connectToHost(arg);
 
     } else if (strcmp(cmd, "stop") == 0) {
-        s_audio.stopSong();
+        s_audio.stop();
         PROD_LOG("Stream stopped");
 
     } else if (strcmp(cmd, "switch") == 0) {
         if (!arg || *arg == '\0') { ERROR_LOG("Usage: switch <url>"); return; }
         if (!s_wifi_connected) { ERROR_LOG("Not connected to WiFi – run 'connect' first"); return; }
-        s_audio.stopSong();
+        s_audio.stop();
         PROD_LOG("Switching to stream: %s", arg);
-        s_audio.connecttohost(arg);
+        s_audio.connectToHost(arg);
+
+    } else if (strcmp(cmd, "volume") == 0) {
+        if (!arg || *arg == '\0') {
+            PROD_LOG("Current volume: %d (range 0-21)", s_audio.getVolume());
+            return;
+        }
+        const int vol = atoi(arg);
+        if (vol < 0 || vol > AUDIO_VOLUME_STEPS) { ERROR_LOG("Volume must be 0-%d", AUDIO_VOLUME_STEPS); return; }
+        s_audio.setVolume(static_cast<uint8_t>(vol));
+        PROD_LOG("Volume set to %d", vol);
+
+    } else if (strcmp(cmd, "balance") == 0) {
+        if (!arg || *arg == '\0') { ERROR_LOG("Usage: balance <-16..16>  (-16=left, 0=center, +16=right)"); return; }
+        const int bal = atoi(arg);
+        if (bal < -16 || bal > 16) { ERROR_LOG("Balance must be -16..16"); return; }
+        s_audio.setBalance(static_cast<int8_t>(bal));
+        PROD_LOG("Balance set to %d", bal);
 
     } else if (strcmp(cmd, "help") == 0) {
         printHelp();
@@ -148,13 +198,15 @@ static void processCommand(const char* line) {
 
 static void printHelp() {
     Serial.println();
-    Serial.println("FlushFM – US-0001 Serial Commands:");
+    Serial.println("FlushFM – US-0002 Serial Commands:");
     Serial.println("  ssid <name>      Set WiFi SSID");
     Serial.println("  pass <password>  Set WiFi password");
     Serial.println("  connect          Connect to WiFi with stored credentials");
     Serial.println("  play <url>       Start streaming from URL");
     Serial.println("  stop             Stop current stream");
     Serial.println("  switch <url>     Switch to a different stream URL");
+    Serial.printf("  volume [0-%d]    Get or set playback volume\r\n", AUDIO_VOLUME_STEPS);
+    Serial.println("  balance <-16..16> Stereo balance (-16=L, 0=center, +16=R)");
     Serial.println("  help             Show this help");
     Serial.println();
     Serial.println("Test stations:");

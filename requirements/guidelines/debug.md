@@ -1,5 +1,5 @@
 # Rule: Debug and Logging
-[Status: Active | Updated: 2026-03-09]
+[Status: Active | Updated: 2026-03-11]
 **Context:** ESP32, C++, PlatformIO | **Goal:** Zero-overhead diagnostics and production error tracking
 
 ---
@@ -19,7 +19,25 @@
 - **Never:** Execute logic or heavy functions inside log arguments (e.g. `DEBUG_LOG(tag, get_status())`)
 - **Exception:** Component-specific tests may use verbose logging unconditionally
 
-## 3. Reference Pattern
+## 3. Third-Party Library Integration
+
+When a library exposes logging callbacks, the following rules apply:
+
+- **Always route through our macros** — never leave a library callback calling `Serial.print` or `PROD_LOG` unconditionally.
+- **Default mapping:** Route all library informational/warning callbacks to `DEBUG_LOG` (silent in production). Only escalate to `ERROR_LOG` if the library provides a dedicated error callback with a confirmed hard-error contract.
+- **No per-message filtering** inside callbacks — classifying individual message strings is fragile and couples code to library internals. Accept the entire callback at one tier.
+- **Compile-time verbosity flags** (e.g. `-DAUDIO_LOG`): add only to debug environments in `platformio.ini`; never in production.
+- **Native ESP-IDF loggers** (`log_e`, `log_i`, etc.) used inside libraries are controlled solely by `-DCORE_DEBUG_LEVEL` in `platformio.ini` — no wrapper needed; ensure `CORE_DEBUG_LEVEL=0` in `[env:production]`.
+- **Document** each integrated library and its callback mapping in the related user story Notes section.
+
+```cpp
+// Example: ESP32-audioI2S callback integration
+void audio_info(const char* info) {
+    DEBUG_LOG("Audio", "%s", info);  // silent in production, full output in debug
+}
+```
+
+## 4. Reference Pattern
 
 ```cpp
 // debug.h

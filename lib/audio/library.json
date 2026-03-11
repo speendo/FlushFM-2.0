@@ -1,0 +1,7 @@
+{
+    "name": "audio",
+    "version": "0.1.0",
+    "description": "FlushFM audio player: IAudioPlayer interface and ESP32-audioI2S wrapper",
+    "frameworks": "arduino",
+    "platforms": "espressif32"
+}

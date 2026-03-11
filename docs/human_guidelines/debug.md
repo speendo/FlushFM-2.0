@@ -1,7 +1,7 @@
 # Guideline: Debug and Logging
 
 > **Status:** Active  
-> **Last updated:** 2026-02-28
+> **Last updated:** 2026-03-11
 
 ---
 
@@ -50,6 +50,26 @@ Defines logging strategy for FlushFM 2.0 that provides insightful diagnostic inf
 15. **Serial output is the primary logging destination** – simple, universally available, and ESP32-friendly.
 
 16. **Include timestamps for temporal correlation.** Use `millis()` uptime (always available) or real time if NTP sync is available. Timestamps help correlate events and debug timing-sensitive issues.
+
+---
+
+## Third-Party Library Integration
+
+External libraries often have their own logging mechanisms that bypass our macros entirely. The following rules ensure they still respect our build tiers:
+
+- **Always wrap library callbacks** — implement every callback the library provides and route it through our macros. Never leave a callback calling `PROD_LOG` for routine messages.
+- **Default tier: `DEBUG_LOG`** — route all informational/warning callbacks to `DEBUG_LOG`. This keeps production builds completely silent for library chatter while exposing full detail in debug builds.
+- **Only use `ERROR_LOG`** if the library provides a dedicated error callback with a confirmed hard-error contract (i.e. the library only calls it on unrecoverable failures).
+- **No per-message filtering** — do not inspect message strings to decide the tier. This is fragile and breaks with library updates. Accept the entire callback at one tier.
+- **Compile-time verbosity flags** (e.g. `-DAUDIO_LOG` for ESP32-audioI2S) belong only in `[env:debug]` in `platformio.ini`.
+- **Native ESP-IDF loggers** (`log_e`, `log_i`, etc.) in library internals are controlled solely by `-DCORE_DEBUG_LEVEL`. Set `CORE_DEBUG_LEVEL=0` in `[env:production]` — no code change needed.
+
+```cpp
+// Example: ESP32-audioI2S — all messages arrive via one callback
+void audio_info(const char* info) {
+    DEBUG_LOG("Audio", "%s", info);  // silent in production, full output in debug
+}
+```
 
 ---
 
