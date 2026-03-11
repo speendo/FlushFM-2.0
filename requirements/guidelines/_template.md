@@ -1,47 +1,20 @@
-# Guideline: [Title]
-
-> **Status:** Draft | Active | Superseded  
-> **Last updated:** YYYY-MM-DD
-
----
-
-## Purpose
-
-*Why does this guideline exist? What problem does it solve?*
+# Rule: [Title]
+[Status: Draft / Active / Superseded | Updated: YYYY-MM-DD]
+**Context:** [e.g., ESP32/C++, FreeRTOS] | **Goal:** [Brief objective]
 
 ---
 
-## Rules
+## 1. Core Rules
+- **[Action]:** [Precise, imperative instruction].
+- **[Action]:** [Avoid "Please" or "Should"; use "Must" or "Use"].
+- **[Action]:** [Reference specific folders or naming conventions].
 
-*A numbered or bulleted list of concrete, actionable rules.*
+## 2. Constraints & Exceptions
+- **Limit:** [Critical technical constraint].
+- **Exception:** [Specific case where the rule is ignored].
+- **Never:** [Common AI mistake to prevent].
 
-1. ...
-2. ...
-3. ...
-
----
-
-## Rationale
-
-*Explain the reasoning behind the rules. This section is important so future contributors
-(and AI assistants) understand the intent, not just the rule.*
-
----
-
-## Exceptions
-
-*Are there cases where these rules do not apply? Document them here explicitly.*
-
----
-
-## Examples
-
-*Concrete good/bad examples where helpful.*
-
-```
-// Good
-...
-
-// Bad
-...
-```
+## 3. Reference Pattern
+```cpp
+// Minimal structural skeleton only
+[Code Snippet]

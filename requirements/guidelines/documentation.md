@@ -1,54 +1,31 @@
-# Guideline: Documentation
-
-> **Status:** Active  
-> **Last updated:** 2026-03-07
-
----
-
-## Purpose
-
-Defines where and how project documentation should be stored and maintained for FlushFM 2.0.
+# Rule: Documentation
+[Status: Active | Updated: 2026-03-09]
+**Context:** Project Root | **Goal:** Centralized, version-controlled technical and hardware documentation
 
 ---
 
-## Rules
+## 1. Core Rules
+- **Location:** All documentation must reside in the `/docs` folder at the project root.
+- **Format:** Use Markdown (`.md`) for all text-based documentation.
+- **Core Documents:** Maintain these files:
+    1. `implemented-features.md`: Functionality contributing to project goal (e.g. Streaming, Display, Light-Sensor, Web-Config)
+    2. `hardware-specs.md`: Hardware characteristics (e.g. ESP32-S3 or better)
+    3. `tested-setups.md`: Reproducible environments (explicitely tested hardware)
+    4. `pinout.md`: Exact GPIO assignments and peripheral configurations
+- **Maintenance:** Update documentation immediately after changing code that alter functionality (e.g. after completing user story)
+- **Style:** Keep it concise and actionable; include examples or commands when relevant
 
-1. **Store all project documentation in the `docs/` folder** at the project root.
+## 2. Constraints & Exceptions
+- **Never:** Store technical documentation in the `src/` or `include/` folders
+- **Never:** Document features not contributing to end user experience (e.g. tests)
+- **Exception:** The root `README.md` is the only documentation file allowed outside the `/docs` folder
 
-2. **Maintain four core documentation types:**
-   - Implemented features (what the device can do, user-facing functionality) that align with the overall goal of the project (e.g. internet radio streaming, display output, light-sensor-controlled auto on/off, configuration)
-   - Hardware specifications (generic electrical and performance characteristics)
-   - Tested setups (specific, reproducible test environments that were validated)
-   - Pinout and hardware configuration (exact GPIO assignments and peripheral config)
-
-3. **Use Markdown format for all documentation** in `docs/`.
-
-4. **Update documentation when completing user stories** that change hardware usage or add features.
-
-5. **Keep documentation concise and actionable** – provide examples and commands when helpful.
-
----
-
-## Rationale
-
-Centralized documentation in `docs/` keeps technical information close to the code while remaining separate from implementation guidelines. The four core types cover the essential information needed to reproduce builds, understand hardware requirements, and track implemented features.
-
----
-
-## Exceptions
-
-None. All project documentation goes in `docs/`.
-
----
-
-## Examples
+## 3. Reference Pattern
 
 ```
 docs/
 ├── implemented-features.md
-├── hardware-specs.md  
+├── hardware-specs.md
 ├── tested-setups.md
-├── pinout.md
-└── assets/
-    └── schematic.png
+└── pinout.md
 ```

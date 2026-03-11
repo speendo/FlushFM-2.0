@@ -1,32 +1,20 @@
 # CLAUDE.md – Project Rules for AI Assistants
 
-This file contains rules and context that AI assistants should follow when working on this project.
-It is read automatically at the start of each session.
+**FlushFM 2.0** – ESP32-S3 internet radio with audio streaming, ILI9341 TFT display, and a light sensor for automatic on/off control.
 
 ---
 
-## Project Overview
+## Rules
 
-**FlushFM 2.0** is an ESP32-based internet radio with:
-- Audio streaming from internet radio stations
-- A display (type TBD) for station/track info
-- A light intensity sensor to switch the device on/off automatically
-
----
-
-## General Rules
-
-- Write all code, comments, commit messages, and documentation in **English**
-- Implementation follows user stories defined in `requirements/user-stories/`
-- Coding conventions and architectural decisions are defined in `requirements/guidelines/`
-- Always check relevant guidelines before writing code
-- Implement one user story at a time; mark it as done when all acceptance criteria are met
-- Do not introduce libraries or frameworks that are not approved in `requirements/guidelines/coding.md`
-- Never touch or read any files outside of the root of the project (FlushFM 2.0)
+- All code, comments, commits, and documentation must be written in **English**
+- Implement one user story at a time; mark it done only when all acceptance criteria are met
+- Always read the relevant user story and guidelines **before** writing code
+- Use only libraries approved in `requirements/guidelines/` (→ `software-architecture.md`)
+- Prefer resource-efficient solutions; only trade efficiency for readability when the gain is significant
+- Ask before implementing when requirements or details are ambiguous; suggest options when possible
+- Never read or modify files outside the project root
 - Never install anything without explicit permission
-- Try to aim for solutions that use sparse resources on an ESP32 efficiently - only head for less efficient solutions if and only if this would vastly improve readibality and/or clarity of the code
-- When unsure about requirements and/or implementation details: ask user before implementing and if possible suggest possible solutions
-- Whenever the functionality changes (e.g. new features implemented, changes in the pinout, etc.), update the documentation according to `requirements/guidelines/documentation.md`
+- Update `docs/` after any change that affects functionality or pinout (→ `requirements/guidelines/documentation.md`)
 
 ---
 
@@ -34,29 +22,23 @@ It is read automatically at the start of each session.
 
 ```
 FlushFM 2.0/
-├── CLAUDE.md                          ← This file
-├── README.md                          ← Project overview
+├── CLAUDE.md
+├── README.md
 ├── requirements/
-│   ├── guidelines/                    ← Coding rules, architecture decisions
-│   │   ├── _template.md
-│   │   ├── documentation.md
-│   │   ├── hardware.md
-│   │   ├── software-architecture.md
-│   │   ├── modularity.md
-│   │   ├── concurrency.md
-│   │   ├── state-management.md
-│   │   ├── testing.md
-│   │   └── debug.md
-│   └── user-stories/                  ← One file per user story
-│       └── _template.md
-└── docs/                              ← Technical documentation (features, hardware, pinout, tested setups)
+│   ├── guidelines/        ← All coding rules and architecture decisions
+│   └── user-stories/      ← One .md file per user story
+├── docs/                  ← Technical documentation (features, hardware, pinout, tested setups)
+├── lib/                   ← One sub-folder per component library
+├── src/                   ← Orchestration only (main.cpp, config.h)
+├── test/                  ← Unit and component tests
+└── data/                  ← LittleFS assets (Web UI)
 ```
 
 ---
 
 ## Working Process
 
-1. Read the relevant user story before implementing
-2. Read the guidelines before choosing libraries or patterns
-3. Ask for clarification if acceptance criteria are ambiguous
-4. Keep changes small and focused on one story at a time
+1. Read the user story
+2. Read relevant guidelines
+3. Ask if acceptance criteria are ambiguous
+4. Implement; keep changes small and focused

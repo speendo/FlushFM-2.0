@@ -1,49 +1,35 @@
-# Guideline: Hardware
-
-> **Status:** Active  
-> **Last updated:** 2026-02-28
-
----
-
-## Purpose
-
-Documents the hardware components used in FlushFM 2.0 and their interfaces.
+# Rule: Hardware
+[Status: Active | Updated: 2026-03-09]
+**Context:** ESP32-S3 Physical Layer | **Goal:** Define core components and power domain management
 
 ---
 
-## Rules
+## 1. Core Rules
+- **MCU:** Use ESP32-S3-D-1 (N16R8) with 16MB Flash and 8MB PSRAM.
+- **Display:** Interface ILI9341 3.5" (240x320) TFT via SPI; do not implement touch functionality.
+- **Audio:** Use PCM5102A DAC via I2S for audio output.
+- **Light Sensor:** Connect TEMT6000 analog sensor to ADC1 pins only
+- **Power Isolation:** Use a physical relay to switch VCC for the "Switched Domain"
+- **Domain Mapping:** Always-On (MCU, WiFi, Sensor, Relay); Switched (Display, Audio)
+- **Switching Logic:** Physically disconnect the Switched Domain during idle/off states to achieve zero standby current for peripherals (→ `state-management.md`: IDLE state)
 
-### Hardware Components
+## 2. Constraints & Exceptions
+- **Limit:** Use ADC1 pins for the TEMT6000 (ADC2 is unavailable when WiFi is active)
+- **Limit:** Ensure PSRAM is initialized and utilized for audio buffering to leverage the 8MB available
+- **Never:** Communicate with SPI/I2S peripherals unless the Relay-State is confirmed HIGH (Power Domain active)
+- **Exception:** Low-power sleep modes of the ESP32-S3 can be used as long as the Relay remains under active control
 
-1. **Microcontroller:** ESP32-S3-D-1 N16R8 (16MB Flash, 8MB PSRAM)
+## 3. Reference Pattern
+```cpp
+void vPowerUpTask(void *pvParameters) {
+    // 1. Activate Power Domain
+    digitalWrite(PIN_RELAY, HIGH);
+    vTaskDelay(pdMS_TO_TICKS(50)); // Voltage stabilization
 
-2. **Display:** ILI9341 3.5" 240x320 TFT (no touch) via SPI
+    // 2. Initialize Switched Peripherals
+    display.begin();
+    audio.begin();
 
-3. **Light sensor:** TEMT6000 analog sensor via ADC
-
-4. **Audio output:** PCM5102A DAC board via I2S
-
-5. **Power management:** Relay to switch off non-essential components (audio interface, display) during idle/off state for power efficiency
-
-6. **Connectivity:** Built-in WiFi for internet radio streaming
-
----
-
-## Rationale
-
-The relay for power management enables true low-power idle states by completely disconnecting power to non-essential components (display, audio interface) when the device is off, rather than leaving them in standby mode.
-
----
-
-## Exceptions
-
-None.
-
----
-
-## Examples
-
-Hardware overview:
-- ESP32-S3 as central processing unit with WiFi capability
-- Display, audio, and sensors as peripheral components
-- Relay-controlled power domains for efficient idle operation
+    DEBUG_LOG("HW", "Switched domain active");
+    vTaskDelete(NULL);
+}
