@@ -55,4 +55,4 @@ static constexpr uint8_t AUDIO_VOLUME_DEFAULT = 10;
 // Values are passed to ESP32-audioI2S via setInternalBufferSize / PSRAM buffer.
 #define AUDIO_TASK_STACK_SIZE   (8192)          // FreeRTOS stack for audio task
 #define AUDIO_TASK_PRIORITY     (2)             // Priority 2: high enough for smooth audio, leaves room for watchdog
-#define AUDIO_TASK_CORE         (0)             // Core 0 – temporary; will move to Core 1 in US-0003
+#define AUDIO_TASK_CORE         (1)             // Core 1 – dedicated audio core (US-0003)

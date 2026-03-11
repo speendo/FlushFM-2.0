@@ -20,6 +20,7 @@
 - **Never:** Use shared global variables between tasks; use thread-safe IPC only
 - **Never:** Access same hardware (I2C/SPI) from different cores without a Mutex
 - **Never:** Perform blocking I/O in high-priority tasks or main loop
+- **Never:** Run a busy-loop without periodically yielding via `vTaskDelay(1)` – even at low priority, a tight loop that never yields will starve `IDLE0`/`IDLE1` (priority 0) which need CPU time to reset their own WDT subscription, causing an abort and reboot. A brief yield every ~100 ms is sufficient.
 - **Exception:** ISRs may modify a single `volatile` flag or signal a semaphore to wake a task
 
 ## 3. Reference Pattern

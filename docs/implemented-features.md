@@ -17,6 +17,16 @@
 - Clean stream switching and stop verified; stereo L/R separation verified
 - Audio task pinned to Core 0, priority 2, with `vTaskDelay(pdMS_TO_TICKS(1))` to keep IDLE fed
 
+## Core Pinning Verification (US-0003)
+
+- `audioTask` pinned to Core 1 (`AUDIO_TASK_CORE = 1`, priority 2)
+- `tasks` Serial command reports core, priority and stack HWM of `audioTask` (observed: 5892 DW free)
+- `loadtest` Serial command runs 5s busy-loop on Core 0 – no audio dropouts observed
+- `suspend` / `resume` Serial commands verified: clean recovery, no reboot
+- Framework tasks (WiFi/TCP/IDLE) on Core 0 are expected and accepted per `concurrency.md`
+- DMA drain behavior documented: audio continues for several seconds after `vTaskSuspend()` – tracked in US-0006
+- Serial CLI hardened: `readLine` now discards non-printable characters (fixes spurious "Unknown command" errors from escape sequences)
+
 ## Planned
 
 - Station and track info on ILI9341 display
