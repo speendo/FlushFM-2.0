@@ -1,6 +1,8 @@
 #pragma once
 
 #include "IAudioPlayer.h"
+#include "audio_runtime.h"
+#include "system_controller.h"
 
 class ISystemComponent {
 public:
@@ -18,24 +20,34 @@ public:
 
 class WiFiComponent final : public ISystemComponent {
 public:
-    const char* name() const override;
-    bool setup() override;
-};
-
-class AudioRuntimeComponent final : public ISystemComponent {
-public:
-    explicit AudioRuntimeComponent(IAudioPlayer& audio);
+    explicit WiFiComponent(SystemController& system);
 
     const char* name() const override;
     bool setup() override;
 
 private:
+    static void onConnected(void* context);
+
+    SystemController& system_;
+};
+
+class AudioRuntimeComponent final : public ISystemComponent {
+public:
+    AudioRuntimeComponent(IAudioPlayer& audio, SystemController& system);
+
+    const char* name() const override;
+    bool setup() override;
+
+private:
+    static void onAudioSignal(audio_runtime::Signal signal, void* context);
+
     IAudioPlayer& audio_;
+    SystemController& system_;
 };
 
 class CliComponent final : public ISystemComponent {
 public:
-    explicit CliComponent(IAudioPlayer& audio);
+    CliComponent(IAudioPlayer& audio, SystemController& system);
 
     const char* name() const override;
     bool setup() override;
@@ -43,4 +55,5 @@ public:
 
 private:
     IAudioPlayer& audio_;
+    SystemController& system_;
 };

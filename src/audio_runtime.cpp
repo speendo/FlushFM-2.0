@@ -9,16 +9,24 @@ namespace {
 
 static IAudioPlayer* s_audio = nullptr;
 static TaskHandle_t s_audioTaskHandle = nullptr;
+static audio_runtime::SignalHandler s_signalHandler = nullptr;
+static void* s_signalContext = nullptr;
 
 static void audioTask(void* /*param*/) {
     if (!s_audio || !s_audio->begin()) {
         ERROR_LOG("Audio init failed inside task - check I2S wiring (BCK=%d WS=%d DOUT=%d)",
                   I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
+        if (s_signalHandler) {
+            s_signalHandler(audio_runtime::Signal::INIT_FAILED, s_signalContext);
+        }
     } else {
         s_audio->setVolumeSteps(AUDIO_VOLUME_STEPS);
         s_audio->setVolume(AUDIO_VOLUME_DEFAULT);
         PROD_LOG("Audio initialized in task (BCK=%d WS=%d DOUT=%d volume=%d/%d)",
                  I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN, AUDIO_VOLUME_DEFAULT, AUDIO_VOLUME_STEPS);
+        if (s_signalHandler) {
+            s_signalHandler(audio_runtime::Signal::INIT_OK, s_signalContext);
+        }
     }
 
     for (;;) {
@@ -32,6 +40,11 @@ static void audioTask(void* /*param*/) {
 } // namespace
 
 namespace audio_runtime {
+
+void setSignalHandler(SignalHandler handler, void* context) {
+    s_signalHandler = handler;
+    s_signalContext = context;
+}
 
 TaskHandle_t* taskHandlePtr() {
     return &s_audioTaskHandle;

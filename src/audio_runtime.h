@@ -6,6 +6,15 @@
 
 namespace audio_runtime {
 
+enum class Signal {
+	INIT_OK,
+	INIT_FAILED,
+};
+
+using SignalHandler = void (*)(Signal signal, void* context);
+
+void setSignalHandler(SignalHandler handler, void* context);
+
 // Returns a stable pointer to the internal audio task handle for diagnostics.
 TaskHandle_t* taskHandlePtr();
 

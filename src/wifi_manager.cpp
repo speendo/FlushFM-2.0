@@ -12,6 +12,8 @@
 static char s_ssid[64] = {};
 static char s_pass[64] = {};
 static bool s_connected = false;
+static wifi_manager::ConnectedCallback s_connectedCallback = nullptr;
+static void* s_connectedCallbackContext = nullptr;
 
 // ---------------------------------------------------------------------------
 // WiFi event handlers
@@ -26,6 +28,9 @@ static void onWiFiDisconnect(WiFiEvent_t /*event*/, WiFiEventInfo_t info) {
 static void onWiFiConnect(WiFiEvent_t /*event*/, WiFiEventInfo_t /*info*/) {
     s_connected = true;
     PROD_LOG("WiFi reconnected – IP: %s", WiFi.localIP().toString().c_str());
+    if (s_connectedCallback) {
+        s_connectedCallback(s_connectedCallbackContext);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -36,6 +41,11 @@ namespace wifi_manager {
 void init() {
     WiFi.onEvent(onWiFiDisconnect, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
     WiFi.onEvent(onWiFiConnect,    ARDUINO_EVENT_WIFI_STA_GOT_IP);
+}
+
+void setConnectedCallback(ConnectedCallback callback, void* context) {
+    s_connectedCallback = callback;
+    s_connectedCallbackContext = context;
 }
 
 void setSsid(const char* ssid) {
@@ -66,6 +76,9 @@ void connect() {
         s_connected = true;
         PROD_LOG("WiFi connected – IP: %s  RSSI: %d dBm",
                  WiFi.localIP().toString().c_str(), WiFi.RSSI());
+        if (s_connectedCallback) {
+            s_connectedCallback(s_connectedCallbackContext);
+        }
     } else {
         ERROR_LOG("WiFi connection timed out");
     }
