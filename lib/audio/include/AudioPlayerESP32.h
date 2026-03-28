@@ -28,11 +28,13 @@ public:
     void    setVolumeSteps(uint8_t steps)  override;
     uint8_t getVolume() const              override;
     void    setBalance(int8_t balance)     override;
+    RuntimeState runtimeState() const      override;
 
 private:
     int     _bck;
     int     _ws;
     int     _dout;
     uint8_t _volume = 0;
+    RuntimeState _runtimeState = RuntimeState::IDLE;
     Audio   _audio;
 };

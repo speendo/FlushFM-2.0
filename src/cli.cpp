@@ -87,7 +87,10 @@ void process(const char* line) {
 
     } else if (strcmp(cmd, "play") == 0) {
         if (!arg || *arg == '\0') { ERROR_LOG("Usage: play <url>"); return; }
-        if (!wifi_manager::isConnected()) { ERROR_LOG("Not connected to WiFi – run 'connect' first"); return; }
+        if (wifi_manager::state() != wifi_manager::WiFiState::CONNECTED) {
+            ERROR_LOG("Not connected to WiFi – run 'connect' first");
+            return;
+        }
         PROD_LOG("Connecting to stream: %s", arg);
         s_audio->connectToHost(arg);
 
@@ -97,7 +100,10 @@ void process(const char* line) {
 
     } else if (strcmp(cmd, "switch") == 0) {
         if (!arg || *arg == '\0') { ERROR_LOG("Usage: switch <url>"); return; }
-        if (!wifi_manager::isConnected()) { ERROR_LOG("Not connected to WiFi – run 'connect' first"); return; }
+        if (wifi_manager::state() != wifi_manager::WiFiState::CONNECTED) {
+            ERROR_LOG("Not connected to WiFi – run 'connect' first");
+            return;
+        }
         s_audio->stop();
         PROD_LOG("Switching to stream: %s", arg);
         s_audio->connectToHost(arg);

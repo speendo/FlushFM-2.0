@@ -9,6 +9,13 @@
 /// concrete type (→ requirements/guidelines/modularity.md).
 class IAudioPlayer {
 public:
+    enum class RuntimeState {
+        IDLE,
+        CONNECTING,
+        STREAMING,
+        ERROR,
+    };
+
     virtual ~IAudioPlayer() = default;
 
     /// Initialize hardware (I2S pinout, default volume).
@@ -41,4 +48,7 @@ public:
 
     /// Set stereo balance (-16 = full left, 0 = center, +16 = full right).
     virtual void setBalance(int8_t balance) = 0;
+
+    /// Return current runtime state for orchestration/transition decisions.
+    virtual RuntimeState runtimeState() const = 0;
 };

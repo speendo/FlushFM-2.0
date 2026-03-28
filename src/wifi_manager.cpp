@@ -12,6 +12,7 @@
 static char s_ssid[64] = {};
 static char s_pass[64] = {};
 static bool s_connected = false;
+static wifi_manager::WiFiState s_state = wifi_manager::WiFiState::DISCONNECTED;
 static wifi_manager::ConnectedCallback s_connectedCallback = nullptr;
 static void* s_connectedCallbackContext = nullptr;
 
@@ -20,6 +21,7 @@ static void* s_connectedCallbackContext = nullptr;
 // ---------------------------------------------------------------------------
 static void onWiFiDisconnect(WiFiEvent_t /*event*/, WiFiEventInfo_t info) {
     s_connected = false;
+    s_state = wifi_manager::WiFiState::DISCONNECTED;
     PROD_LOG("WiFi disconnected (reason %d) – attempting reconnect",
              info.wifi_sta_disconnected.reason);
     WiFi.reconnect();
@@ -27,6 +29,7 @@ static void onWiFiDisconnect(WiFiEvent_t /*event*/, WiFiEventInfo_t info) {
 
 static void onWiFiConnect(WiFiEvent_t /*event*/, WiFiEventInfo_t /*info*/) {
     s_connected = true;
+    s_state = wifi_manager::WiFiState::CONNECTED;
     PROD_LOG("WiFi reconnected – IP: %s", WiFi.localIP().toString().c_str());
     if (s_connectedCallback) {
         s_connectedCallback(s_connectedCallbackContext);
@@ -58,9 +61,11 @@ void setPass(const char* pass) {
 
 void connect() {
     if (s_ssid[0] == '\0') {
+        s_state = WiFiState::ERROR;
         ERROR_LOG("No SSID set – use 'ssid <name>' first");
         return;
     }
+    s_state = WiFiState::CONNECTING;
     PROD_LOG("Connecting to WiFi: %s ...", s_ssid);
     WiFi.mode(WIFI_STA);
     WiFi.begin(s_ssid, s_pass[0] != '\0' ? s_pass : nullptr);
@@ -74,18 +79,24 @@ void connect() {
 
     if (WiFi.status() == WL_CONNECTED) {
         s_connected = true;
+        s_state = WiFiState::CONNECTED;
         PROD_LOG("WiFi connected – IP: %s  RSSI: %d dBm",
                  WiFi.localIP().toString().c_str(), WiFi.RSSI());
         if (s_connectedCallback) {
             s_connectedCallback(s_connectedCallbackContext);
         }
     } else {
+        s_state = WiFiState::ERROR;
         ERROR_LOG("WiFi connection timed out");
     }
 }
 
+WiFiState state() {
+    return s_state;
+}
+
 bool isConnected() {
-    return s_connected;
+    return s_state == WiFiState::CONNECTED || s_connected;
 }
 
 } // namespace wifi_manager

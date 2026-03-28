@@ -26,7 +26,7 @@ bool WiFiComponent::setup() {
     wifi_manager::setConnectedCallback(&WiFiComponent::onConnected, this);
     wifi_manager::init();
 
-    if (wifi_manager::isConnected()) {
+    if (wifi_manager::state() == wifi_manager::WiFiState::CONNECTED) {
         system_.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED);
     }
 

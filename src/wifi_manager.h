@@ -4,6 +4,13 @@
 
 namespace wifi_manager {
 
+enum class WiFiState {
+	DISCONNECTED,
+	CONNECTING,
+	CONNECTED,
+	ERROR,
+};
+
 using ConnectedCallback = void (*)(void* context);
 
 // Register WiFi event handlers. Must be called once in setup() before connect().
@@ -18,6 +25,8 @@ void setPass(const char* pass);
 
 // Start connection attempt; blocks up to WIFI_CONNECT_TIMEOUT_MS.
 void connect();
+
+WiFiState state();
 
 bool isConnected();
 
