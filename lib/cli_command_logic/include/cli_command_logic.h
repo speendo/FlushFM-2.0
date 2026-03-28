@@ -1,0 +1,32 @@
+#pragma once
+
+#include <stdint.h>
+
+#include "IAudioPlayer.h"
+#include "cli_command_result.h"
+
+namespace cli_command_logic {
+
+enum class WiFiConnectivity {
+    DISCONNECTED,
+    CONNECTED,
+};
+
+class IEnvironment {
+public:
+    virtual ~IEnvironment() = default;
+
+    virtual void setSsid(const char* ssid) = 0;
+    virtual void setPass(const char* pass) = 0;
+    virtual void connectWiFi() = 0;
+    virtual WiFiConnectivity wifiConnectivity() const = 0;
+};
+
+cli_output::CommandResult dispatchCommand(
+    const char* cmd,
+    const char* arg,
+    IAudioPlayer& audio,
+    IEnvironment& env,
+    uint8_t maxVolumeSteps);
+
+} // namespace cli_command_logic

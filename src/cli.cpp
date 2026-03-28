@@ -4,8 +4,9 @@
 #include <Arduino.h>
 #include <string.h>
 
+#include "cli_command_logic.h"
+#include "cli_output.h"
 #include "config.h"
-#include "debug.h"
 #include "wifi_manager.h"
 
 // ---------------------------------------------------------------------------
@@ -24,6 +25,37 @@
 // Module-private state
 // ---------------------------------------------------------------------------
 static IAudioPlayer* s_audio = nullptr;
+
+namespace {
+
+class CliEnvironment final : public cli_command_logic::IEnvironment {
+public:
+    void setSsid(const char* ssid) override {
+        wifi_manager::setSsid(ssid);
+    }
+
+    void setPass(const char* pass) override {
+        wifi_manager::setPass(pass);
+    }
+
+    void connectWiFi() override {
+        wifi_manager::connect();
+    }
+
+    cli_command_logic::WiFiConnectivity wifiConnectivity() const override {
+        return wifi_manager::state() == wifi_manager::WiFiState::CONNECTED
+            ? cli_command_logic::WiFiConnectivity::CONNECTED
+            : cli_command_logic::WiFiConnectivity::DISCONNECTED;
+    }
+};
+
+CliEnvironment s_env;
+
+} // namespace
+
+static void printDebugHelp() {
+    PRINT_DEBUG_HELP();
+}
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -72,85 +104,24 @@ void process(const char* line) {
         strncpy(cmd, line, sizeof(cmd) - 1);
     }
 
-    if (strcmp(cmd, "ssid") == 0) {
-        if (!arg || *arg == '\0') { ERROR_LOG("Usage: ssid <name>"); return; }
-        wifi_manager::setSsid(arg);
-        PROD_LOG("SSID set to: %s", arg);
+    cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        cmd,
+        arg,
+        *s_audio,
+        s_env,
+        AUDIO_VOLUME_STEPS);
 
-    } else if (strcmp(cmd, "pass") == 0) {
-        if (!arg || *arg == '\0') { ERROR_LOG("Usage: pass <password>"); return; }
-        wifi_manager::setPass(arg);
-        PROD_LOG("Password set");
-
-    } else if (strcmp(cmd, "connect") == 0) {
-        wifi_manager::connect();
-
-    } else if (strcmp(cmd, "play") == 0) {
-        if (!arg || *arg == '\0') { ERROR_LOG("Usage: play <url>"); return; }
-        if (wifi_manager::state() != wifi_manager::WiFiState::CONNECTED) {
-            ERROR_LOG("Not connected to WiFi – run 'connect' first");
-            return;
+    if (result.key == cli_output::MessageKey::NONE) {
+        if (!TRY_DEBUG_COMMAND(cmd, arg)) {
+            result = {cli_output::MessageKey::UNKNOWN_COMMAND, cmd};
         }
-        PROD_LOG("Connecting to stream: %s", arg);
-        s_audio->connectToHost(arg);
-
-    } else if (strcmp(cmd, "stop") == 0) {
-        s_audio->stop();
-        PROD_LOG("Stream stopped");
-
-    } else if (strcmp(cmd, "switch") == 0) {
-        if (!arg || *arg == '\0') { ERROR_LOG("Usage: switch <url>"); return; }
-        if (wifi_manager::state() != wifi_manager::WiFiState::CONNECTED) {
-            ERROR_LOG("Not connected to WiFi – run 'connect' first");
-            return;
-        }
-        s_audio->stop();
-        PROD_LOG("Switching to stream: %s", arg);
-        s_audio->connectToHost(arg);
-
-    } else if (strcmp(cmd, "volume") == 0) {
-        if (!arg || *arg == '\0') {
-            PROD_LOG("Current volume: %d (range 0-%d)", s_audio->getVolume(), AUDIO_VOLUME_STEPS);
-            return;
-        }
-        const int vol = atoi(arg);
-        if (vol < 0 || vol > AUDIO_VOLUME_STEPS) { ERROR_LOG("Volume must be 0-%d", AUDIO_VOLUME_STEPS); return; }
-        s_audio->setVolume(static_cast<uint8_t>(vol));
-        PROD_LOG("Volume set to %d", vol);
-
-    } else if (strcmp(cmd, "balance") == 0) {
-        if (!arg || *arg == '\0') { ERROR_LOG("Usage: balance <-16..16>  (-16=left, 0=center, +16=right)"); return; }
-        const int bal = atoi(arg);
-        if (bal < -16 || bal > 16) { ERROR_LOG("Balance must be -16..16"); return; }
-        s_audio->setBalance(static_cast<int8_t>(bal));
-        PROD_LOG("Balance set to %d", bal);
-
-    } else if (strcmp(cmd, "help") == 0) {
-        printHelp();
-
-    } else if (!TRY_DEBUG_COMMAND(cmd, arg)) {
-        ERROR_LOG("Unknown command '%s' – type 'help' for available commands", cmd);
     }
+
+    cli_output::render(result, &printDebugHelp);
 }
 
 void printHelp() {
-    Serial.println();
-    Serial.println("FlushFM – Serial Commands:");
-    Serial.println("  ssid <name>       Set WiFi SSID");
-    Serial.println("  pass <password>   Set WiFi password");
-    Serial.println("  connect           Connect to WiFi with stored credentials");
-    Serial.println("  play <url>        Start streaming from URL");
-    Serial.println("  stop              Stop current stream");
-    Serial.println("  switch <url>      Switch to a different stream URL");
-    Serial.printf ("  volume [0-%d]     Get or set playback volume\r\n", AUDIO_VOLUME_STEPS);
-    Serial.println("  balance <-16..16> Stereo balance (-16=L, 0=center, +16=R)");
-    PRINT_DEBUG_HELP();
-    Serial.println("  help              Show this help");
-    Serial.println();
-    Serial.println("Test stations:");
-    Serial.println("  http://ice1.somafm.com/groovesalad-256-mp3");
-    Serial.println("  http://stream.srg-ssr.ch/m/drs3/mp3_128");
-    Serial.println();
+    cli_output::render({cli_output::MessageKey::HELP}, &printDebugHelp);
 }
 
 } // namespace cli

@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+#include <Arduino.h>
+
 // ---------------------------------------------------------------------------
 // FlushFM 2.0 – Build-time configuration constants
 // ---------------------------------------------------------------------------
