@@ -12,12 +12,16 @@ enum class WiFiState {
 };
 
 using ConnectedCallback = void (*)(void* context);
+using DisconnectedCallback = void (*)(void* context);
 
 // Register WiFi event handlers. Must be called once in setup() before connect().
 void init();
 
 // Register a callback invoked on actual WiFi readiness (GOT_IP event).
 void setConnectedCallback(ConnectedCallback callback, void* context);
+
+// Register a callback invoked on WiFi disconnection.
+void setDisconnectedCallback(DisconnectedCallback callback, void* context);
 
 // Store credentials; both are optional (pass nullptr or "" to skip).
 void setSsid(const char* ssid);

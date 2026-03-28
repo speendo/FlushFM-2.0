@@ -7,6 +7,7 @@
 #include "cli_command_logic.h"
 #include "cli_output.h"
 #include "config.h"
+#include "system_controller.h"
 #include "wifi_manager.h"
 
 // ---------------------------------------------------------------------------
@@ -25,6 +26,7 @@
 // Module-private state
 // ---------------------------------------------------------------------------
 static IAudioPlayer* s_audio = nullptr;
+static SystemController* s_controller = nullptr;
 
 namespace {
 
@@ -62,8 +64,9 @@ static void printDebugHelp() {
 // ---------------------------------------------------------------------------
 namespace cli {
 
-void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle) {
+void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, SystemController* controller) {
     s_audio = &audio;
+    s_controller = controller;
 #ifdef DEBUG_ENABLED
     debug_cli::init(audioTaskHandle);
 #else

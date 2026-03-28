@@ -21,8 +21,16 @@ enum class SystemEvent {
     AUDIO_INIT_FAILED,
     PLAY_REQUESTED,
     STOP_REQUESTED,
+    WIFI_DISCONNECTED,
+    STREAM_LOST,
     RECOVER,
     ENTER_OFF,
+};
+
+// Event posting policy: controls how postEvent handles queue backpressure.
+enum class EventPolicy {
+    FIRE_AND_FORGET,      // Non-blocking; silent loss acceptable for optional events.
+    BOUNDED_BLOCKING,     // Short timeout for critical state-machine events; ERROR_LOG on failure.
 };
 
 enum class SystemReason {
@@ -50,7 +58,9 @@ public:
 
     // Thread-safe event enqueue for any core/task.
     // reason carries origin/context metadata for logging and debugging.
-    bool postEvent(SystemEvent event, SystemReason reason);
+    // policy controls queue backpressure strategy: FIRE_AND_FORGET may lose events; BOUNDED_BLOCKING uses
+    // a short timeout to signal critical events and fall back to sticky pending flags.
+    bool postEvent(SystemEvent event, SystemReason reason, EventPolicy policy = EventPolicy::FIRE_AND_FORGET);
 
     // Core 0 only: process pending events and run transition logic.
     void dispatchPending();
@@ -68,6 +78,9 @@ private:
     bool transientError_ = false;
     QueueHandle_t queue_ = nullptr;
     std::vector<StateObserver> observers_;
+    bool pendingCriticalEvent_ = false;  // Sticky flag for critical event loss recovery.
+    SystemEvent pendingEvent_ = SystemEvent::BOOT;
+    SystemReason pendingReason_ = SystemReason::NONE;
 };
 
 const char* toString(SystemState state);

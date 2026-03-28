@@ -14,12 +14,24 @@ void SystemController::subscribe(StateObserver observer) {
     observers_.push_back(observer);
 }
 
-bool SystemController::postEvent(SystemEvent event, SystemReason reason) {
+bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPolicy policy) {
     if (!queue_) {
         return false;
     }
     const QueuedEvent queued{event, reason};
-    return xQueueSend(queue_, &queued, 0) == pdTRUE;
+    
+    const TickType_t timeout = (policy == EventPolicy::BOUNDED_BLOCKING) ? pdMS_TO_TICKS(10) : 0;
+    const bool success = xQueueSend(queue_, &queued, timeout) == pdTRUE;
+    
+    if (!success && policy == EventPolicy::BOUNDED_BLOCKING) {
+        // Critical event lost: set sticky flag and log for recovery in dispatchPending().
+        ERROR_LOG("Event queue full; critical event %s will retry on next dispatch", toString(event));
+        pendingCriticalEvent_ = true;
+        pendingEvent_ = event;
+        pendingReason_ = reason;
+    }
+    
+    return success;
 }
 
 void SystemController::dispatchPending() {
@@ -27,6 +39,14 @@ void SystemController::dispatchPending() {
         return;
     }
 
+    // Process any pending critical event first (sticky fallback from queue-full condition).
+    if (pendingCriticalEvent_) {
+        PROD_LOG("Processing pending critical event: %s", toString(pendingEvent_));
+        handleEvent(pendingEvent_, pendingReason_);
+        pendingCriticalEvent_ = false;
+    }
+
+    // Drain normal queue.
     QueuedEvent queued{};
     while (xQueueReceive(queue_, &queued, 0) == pdTRUE) {
         handleEvent(queued.event, queued.reason);
@@ -42,7 +62,9 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
             break;
 
         case SystemState::STARTING:
-            if (event == SystemEvent::WIFI_READY) {
+            if (event == SystemEvent::AUDIO_INIT_OK) {
+                transitionTo(SystemState::IDLE, event, reason);
+            } else if (event == SystemEvent::WIFI_READY) {
                 transitionTo(SystemState::IDLE, event, reason);
             } else if (event == SystemEvent::COMPONENT_SETUP_FAILED) {
                 transitionTo(SystemState::ERROR, event, reason);
@@ -56,6 +78,8 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
         case SystemState::IDLE:
             if (event == SystemEvent::PLAY_REQUESTED) {
                 transitionTo(SystemState::STREAMING, event, reason);
+            } else if (event == SystemEvent::WIFI_DISCONNECTED) {
+                transitionTo(SystemState::ERROR, event, reason);
             } else if (event == SystemEvent::COMPONENT_SETUP_FAILED) {
                 transitionTo(SystemState::ERROR, event, reason);
             } else if (event == SystemEvent::AUDIO_INIT_FAILED) {
@@ -68,6 +92,10 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
         case SystemState::STREAMING:
             if (event == SystemEvent::STOP_REQUESTED) {
                 transitionTo(SystemState::IDLE, event, reason);
+            } else if (event == SystemEvent::WIFI_DISCONNECTED) {
+                transitionTo(SystemState::ERROR, event, reason);
+            } else if (event == SystemEvent::STREAM_LOST) {
+                transitionTo(SystemState::ERROR, event, reason);
             } else if (event == SystemEvent::AUDIO_INIT_FAILED) {
                 transitionTo(SystemState::ERROR, event, reason);
             } else if (event == SystemEvent::ENTER_OFF) {
@@ -140,6 +168,10 @@ const char* toString(SystemEvent event) {
             return "PLAY_REQUESTED";
         case SystemEvent::STOP_REQUESTED:
             return "STOP_REQUESTED";
+        case SystemEvent::WIFI_DISCONNECTED:
+            return "WIFI_DISCONNECTED";
+        case SystemEvent::STREAM_LOST:
+            return "STREAM_LOST";
         case SystemEvent::RECOVER:
             return "RECOVER";
         case SystemEvent::ENTER_OFF:

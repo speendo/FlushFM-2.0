@@ -15,6 +15,8 @@ static bool s_connected = false;
 static wifi_manager::WiFiState s_state = wifi_manager::WiFiState::DISCONNECTED;
 static wifi_manager::ConnectedCallback s_connectedCallback = nullptr;
 static void* s_connectedCallbackContext = nullptr;
+static wifi_manager::DisconnectedCallback s_disconnectedCallback = nullptr;
+static void* s_disconnectedCallbackContext = nullptr;
 
 // ---------------------------------------------------------------------------
 // WiFi event handlers
@@ -24,6 +26,9 @@ static void onWiFiDisconnect(WiFiEvent_t /*event*/, WiFiEventInfo_t info) {
     s_state = wifi_manager::WiFiState::DISCONNECTED;
     PROD_LOG("WiFi disconnected (reason %d) – attempting reconnect",
              info.wifi_sta_disconnected.reason);
+    if (s_disconnectedCallback) {
+        s_disconnectedCallback(s_disconnectedCallbackContext);
+    }
     WiFi.reconnect();
 }
 
@@ -49,6 +54,11 @@ void init() {
 void setConnectedCallback(ConnectedCallback callback, void* context) {
     s_connectedCallback = callback;
     s_connectedCallbackContext = context;
+}
+
+void setDisconnectedCallback(DisconnectedCallback callback, void* context) {
+    s_disconnectedCallback = callback;
+    s_disconnectedCallbackContext = context;
 }
 
 void setSsid(const char* ssid) {

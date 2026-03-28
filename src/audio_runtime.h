@@ -9,6 +9,7 @@ namespace audio_runtime {
 enum class Signal {
 	INIT_OK,
 	INIT_FAILED,
+	STREAM_LOST,
 };
 
 using SignalHandler = void (*)(Signal signal, void* context);

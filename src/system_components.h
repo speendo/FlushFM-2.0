@@ -27,6 +27,7 @@ public:
 
 private:
     static void onConnected(void* context);
+    static void onDisconnected(void* context);
 
     SystemController& system_;
 };
