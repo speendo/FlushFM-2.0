@@ -2,18 +2,26 @@
 
 #include "AudioPlayerESP32.h"
 #include "IAudioPlayer.h"
-#include "audio_runtime.h"
-#include "board_info.h"
-#include "cli.h"
 #include "config.h"
 #include "debug.h"
-#include "wifi_manager.h"
+#include "system_components.h"
 
 // ---------------------------------------------------------------------------
 // Audio – concrete instance wired here; rest of code depends on interface only
 // ---------------------------------------------------------------------------
 static AudioPlayerESP32 s_playerImpl(I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
 static IAudioPlayer& s_audio = s_playerImpl;
+static BoardInfoComponent s_boardInfo;
+static WiFiComponent s_wifi;
+static AudioRuntimeComponent s_audioRuntime(s_audio);
+static CliComponent s_cli(s_audio);
+
+static ISystemComponent* s_components[] = {
+    &s_boardInfo,
+    &s_wifi,
+    &s_audioRuntime,
+    &s_cli,
+};
 
 // ---------------------------------------------------------------------------
 // Arduino entry points
@@ -29,23 +37,17 @@ void setup() {
     }
 
     PROD_LOG("Hello FlushFM");
-    board_info::print();
 
-    wifi_manager::init();
-    cli::init(s_audio, audio_runtime::taskHandlePtr());
-
-    if (!audio_runtime::start(s_audio)) {
-        ERROR_LOG("Audio runtime startup failed");
+    for (ISystemComponent* component : s_components) {
+        if (!component->setup()) {
+            ERROR_LOG("Component setup failed: %s", component->name());
+        }
     }
-
-    cli::printHelp();
 }
 
 void loop() {
-    // Audio is handled by audioTask; loop() is Serial-only.
-    static char cmdBuf[SERIAL_CMD_BUF_SIZE];
-    if (cli::readLine(cmdBuf, sizeof(cmdBuf))) {
-        cli::process(cmdBuf);
+    for (ISystemComponent* component : s_components) {
+        component->loop();
     }
 }
 
