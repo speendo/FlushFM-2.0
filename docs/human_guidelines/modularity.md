@@ -1,7 +1,7 @@
 # Guideline: Modularity and Component Independence
 
 > **Status:** Active
-> **Last updated:** 2026-02-28
+> **Last updated:** 2026-03-28
 
 ---
 
@@ -31,7 +31,11 @@ present and functional.
 5. **Components communicate through their interfaces only.** No component reaches into the
    internals of another component.
 
-6. **Absence of a dependency must be handled gracefully.** If an optional dependency is not
+6. **Lifecycle contract for orchestration:** Components integrated by the orchestrator expose
+  `setup()` and may expose `loop()`. `setup()` runs once; `loop()` is optional for
+  event-driven components and must not be added only for state polling.
+
+7. **Absence of a dependency must be handled gracefully.** If an optional dependency is not
    available (e.g. no display attached), the component must not crash – it should degrade
    silently or log a warning.
 

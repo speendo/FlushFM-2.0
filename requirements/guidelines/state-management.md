@@ -1,5 +1,5 @@
 # Rule: State Management
-[Status: Active | Updated: 2026-03-11]
+[Status: Active | Updated: 2026-03-28]
 **Context:** ESP32-S3 / FreeRTOS | **Goal:** Centralize system control while ensuring thread-safe; decoupled component communication
 
 ---
@@ -13,6 +13,7 @@
     - **`STREAMING`:** playing audio, display on
     - **`ERROR`:** recoverable failure
 - **Transitions:** Use explicit event-driven triggers via callbacks, ISRs, or FreeRTOS task notifications
+- **Lifecycle Invocation:** Follow the lifecycle contract defined in `modularity.md` (orchestrator-owned `setup()` once; `loop()` optional and only for periodic work)
 - **Local Encapsulation:** Components must own their internal state and provide read-only access via public getters (→ `modularity.md`)
 - **Error Handling:** Clear transient error states when entering states `OFF`, `STARTING` or `IDLE` to prepare a clean restart
 

@@ -1,7 +1,7 @@
 # Guideline: State Management
 
 > **Status:** Active  
-> **Last updated:** 2026-02-28
+> **Last updated:** 2026-03-28
 
 ---
 
@@ -19,17 +19,19 @@ Defines how FlushFM 2.0 manages system-level state and coordinates between compo
 
 3. **Component-local state:** Individual components own their internal state. State may be readable via public getter methods for debugging and status purposes, but other components must not directly modify another component's state.
 
-4. **State transitions are explicit:** State changes are triggered by specific events or conditions. Avoid continuous polling – use event-driven design with callbacks, interrupts, or timer expiration events where time-based transitions are needed (e.g. sleep timeout).
+4. **Lifecycle invocation:** Follow the lifecycle contract in `human_guidelines/modularity.md` (orchestrator-owned `setup()` once; optional `loop()` only for periodic work).
 
-5. **No global state variables:** State is owned by specific components – avoid global variables or singletons for state storage.
+5. **State transitions are explicit:** State changes are triggered by specific events or conditions. Avoid continuous polling – use event-driven design with callbacks, interrupts, or timer expiration events where time-based transitions are needed (e.g. sleep timeout).
 
-6. **State persistence:** Critical configuration (WiFi credentials, last station) is stored in ESP32 NVS (Non-Volatile Storage) and restored on startup.
+6. **No global state variables:** State is owned by specific components – avoid global variables or singletons for state storage.
 
-7. **State observation via callbacks:** Components that need to react to state changes register callback functions rather than polling for changes.
+7. **State persistence:** Critical configuration (WiFi credentials, last station) is stored in ESP32 NVS (Non-Volatile Storage) and restored on startup.
 
-8. **Cross-task state changes must use FreeRTOS queues.** Never modify SystemController state directly from a Core 1 task – send a command via queue to Core 0 instead.
+8. **State observation via callbacks:** Components that need to react to state changes register callback functions rather than polling for changes.
 
-9. **Cross-core data sharing requires explicit synchronization.** Use FreeRTOS queues for producer-consumer message-passing (commands, notifications, events) where you need message history or sequence. Use FreeRTOS mutexes for shared state variables that represent current values (volume, connection status, current track title) – even if only one core writes to them. Choose based on whether you need message flow or shared state access.
+9. **Cross-task state changes must use FreeRTOS queues.** Never modify SystemController state directly from a Core 1 task – send a command via queue to Core 0 instead.
+
+10. **Cross-core data sharing requires explicit synchronization.** Use FreeRTOS queues for producer-consumer message-passing (commands, notifications, events) where you need message history or sequence. Use FreeRTOS mutexes for shared state variables that represent current values (volume, connection status, current track title) – even if only one core writes to them. Choose based on whether you need message flow or shared state access.
 
 ---
 
