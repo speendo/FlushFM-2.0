@@ -30,6 +30,10 @@ void setPass(const char* pass);
 // Start connection attempt; blocks up to WIFI_CONNECT_TIMEOUT_MS.
 void connect();
 
+// Disconnect WiFi and clear volatile in-memory credentials/state.
+// Does not modify persisted NVS settings.
+void resetSession();
+
 WiFiState state();
 
 bool isConnected();

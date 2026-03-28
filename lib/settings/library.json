@@ -1,0 +1,7 @@
+{
+    "name": "settings",
+    "version": "0.1.0",
+    "description": "FlushFM persistent settings using Preferences/NVS",
+    "frameworks": "arduino",
+    "platforms": "espressif32"
+}

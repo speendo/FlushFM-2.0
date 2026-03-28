@@ -7,6 +7,7 @@
 #include "cli.h"
 #include "config.h"
 #include "debug.h"
+#include "settings.h"
 #include "wifi_manager.h"
 
 const char* BoardInfoComponent::name() const {
@@ -29,11 +30,26 @@ bool WiFiComponent::setup() {
     wifi_manager::setDisconnectedCallback(&WiFiComponent::onDisconnected, this);
     wifi_manager::init();
 
-    if (wifi_manager::state() == wifi_manager::WiFiState::CONNECTED) {
-        system_.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED);
+    char ssid[settings::kSsidMaxLen] = {};
+    char pass[settings::kPassMaxLen] = {};
+
+    if (settings::loadSsid(ssid, sizeof(ssid))) {
+        wifi_manager::setSsid(ssid);
+        settings::loadPass(pass, sizeof(pass));
+        if (pass[0] != '\0') {
+            wifi_manager::setPass(pass);
+        }
+
+        PROD_LOG("Boot auto-connect requested from persisted settings");
+        wifi_manager::connect();
+        bootAutoConnectSucceeded_ = (wifi_manager::state() == wifi_manager::WiFiState::CONNECTED);
     }
 
     return true;
+}
+
+bool WiFiComponent::bootAutoConnectSucceeded() const {
+    return bootAutoConnectSucceeded_;
 }
 
 void WiFiComponent::onConnected(void* context) {
@@ -120,9 +136,11 @@ void CliComponent::loop() {
         } else if (strcmp(cmd, "switch") == 0) {
             system_.postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
             system_.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
+        } else if (strcmp(cmd, "reset") == 0) {
+            system_.postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
         }
 
-        // Always process the command for output and validation (ssid/pass/connect/volume/balance/help)
+        // Always process the command for output and validation.
         cli::process(cmdBuf);
     }
 }

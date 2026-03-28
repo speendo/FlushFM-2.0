@@ -4,6 +4,7 @@
 #include "IAudioPlayer.h"
 #include "config.h"
 #include "debug.h"
+#include "settings.h"
 #include "system_controller.h"
 #include "system_components.h"
 
@@ -47,6 +48,16 @@ void setup() {
             s_system.postEvent(SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::COMPONENT_SETUP);
         }
         s_system.dispatchPending();
+    }
+
+    if (s_wifi.bootAutoConnectSucceeded()) {
+        char station[settings::kStationMaxLen] = {};
+        if (settings::loadStation(station, sizeof(station))) {
+            PROD_LOG("Boot auto-play: starting persisted station");
+            s_audio.connectToHost(station);
+            s_system.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
+            s_system.dispatchPending();
+        }
     }
 }
 

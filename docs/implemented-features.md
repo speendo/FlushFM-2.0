@@ -27,6 +27,16 @@
 - DMA drain behavior documented: audio continues for several seconds after `vTaskSuspend()` – tracked in US-0006
 - Serial CLI hardened: `readLine` now discards non-printable characters (fixes spurious "Unknown command" errors from escape sequences)
 
+## Persistent Settings via NVS (US-0006)
+
+- Added dedicated `Settings` module under `lib/settings/` using `Preferences` namespace `flushfm`
+- Persist `ssid` / `pass` on CLI commands and restore them on boot for automatic WiFi connect
+- Persist last station URL on `play` / `switch` and auto-start playback after successful boot auto-connect
+- `play` command works without URL argument – loads last station from NVS; falls back to usage error if no station saved
+- Added `forget` command to clear persisted `ssid` / `pass` / `station` from NVS
+- Added `reset` command to clear only runtime session state (stop stream, disconnect WiFi, clear volatile credentials)
+- Password values are never logged in plaintext
+
 ## Planned
 
 - Station and track info on ILI9341 display

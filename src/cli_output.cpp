@@ -15,11 +15,14 @@ void printHelp(DebugHelpPrinter debugHelpPrinter) {
     Serial.println("  ssid <name>       Set WiFi SSID");
     Serial.println("  pass <password>   Set WiFi password");
     Serial.println("  connect           Connect to WiFi with stored credentials");
-    Serial.println("  play <url>        Start streaming from URL");
+    Serial.println("  play [url]        Start streaming (URL optional: uses last saved if omitted)");
     Serial.println("  stop              Stop current stream");
     Serial.println("  switch <url>      Switch to a different stream URL");
+    Serial.println("  forget            Clear persisted ssid/pass/station from NVS");
+    Serial.println("  reset             Stop stream and reset runtime WiFi session");
     Serial.printf ("  volume [0-%d]     Get or set playback volume\r\n", AUDIO_VOLUME_STEPS);
     Serial.println("  balance <-16..16> Stereo balance (-16=L, 0=center, +16=R)");
+    Serial.println("  status            Show WiFi, audio, and persisted settings");
     if (debugHelpPrinter) {
         debugHelpPrinter();
     }
@@ -84,6 +87,31 @@ void render(const CommandResult& result, DebugHelpPrinter debugHelpPrinter) {
             return;
         case MessageKey::BALANCE_SET:
             PROD_LOG("Balance set to %d", result.value);
+            return;
+        case MessageKey::SETTINGS_FORGOTTEN:
+            PROD_LOG("Persisted settings cleared from NVS");
+            return;
+        case MessageKey::SESSION_RESET:
+            PROD_LOG("Runtime session reset (stream stopped, WiFi disconnected)");
+            return;
+        case MessageKey::STATUS:
+            // Status will be rendered via aux field (packed audio + wifi state) and text (station)
+            // Format: [WiFi: CONNECTED|DISCONNECTED] [Audio: IDLE|CONNECTING|STREAMING|ERROR] [Persisted: URL or empty]
+            Serial.println();
+            Serial.printf("WiFi:      %s\r\n", result.aux & 0x01 ? "CONNECTED" : "DISCONNECTED");
+            Serial.printf("Audio:     ");
+            {
+                uint8_t audioState = (result.aux >> 1) & 0x03;
+                switch (audioState) {
+                    case 0: Serial.println("IDLE"); break;
+                    case 1: Serial.println("CONNECTING"); break;
+                    case 2: Serial.println("STREAMING"); break;
+                    case 3: Serial.println("ERROR"); break;
+                    default: Serial.println("UNKNOWN"); break;
+                }
+            }
+            Serial.printf("Persisted: %s\r\n", result.text && *result.text ? result.text : "(none)");
+            Serial.println();
             return;
         case MessageKey::HELP:
             printHelp(debugHelpPrinter);

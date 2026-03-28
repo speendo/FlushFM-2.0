@@ -12,6 +12,13 @@ enum class WiFiConnectivity {
     CONNECTED,
 };
 
+enum class AudioState {
+    IDLE,
+    CONNECTING,
+    STREAMING,
+    ERROR,
+};
+
 class IEnvironment {
 public:
     virtual ~IEnvironment() = default;
@@ -19,7 +26,13 @@ public:
     virtual void setSsid(const char* ssid) = 0;
     virtual void setPass(const char* pass) = 0;
     virtual void connectWiFi() = 0;
+    virtual void saveStation(const char* stationUrl) = 0;
+    virtual const char* loadStation() = 0;
+    virtual void forgetSettings() = 0;
+    virtual void resetSession() = 0;
     virtual WiFiConnectivity wifiConnectivity() const = 0;
+    virtual AudioState audioState() const = 0;
+    virtual const char* getPersistedStation() const = 0;
 };
 
 cli_output::CommandResult dispatchCommand(

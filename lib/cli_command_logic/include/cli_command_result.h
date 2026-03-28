@@ -20,6 +20,9 @@ enum class MessageKey {
     VOLUME_SET,
     BALANCE_OUT_OF_RANGE,
     BALANCE_SET,
+    SETTINGS_FORGOTTEN,
+    SESSION_RESET,
+    STATUS,
     HELP,
     UNKNOWN_COMMAND,
 };

@@ -24,12 +24,14 @@ public:
 
     const char* name() const override;
     bool setup() override;
+    bool bootAutoConnectSucceeded() const;
 
 private:
     static void onConnected(void* context);
     static void onDisconnected(void* context);
 
     SystemController& system_;
+    bool bootAutoConnectSucceeded_ = false;
 };
 
 class AudioRuntimeComponent final : public ISystemComponent {

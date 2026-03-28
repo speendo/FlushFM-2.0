@@ -7,6 +7,7 @@
 #include "cli_command_logic.h"
 #include "cli_output.h"
 #include "config.h"
+#include "settings.h"
 #include "system_controller.h"
 #include "wifi_manager.h"
 
@@ -34,20 +35,64 @@ class CliEnvironment final : public cli_command_logic::IEnvironment {
 public:
     void setSsid(const char* ssid) override {
         wifi_manager::setSsid(ssid);
+        settings::saveSsid(ssid);
     }
 
     void setPass(const char* pass) override {
         wifi_manager::setPass(pass);
+        settings::savePass(pass);
     }
 
     void connectWiFi() override {
         wifi_manager::connect();
     }
 
+    void saveStation(const char* stationUrl) override {
+        settings::saveStation(stationUrl);
+    }
+
+    const char* loadStation() override {
+        static char stationBuf[settings::kStationMaxLen];
+        if (settings::loadStation(stationBuf, sizeof(stationBuf))) {
+            return stationBuf;
+        }
+        return "";
+    }
+
+    void forgetSettings() override {
+        settings::clearAll();
+    }
+
+    void resetSession() override {
+        wifi_manager::resetSession();
+    }
+
     cli_command_logic::WiFiConnectivity wifiConnectivity() const override {
         return wifi_manager::state() == wifi_manager::WiFiState::CONNECTED
             ? cli_command_logic::WiFiConnectivity::CONNECTED
             : cli_command_logic::WiFiConnectivity::DISCONNECTED;
+    }
+
+    cli_command_logic::AudioState audioState() const override {
+        switch (s_audio->runtimeState()) {
+            case IAudioPlayer::RuntimeState::IDLE:
+                return cli_command_logic::AudioState::IDLE;
+            case IAudioPlayer::RuntimeState::CONNECTING:
+                return cli_command_logic::AudioState::CONNECTING;
+            case IAudioPlayer::RuntimeState::STREAMING:
+                return cli_command_logic::AudioState::STREAMING;
+            case IAudioPlayer::RuntimeState::ERROR:
+                return cli_command_logic::AudioState::ERROR;
+        }
+        return cli_command_logic::AudioState::IDLE;
+    }
+
+    const char* getPersistedStation() const override {
+        static char stationBuf[settings::kStationMaxLen];
+        if (settings::loadStation(stationBuf, sizeof(stationBuf))) {
+            return stationBuf;
+        }
+        return "";
     }
 };
 

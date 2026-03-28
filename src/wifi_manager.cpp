@@ -13,6 +13,7 @@ static char s_ssid[64] = {};
 static char s_pass[64] = {};
 static bool s_connected = false;
 static wifi_manager::WiFiState s_state = wifi_manager::WiFiState::DISCONNECTED;
+static bool s_suppressReconnectOnce = false;
 static wifi_manager::ConnectedCallback s_connectedCallback = nullptr;
 static void* s_connectedCallbackContext = nullptr;
 static wifi_manager::DisconnectedCallback s_disconnectedCallback = nullptr;
@@ -24,6 +25,13 @@ static void* s_disconnectedCallbackContext = nullptr;
 static void onWiFiDisconnect(WiFiEvent_t /*event*/, WiFiEventInfo_t info) {
     s_connected = false;
     s_state = wifi_manager::WiFiState::DISCONNECTED;
+
+    if (s_suppressReconnectOnce) {
+        s_suppressReconnectOnce = false;
+        PROD_LOG("WiFi disconnected by runtime reset");
+        return;
+    }
+
     PROD_LOG("WiFi disconnected (reason %d) – attempting reconnect",
              info.wifi_sta_disconnected.reason);
     if (s_disconnectedCallback) {
@@ -99,6 +107,20 @@ void connect() {
         s_state = WiFiState::ERROR;
         ERROR_LOG("WiFi connection timed out");
     }
+}
+
+void resetSession() {
+    s_suppressReconnectOnce = (s_state == WiFiState::CONNECTED ||
+                               s_state == WiFiState::CONNECTING ||
+                               WiFi.status() == WL_CONNECTED);
+    WiFi.disconnect(true, false);
+
+    s_ssid[0] = '\0';
+    s_pass[0] = '\0';
+    s_connected = false;
+    s_state = WiFiState::DISCONNECTED;
+
+    PROD_LOG("Runtime session reset: WiFi disconnected and volatile credentials cleared");
 }
 
 WiFiState state() {

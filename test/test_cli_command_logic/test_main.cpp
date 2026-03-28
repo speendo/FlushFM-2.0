@@ -35,7 +35,7 @@ public:
     }
 
     RuntimeState runtimeState() const override {
-        return RuntimeState::IDLE;
+        return currentRuntimeState;
     }
 
     int connectCalls = 0;
@@ -45,6 +45,7 @@ public:
     const char* lastUrl = nullptr;
     uint8_t currentVolume = 7;
     int8_t currentBalance = 0;
+    RuntimeState currentRuntimeState = RuntimeState::IDLE;
 };
 
 class FakeEnvironment final : public cli_command_logic::IEnvironment {
@@ -63,16 +64,47 @@ public:
         ++connectWiFiCalls;
     }
 
+    void saveStation(const char* stationUrl) override {
+        ++saveStationCalls;
+        lastStation = stationUrl;
+    }
+
+    const char* loadStation() override {
+        return persistedStation ? persistedStation : "";
+    }
+
+    void forgetSettings() override {
+        ++forgetSettingsCalls;
+    }
+
+    void resetSession() override {
+        ++resetSessionCalls;
+    }
+
     cli_command_logic::WiFiConnectivity wifiConnectivity() const override {
         return connectivity;
     }
 
+    cli_command_logic::AudioState audioState() const override {
+        return currentAudioState;
+    }
+
+    const char* getPersistedStation() const override {
+        return persistedStation ? persistedStation : "";
+    }
+
     cli_command_logic::WiFiConnectivity connectivity = cli_command_logic::WiFiConnectivity::DISCONNECTED;
+    cli_command_logic::AudioState currentAudioState = cli_command_logic::AudioState::IDLE;
     int setSsidCalls = 0;
     int setPassCalls = 0;
     int connectWiFiCalls = 0;
+    int saveStationCalls = 0;
+    int forgetSettingsCalls = 0;
+    int resetSessionCalls = 0;
     const char* lastSsid = nullptr;
     const char* lastPass = nullptr;
+    const char* lastStation = nullptr;
+    const char* persistedStation = nullptr;
 };
 
 } // namespace
@@ -90,10 +122,165 @@ void test_play_command_requires_wifi_and_does_not_start_stream() {
 
     TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::WIFI_REQUIRED), static_cast<int>(result.key));
     TEST_ASSERT_EQUAL(0, audio.connectCalls);
+    TEST_ASSERT_EQUAL(0, env.saveStationCalls);
+}
+
+void test_play_command_with_wifi_starts_stream_and_persists_station() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+    env.connectivity = cli_command_logic::WiFiConnectivity::CONNECTED;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "play",
+        "http://example.com/play.mp3",
+        audio,
+        env,
+        21);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::CONNECTING_STREAM), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(1, audio.connectCalls);
+    TEST_ASSERT_EQUAL_STRING("http://example.com/play.mp3", audio.lastUrl);
+    TEST_ASSERT_EQUAL(1, env.saveStationCalls);
+    TEST_ASSERT_EQUAL_STRING("http://example.com/play.mp3", env.lastStation);
+}
+
+void test_switch_command_with_wifi_restarts_stream_and_persists_station() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+    env.connectivity = cli_command_logic::WiFiConnectivity::CONNECTED;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "switch",
+        "http://example.com/switch.mp3",
+        audio,
+        env,
+        21);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::SWITCHING_STREAM), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(1, audio.stopCalls);
+    TEST_ASSERT_EQUAL(1, audio.connectCalls);
+    TEST_ASSERT_EQUAL_STRING("http://example.com/switch.mp3", audio.lastUrl);
+    TEST_ASSERT_EQUAL(1, env.saveStationCalls);
+    TEST_ASSERT_EQUAL_STRING("http://example.com/switch.mp3", env.lastStation);
+}
+
+void test_forget_command_clears_persisted_settings() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "forget",
+        nullptr,
+        audio,
+        env,
+        21);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::SETTINGS_FORGOTTEN), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(1, env.forgetSettingsCalls);
+}
+
+void test_reset_command_stops_audio_and_resets_runtime_session() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "reset",
+        nullptr,
+        audio,
+        env,
+        21);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::SESSION_RESET), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(1, audio.stopCalls);
+    TEST_ASSERT_EQUAL(1, env.resetSessionCalls);
+}
+
+void test_play_without_url_loads_persisted_station() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+    env.connectivity = cli_command_logic::WiFiConnectivity::CONNECTED;
+    env.persistedStation = "http://persisted.stream/music";
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "play",
+        nullptr,
+        audio,
+        env,
+        21);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::CONNECTING_STREAM), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(1, audio.connectCalls);
+    TEST_ASSERT_EQUAL_STRING("http://persisted.stream/music", audio.lastUrl);
+    TEST_ASSERT_EQUAL(1, env.saveStationCalls);
+}
+
+void test_play_without_url_fails_if_no_persisted_station() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+    env.connectivity = cli_command_logic::WiFiConnectivity::CONNECTED;
+    env.persistedStation = nullptr;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "play",
+        nullptr,
+        audio,
+        env,
+        21);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::USAGE_PLAY), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(0, audio.connectCalls);
+}
+
+void test_status_shows_connected_and_streaming_state() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+    env.connectivity = cli_command_logic::WiFiConnectivity::CONNECTED;
+    env.currentAudioState = cli_command_logic::AudioState::STREAMING;
+    env.persistedStation = "http://example.com/stream.mp3";
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "status",
+        nullptr,
+        audio,
+        env,
+        21);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::STATUS), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(1, result.aux & 0x01);  // WiFi connected (bit 0)
+    TEST_ASSERT_EQUAL(2, (result.aux >> 1) & 0x03);  // Audio STREAMING (bits 1-2 = 2)
+    TEST_ASSERT_EQUAL_STRING("http://example.com/stream.mp3", result.text);
+}
+
+void test_status_shows_disconnected_and_idle_state() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+    env.connectivity = cli_command_logic::WiFiConnectivity::DISCONNECTED;
+    env.currentAudioState = cli_command_logic::AudioState::IDLE;
+    env.persistedStation = nullptr;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "status",
+        nullptr,
+        audio,
+        env,
+        21);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::STATUS), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(0, result.aux & 0x01);  // WiFi disconnected
+    TEST_ASSERT_EQUAL(0, (result.aux >> 1) & 0x03);  // Audio IDLE
+    TEST_ASSERT_EQUAL_STRING("", result.text);
 }
 
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_play_command_requires_wifi_and_does_not_start_stream);
+    RUN_TEST(test_play_command_with_wifi_starts_stream_and_persists_station);
+    RUN_TEST(test_switch_command_with_wifi_restarts_stream_and_persists_station);
+    RUN_TEST(test_forget_command_clears_persisted_settings);
+    RUN_TEST(test_reset_command_stops_audio_and_resets_runtime_session);
+    RUN_TEST(test_play_without_url_loads_persisted_station);
+    RUN_TEST(test_play_without_url_fails_if_no_persisted_station);
+    RUN_TEST(test_status_shows_connected_and_streaming_state);
+    RUN_TEST(test_status_shows_disconnected_and_idle_state);
     return UNITY_END();
 }

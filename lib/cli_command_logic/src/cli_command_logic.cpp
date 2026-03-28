@@ -31,12 +31,19 @@ cli_output::CommandResult dispatchCommand(
     }
 
     if (strcmp(cmd, "play") == 0) {
-        if (!arg || *arg == '\0') return {MessageKey::USAGE_PLAY};
+        const char* url = arg;
+        if (!url || *url == '\0') {
+            url = env.loadStation();
+            if (!url || *url == '\0') {
+                return {MessageKey::USAGE_PLAY};
+            }
+        }
         if (env.wifiConnectivity() != WiFiConnectivity::CONNECTED) {
             return {MessageKey::WIFI_REQUIRED};
         }
-        audio.connectToHost(arg);
-        return {MessageKey::CONNECTING_STREAM, arg};
+        env.saveStation(url);
+        audio.connectToHost(url);
+        return {MessageKey::CONNECTING_STREAM, url};
     }
 
     if (strcmp(cmd, "stop") == 0) {
@@ -49,9 +56,21 @@ cli_output::CommandResult dispatchCommand(
         if (env.wifiConnectivity() != WiFiConnectivity::CONNECTED) {
             return {MessageKey::WIFI_REQUIRED};
         }
+        env.saveStation(arg);
         audio.stop();
         audio.connectToHost(arg);
         return {MessageKey::SWITCHING_STREAM, arg};
+    }
+
+    if (strcmp(cmd, "forget") == 0) {
+        env.forgetSettings();
+        return {MessageKey::SETTINGS_FORGOTTEN};
+    }
+
+    if (strcmp(cmd, "reset") == 0) {
+        audio.stop();
+        env.resetSession();
+        return {MessageKey::SESSION_RESET};
     }
 
     if (strcmp(cmd, "volume") == 0) {
@@ -74,6 +93,21 @@ cli_output::CommandResult dispatchCommand(
 
     if (strcmp(cmd, "help") == 0) {
         return {MessageKey::HELP};
+    }
+
+    if (strcmp(cmd, "status") == 0) {
+        uint8_t statusBits = 0;
+        if (env.wifiConnectivity() == WiFiConnectivity::CONNECTED) {
+            statusBits |= 0x01;
+        }
+        const AudioState aState = env.audioState();
+        statusBits |= (static_cast<uint8_t>(aState) & 0x03) << 1;
+
+        cli_output::CommandResult result;
+        result.key = MessageKey::STATUS;
+        result.text = env.getPersistedStation();
+        result.aux = statusBits;
+        return result;
     }
 
     return {MessageKey::NONE};
