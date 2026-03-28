@@ -13,7 +13,7 @@
     - **`STREAMING`:** playing audio, display on
     - **`ERROR`:** recoverable failure
 - **Transitions:** Use explicit event-driven triggers via callbacks, ISRs, or FreeRTOS task notifications
-- **Lifecycle Invocation:** Follow the lifecycle contract defined in `modularity.md` (orchestrator-owned `setup()` once; `loop()` optional and only for periodic work)
+- **Lifecycle Invocation:** Follow the lifecycle contract defined in `modularity.md` 
 - **Local Encapsulation:** Components must own their internal state and provide read-only access via public getters (→ `modularity.md`)
 - **Error Handling:** Clear transient error states when entering states `OFF`, `STARTING` or `IDLE` to prepare a clean restart
 
