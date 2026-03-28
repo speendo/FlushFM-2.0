@@ -49,7 +49,6 @@ void SystemController::dispatchPending() {
     // Drain normal queue.
     QueuedEvent queued{};
     while (xQueueReceive(queue_, &queued, 0) == pdTRUE) {
-        DEBUG_LOG("Dispatching event: %s (reason=%s)", toString(queued.event), toString(queued.reason));
         handleEvent(queued.event, queued.reason);
     }
 }
