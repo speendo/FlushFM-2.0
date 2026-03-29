@@ -22,16 +22,7 @@ An ESP32-based internet radio with display and ambient light control.
 - Ambient light based on/off behavior
 - Onboard LED state visualization for YD-ESP32-2.3 (defined in US-0008)
 - Web configuration UI (ESPAsyncWebServer + LittleFS)
-
-## Development Workflow
-
-1. Pick one open story from `requirements/user-stories/open/`
-2. Implement code changes according to `requirements/guidelines/`
-3. Update documentation in `docs/` if behavior or hardware usage changes
-4. Run checks:
-	- Build debug environment: `platformio run --environment debug`
-	- Native unit tests: `platformio test --environment native`
-5. Move the story to `requirements/user-stories/done/` only after all acceptance criteria are met
+- Relay to switch off unneeded consumers in IDLE/OFF mode
 
 ## Project Documentation
 
