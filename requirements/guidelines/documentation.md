@@ -19,6 +19,7 @@
 - **Never:** Store technical documentation in the `src/` or `include/` folders
 - **Never:** Document features not contributing to end user experience (e.g. tests)
 - **Exception:** The root `README.md` is the only documentation file allowed outside the `/docs` folder
+- **Reference:** Use `requirements/user-stories/_template.md` as the canonical template for creating and updating user story files
 
 ## 3. Reference Pattern
 

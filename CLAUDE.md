@@ -26,7 +26,11 @@ FlushFM 2.0/
 ├── README.md
 ├── requirements/
 │   ├── guidelines/        ← All coding rules and architecture decisions
-│   └── user-stories/      ← One .md file per user story
+│   └── user-stories/
+│       ├── open/          ← Stories with status "To Do"
+│       ├── in-progress/   ← Stories with status "In Progress"
+│       ├── done/          ← Stories with status "Done"
+│       └── _template.md   ← Story template
 ├── docs/                  ← Technical documentation (features, hardware, pinout, tested setups)
 ├── lib/                   ← One sub-folder per component library
 ├── src/                   ← Orchestration only (main.cpp, config.h)

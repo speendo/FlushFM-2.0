@@ -37,8 +37,21 @@
 - Added `reset` command to clear only runtime session state (stop stream, disconnect WiFi, clear volatile credentials)
 - Password values are never logged in plaintext
 
-## Planned
+## State-Machine Hardening (US-0004a to US-0004f)
+
+- Event-driven state ownership centralized in `SystemController`
+- Clear transition handling for OFF, STARTING, IDLE, STREAMING, and ERROR
+- Observer-based architecture prepared for additional components (for example display and LED)
+- Runtime behavior aligned with resilience goals for reconnect and restart scenarios
+
+## Runtime Logging Cleanup (US-0010)
+
+- Reduced repetitive callback log noise for better debug readability
+- Kept relevant state and error information visible for diagnostics
+
+## Planned Features
 
 - Station and track info on ILI9341 display
 - Automatic on/off via TEMT6000 light sensor
+- LED state visualization mapped to system state (US-0008)
 - Web configuration UI (ESPAsyncWebServer + LittleFS)
