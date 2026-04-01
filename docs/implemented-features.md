@@ -49,6 +49,12 @@
 - Reduced repetitive callback log noise for better debug readability
 - Kept relevant state and error information visible for diagnostics
 
+## Library Callback Log Tier Alignment (US-0005)
+
+- ESP32-audioI2S informational callbacks are now routed through `DEBUG_LOG` only
+- Callback message mapping is centralized in a small hardware-free helper (`lib/audio_callback_logging/`) to support native unit tests
+- Production builds remain silent for callback diagnostics, while debug builds keep full callback visibility
+
 ## Planned Features
 
 - Station and track info on ILI9341 display
