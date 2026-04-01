@@ -1,13 +1,15 @@
-#include "cli_output.h"
+#include "components/cli/cli_output.h"
 
 #include <Arduino.h>
 
-#include "config.h"
-#include "debug.h"
+#include "core/config.h"
+#include "core/debug.h"
 
 namespace cli_output {
 
 namespace {
+
+constexpr const char* kLogSource = "CliOutput";
 
 void printHelp(DebugHelpPrinter debugHelpPrinter) {
     Serial.println();
@@ -41,58 +43,58 @@ void render(const CommandResult& result, DebugHelpPrinter debugHelpPrinter) {
         case MessageKey::NONE:
             return;
         case MessageKey::USAGE_SSID:
-            ERROR_LOG("Usage: ssid <name>");
+            ERROR_LOG(kLogSource, "Usage: ssid <name>");
             return;
         case MessageKey::USAGE_PASS:
-            ERROR_LOG("Usage: pass <password>");
+            ERROR_LOG(kLogSource, "Usage: pass <password>");
             return;
         case MessageKey::USAGE_PLAY:
-            ERROR_LOG("Usage: play <url>");
+            ERROR_LOG(kLogSource, "Usage: play <url>");
             return;
         case MessageKey::USAGE_SWITCH:
-            ERROR_LOG("Usage: switch <url>");
+            ERROR_LOG(kLogSource, "Usage: switch <url>");
             return;
         case MessageKey::USAGE_BALANCE:
-            ERROR_LOG("Usage: balance <-16..16>  (-16=left, 0=center, +16=right)");
+            ERROR_LOG(kLogSource, "Usage: balance <-16..16>  (-16=left, 0=center, +16=right)");
             return;
         case MessageKey::WIFI_REQUIRED:
-            ERROR_LOG("Not connected to WiFi - run 'connect' first");
+            ERROR_LOG(kLogSource, "Not connected to WiFi - run 'connect' first");
             return;
         case MessageKey::SSID_SET:
-            PROD_LOG("SSID set to: %s", result.text ? result.text : "");
+            PROD_LOG(kLogSource, "SSID set to: %s", result.text ? result.text : "");
             return;
         case MessageKey::PASSWORD_SET:
-            PROD_LOG("Password set");
+            PROD_LOG(kLogSource, "Password set");
             return;
         case MessageKey::CONNECTING_STREAM:
-            PROD_LOG("Connecting to stream: %s", result.text ? result.text : "");
+            PROD_LOG(kLogSource, "Connecting to stream: %s", result.text ? result.text : "");
             return;
         case MessageKey::STREAM_STOPPED:
-            PROD_LOG("Stream stopped");
+            PROD_LOG(kLogSource, "Stream stopped");
             return;
         case MessageKey::SWITCHING_STREAM:
-            PROD_LOG("Switching to stream: %s", result.text ? result.text : "");
+            PROD_LOG(kLogSource, "Switching to stream: %s", result.text ? result.text : "");
             return;
         case MessageKey::VOLUME_CURRENT:
-            PROD_LOG("Current volume: %d (range 0-%d)", result.value, AUDIO_VOLUME_STEPS);
+            PROD_LOG(kLogSource, "Current volume: %d (range 0-%d)", result.value, AUDIO_VOLUME_STEPS);
             return;
         case MessageKey::VOLUME_OUT_OF_RANGE:
-            ERROR_LOG("Volume must be 0-%d", AUDIO_VOLUME_STEPS);
+            ERROR_LOG(kLogSource, "Volume must be 0-%d", AUDIO_VOLUME_STEPS);
             return;
         case MessageKey::VOLUME_SET:
-            PROD_LOG("Volume set to %d", result.value);
+            PROD_LOG(kLogSource, "Volume set to %d", result.value);
             return;
         case MessageKey::BALANCE_OUT_OF_RANGE:
-            ERROR_LOG("Balance must be -16..16");
+            ERROR_LOG(kLogSource, "Balance must be -16..16");
             return;
         case MessageKey::BALANCE_SET:
-            PROD_LOG("Balance set to %d", result.value);
+            PROD_LOG(kLogSource, "Balance set to %d", result.value);
             return;
         case MessageKey::SETTINGS_FORGOTTEN:
-            PROD_LOG("Persisted settings cleared from NVS");
+            PROD_LOG(kLogSource, "Persisted settings cleared from NVS");
             return;
         case MessageKey::SESSION_RESET:
-            PROD_LOG("Runtime session reset (stream stopped, WiFi disconnected)");
+            PROD_LOG(kLogSource, "Runtime session reset (stream stopped, WiFi disconnected)");
             return;
         case MessageKey::STATUS:
             // Status will be rendered via aux field (packed audio + wifi state) and text (station)
@@ -117,7 +119,7 @@ void render(const CommandResult& result, DebugHelpPrinter debugHelpPrinter) {
             printHelp(debugHelpPrinter);
             return;
         case MessageKey::UNKNOWN_COMMAND:
-            ERROR_LOG("Unknown command '%s' - type 'help' for available commands", result.text ? result.text : "");
+            ERROR_LOG(kLogSource, "Unknown command '%s' - type 'help' for available commands", result.text ? result.text : "");
             return;
     }
 }

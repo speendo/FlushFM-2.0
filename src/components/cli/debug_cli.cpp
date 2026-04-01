@@ -2,18 +2,19 @@
 // Compiled only when DEBUG_ENABLED is defined.
 #ifdef DEBUG_ENABLED
 
-#include "debug_cli.h"
+#include "components/cli/debug_cli.h"
 
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-#include "config.h"
-#include "debug.h"
+#include "core/config.h"
+#include "core/debug.h"
 
 // ---------------------------------------------------------------------------
 // Module-private state
 // ---------------------------------------------------------------------------
+static constexpr const char* kLogSource = "DebugCLI";
 static TaskHandle_t* s_audioTaskHandle = nullptr;
 
 // ---------------------------------------------------------------------------
@@ -40,28 +41,28 @@ bool process(const char* cmd, const char* arg) {
         const BaseType_t r = xTaskCreatePinnedToCore(
             loadtestTask, "LoadTest", 2048, nullptr, 1, nullptr, 0);
         if (r == pdPASS) {
-            PROD_LOG("LoadTest task started on Core 0 for 5 seconds – listen for audio dropouts");
+            PROD_LOG(kLogSource, "LoadTest task started on Core 0 for 5 seconds – listen for audio dropouts");
         } else {
-            ERROR_LOG("Failed to create LoadTest task");
+            ERROR_LOG(kLogSource, "Failed to create LoadTest task");
         }
         return true;
 
     } else if (strcmp(cmd, "suspend") == 0) {
         if (!s_audioTaskHandle || !*s_audioTaskHandle) {
-            ERROR_LOG("Audio task handle not available");
+            ERROR_LOG(kLogSource, "Audio task handle not available");
             return true;
         }
-        PROD_LOG("Suspending AudioTask – audio will stop");
+        PROD_LOG(kLogSource, "Suspending AudioTask – audio will stop");
         vTaskSuspend(*s_audioTaskHandle);
         return true;
 
     } else if (strcmp(cmd, "resume") == 0) {
         if (!s_audioTaskHandle || !*s_audioTaskHandle) {
-            ERROR_LOG("Audio task handle not available");
+            ERROR_LOG(kLogSource, "Audio task handle not available");
             return true;
         }
         vTaskResume(*s_audioTaskHandle);
-        PROD_LOG("AudioTask resumed");
+        PROD_LOG(kLogSource, "AudioTask resumed");
         return true;
     }
 
@@ -116,7 +117,7 @@ static void loadtestTask(void* /*param*/) {
             lastYield = millis();
         }
     }
-    PROD_LOG("LoadTest finished – Core 0 saturation ended");
+    PROD_LOG(kLogSource, "LoadTest finished – Core 0 saturation ended");
     vTaskDelete(nullptr);
 }
 

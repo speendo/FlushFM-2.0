@@ -1,14 +1,15 @@
 // wifi_manager.cpp – WiFi connection and event handling
-#include "wifi_manager.h"
+#include "components/network/wifi_manager.h"
 
 #include <WiFi.h>
 
-#include "config.h"
-#include "debug.h"
+#include "core/config.h"
+#include "core/debug.h"
 
 // ---------------------------------------------------------------------------
 // Module-private state
 // ---------------------------------------------------------------------------
+static constexpr const char* kLogSource = "WiFiMgr";
 static char s_ssid[64] = {};
 static char s_pass[64] = {};
 static bool s_connected = false;
@@ -28,11 +29,11 @@ static void onWiFiDisconnect(WiFiEvent_t /*event*/, WiFiEventInfo_t info) {
 
     if (s_suppressReconnectOnce) {
         s_suppressReconnectOnce = false;
-        PROD_LOG("WiFi disconnected by runtime reset");
+        PROD_LOG(kLogSource, "WiFi disconnected by runtime reset");
         return;
     }
 
-    PROD_LOG("WiFi disconnected (reason %d) – attempting reconnect",
+    PROD_LOG(kLogSource, "WiFi disconnected (reason %d) – attempting reconnect",
              info.wifi_sta_disconnected.reason);
     if (s_disconnectedCallback) {
         s_disconnectedCallback(s_disconnectedCallbackContext);
@@ -43,7 +44,7 @@ static void onWiFiDisconnect(WiFiEvent_t /*event*/, WiFiEventInfo_t info) {
 static void onWiFiConnect(WiFiEvent_t /*event*/, WiFiEventInfo_t /*info*/) {
     s_connected = true;
     s_state = wifi_manager::WiFiState::CONNECTED;
-    PROD_LOG("WiFi reconnected – IP: %s", WiFi.localIP().toString().c_str());
+    PROD_LOG(kLogSource, "WiFi reconnected – IP: %s", WiFi.localIP().toString().c_str());
     if (s_connectedCallback) {
         s_connectedCallback(s_connectedCallbackContext);
     }
@@ -80,11 +81,11 @@ void setPass(const char* pass) {
 void connect() {
     if (s_ssid[0] == '\0') {
         s_state = WiFiState::ERROR;
-        ERROR_LOG("No SSID set – use 'ssid <name>' first");
+        ERROR_LOG(kLogSource, "No SSID set – use 'ssid <name>' first");
         return;
     }
     s_state = WiFiState::CONNECTING;
-    PROD_LOG("Connecting to WiFi: %s ...", s_ssid);
+    PROD_LOG(kLogSource, "Connecting to WiFi: %s ...", s_ssid);
     WiFi.mode(WIFI_STA);
     WiFi.begin(s_ssid, s_pass[0] != '\0' ? s_pass : nullptr);
 
@@ -98,14 +99,14 @@ void connect() {
     if (WiFi.status() == WL_CONNECTED) {
         s_connected = true;
         s_state = WiFiState::CONNECTED;
-        PROD_LOG("WiFi connected – IP: %s  RSSI: %d dBm",
+        PROD_LOG(kLogSource, "WiFi connected – IP: %s  RSSI: %d dBm",
                  WiFi.localIP().toString().c_str(), WiFi.RSSI());
         if (s_connectedCallback) {
             s_connectedCallback(s_connectedCallbackContext);
         }
     } else {
         s_state = WiFiState::ERROR;
-        ERROR_LOG("WiFi connection timed out");
+        ERROR_LOG(kLogSource, "WiFi connection timed out");
     }
 }
 
@@ -120,7 +121,7 @@ void resetSession() {
     s_connected = false;
     s_state = WiFiState::DISCONNECTED;
 
-    PROD_LOG("Runtime session reset: WiFi disconnected and volatile credentials cleared");
+    PROD_LOG(kLogSource, "Runtime session reset: WiFi disconnected and volatile credentials cleared");
 }
 
 WiFiState state() {

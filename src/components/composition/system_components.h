@@ -1,20 +1,24 @@
 #pragma once
 
 #include "IAudioPlayer.h"
-#include "audio_runtime.h"
-#include "system_controller.h"
+#include "components/audio/audio_runtime.h"
+#include "state_machine/system_controller.h"
 
 class ISystemComponent {
 public:
+    explicit ISystemComponent(const char* componentName) : name_(componentName) {}
     virtual ~ISystemComponent() = default;
-    virtual const char* name() const = 0;
+    const char* name() const { return name_; }
     virtual bool setup() = 0;
     virtual void loop() {}
+
+private:
+    const char* name_;
 };
 
 class BoardInfoComponent final : public ISystemComponent {
 public:
-    const char* name() const override;
+    BoardInfoComponent();
     bool setup() override;
 };
 
@@ -22,7 +26,6 @@ class WiFiComponent final : public ISystemComponent {
 public:
     explicit WiFiComponent(SystemController& system);
 
-    const char* name() const override;
     bool setup() override;
     bool bootAutoConnectSucceeded() const;
 
@@ -38,7 +41,6 @@ class AudioRuntimeComponent final : public ISystemComponent {
 public:
     AudioRuntimeComponent(IAudioPlayer& audio, SystemController& system);
 
-    const char* name() const override;
     bool setup() override;
 
 private:
@@ -52,7 +54,6 @@ class CliComponent final : public ISystemComponent {
 public:
     CliComponent(IAudioPlayer& audio, SystemController& system);
 
-    const char* name() const override;
     bool setup() override;
     void loop() override;
 

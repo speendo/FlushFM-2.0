@@ -10,9 +10,9 @@
 /// - Forward all IAudioPlayer calls to the underlying library
 /// - Track volume locally (ESP32-audioI2S has no getter)
 ///
-/// Note: ESP32-audioI2S requires global free-function callbacks
-/// (audio_info, audio_showstation, etc.). Those are registered in
-/// main.cpp as part of the system wiring layer, not here.
+/// Note: ESP32-audioI2S v3.4.x uses Audio::audio_info_callback
+/// (Audio::msg_t). Callback registration belongs to the application
+/// wiring layer (src/audio_callbacks.cpp), not this wrapper.
 class AudioPlayerESP32 : public IAudioPlayer {
 public:
     /// @param bck  GPIO for I2S bit clock  (BCK)

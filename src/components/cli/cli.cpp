@@ -1,20 +1,20 @@
 // cli.cpp – Serial command dispatch
-#include "cli.h"
+#include "components/cli/cli.h"
 
 #include <Arduino.h>
 #include <string.h>
 
 #include "cli_command_logic.h"
-#include "cli_output.h"
-#include "config.h"
+#include "components/cli/cli_output.h"
+#include "core/config.h"
 #include "settings.h"
-#include "system_controller.h"
-#include "wifi_manager.h"
+#include "state_machine/system_controller.h"
+#include "components/network/wifi_manager.h"
 
 // ---------------------------------------------------------------------------
 // Debug command integration – single guard at file level; no scattered #ifdefs
 // ---------------------------------------------------------------------------
-#include "debug_cli.h"
+#include "components/cli/debug_cli.h"
 #ifdef DEBUG_ENABLED
 #  define TRY_DEBUG_COMMAND(cmd, arg)  debug_cli::process(cmd, arg)
 #  define PRINT_DEBUG_HELP()           debug_cli::printHelp()

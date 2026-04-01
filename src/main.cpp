@@ -2,11 +2,12 @@
 
 #include "AudioPlayerESP32.h"
 #include "IAudioPlayer.h"
-#include "config.h"
-#include "debug.h"
+#include "components/audio/audio_callbacks.h"
+#include "core/config.h"
+#include "core/debug.h"
 #include "settings.h"
-#include "system_controller.h"
-#include "system_components.h"
+#include "state_machine/system_controller.h"
+#include "components/composition/system_components.h"
 
 // ---------------------------------------------------------------------------
 // Audio – concrete instance wired here; rest of code depends on interface only
@@ -39,12 +40,13 @@ void setup() {
         delay(10);
     }
 
-    PROD_LOG("Hello FlushFM");
+    PROD_LOG("Main", "Hello FlushFM");
+    registerAudioLibraryCallbacks();
     s_system.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE);
 
     for (ISystemComponent* component : s_components) {
         if (!component->setup()) {
-            ERROR_LOG("Component setup failed: %s", component->name());
+            ERROR_LOG("Main", "Component setup failed: %s", component->name());
             s_system.postEvent(SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::COMPONENT_SETUP);
         }
         s_system.dispatchPending();
@@ -53,7 +55,7 @@ void setup() {
     if (s_wifi.bootAutoConnectSucceeded()) {
         char station[settings::kStationMaxLen] = {};
         if (settings::loadStation(station, sizeof(station))) {
-            PROD_LOG("Boot auto-play: starting persisted station");
+            PROD_LOG("Main", "Boot auto-play: starting persisted station");
             s_audio.connectToHost(station);
             s_system.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
             s_system.dispatchPending();

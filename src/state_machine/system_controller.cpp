@@ -1,6 +1,6 @@
-#include "system_controller.h"
+#include "state_machine/system_controller.h"
 
-#include "debug.h"
+#include "core/debug.h"
 
 SystemController::SystemController() {
     queue_ = xQueueCreate(16, sizeof(QueuedEvent));
@@ -25,7 +25,7 @@ bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPo
     
     if (!success && policy == EventPolicy::BOUNDED_BLOCKING) {
         // Critical event lost: set sticky flag and log for recovery in dispatchPending().
-        ERROR_LOG("Event queue full; critical event %s will retry on next dispatch", toString(event));
+        ERROR_LOG("SystemController", "Event queue full; critical event %s will retry on next dispatch", toString(event));
         pendingCriticalEvent_ = true;
         pendingEvent_ = event;
         pendingReason_ = reason;
@@ -41,7 +41,7 @@ void SystemController::dispatchPending() {
 
     // Process any pending critical event first (sticky fallback from queue-full condition).
     if (pendingCriticalEvent_) {
-        PROD_LOG("Processing pending critical event: %s", toString(pendingEvent_));
+        PROD_LOG("SystemController", "Processing pending critical event: %s", toString(pendingEvent_));
         handleEvent(pendingEvent_, pendingReason_);
         pendingCriticalEvent_ = false;
     }
@@ -128,7 +128,7 @@ void SystemController::transitionTo(SystemState next, SystemEvent trigger, Syste
         transientError_ = false;
     }
 
-    PROD_LOG("State transition: %s -> %s (event=%s reason=%s)",
+    PROD_LOG("SystemController", "State transition: %s -> %s (event=%s reason=%s)",
              toString(previous), toString(next), toString(trigger), toString(reason));
 
     for (const auto& observer : observers_) {

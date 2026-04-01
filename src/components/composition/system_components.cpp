@@ -1,29 +1,33 @@
-#include "system_components.h"
+#include "components/composition/system_components.h"
 
 #include <string.h>
 
-#include "audio_runtime.h"
-#include "board_info.h"
-#include "cli.h"
-#include "config.h"
-#include "debug.h"
+#include "components/audio/audio_runtime.h"
+#include "components/board/board_info.h"
+#include "components/cli/cli.h"
+#include "core/config.h"
+#include "core/debug.h"
 #include "settings.h"
-#include "wifi_manager.h"
+#include "components/network/wifi_manager.h"
 
-const char* BoardInfoComponent::name() const {
-    return "BoardInfo";
-}
+namespace {
+
+constexpr const char* kBoardInfoName = "BoardInfo";
+constexpr const char* kWiFiName = "WiFi";
+constexpr const char* kAudioRuntimeName = "AudioRuntime";
+constexpr const char* kCliName = "CLI";
+
+}  // namespace
+
+BoardInfoComponent::BoardInfoComponent() : ISystemComponent(kBoardInfoName) {}
 
 bool BoardInfoComponent::setup() {
     board_info::print();
     return true;
 }
 
-WiFiComponent::WiFiComponent(SystemController& system) : system_(system) {}
-
-const char* WiFiComponent::name() const {
-    return "WiFi";
-}
+WiFiComponent::WiFiComponent(SystemController& system)
+    : ISystemComponent(kWiFiName), system_(system) {}
 
 bool WiFiComponent::setup() {
     wifi_manager::setConnectedCallback(&WiFiComponent::onConnected, this);
@@ -40,7 +44,7 @@ bool WiFiComponent::setup() {
             wifi_manager::setPass(pass);
         }
 
-        PROD_LOG("Boot auto-connect requested from persisted settings");
+        PROD_LOG(kWiFiName, "Boot auto-connect requested from persisted settings");
         wifi_manager::connect();
         bootAutoConnectSucceeded_ = (wifi_manager::state() == wifi_manager::WiFiState::CONNECTED);
     }
@@ -69,11 +73,7 @@ void WiFiComponent::onDisconnected(void* context) {
 }
 
 AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer& audio, SystemController& system)
-    : audio_(audio), system_(system) {}
-
-const char* AudioRuntimeComponent::name() const {
-    return "AudioRuntime";
-}
+    : ISystemComponent(kAudioRuntimeName), audio_(audio), system_(system) {}
 
 bool AudioRuntimeComponent::setup() {
     audio_runtime::setSignalHandler(&AudioRuntimeComponent::onAudioSignal, this);
@@ -100,16 +100,12 @@ void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* co
 }
 
 CliComponent::CliComponent(IAudioPlayer& audio, SystemController& system)
-    : audio_(audio), system_(system) {}
-
-const char* CliComponent::name() const {
-    return "CLI";
-}
+    : ISystemComponent(kCliName), audio_(audio), system_(system) {}
 
 bool CliComponent::setup() {
     cli::init(audio_, audio_runtime::taskHandlePtr(), &system_);
-    system_.subscribe([](SystemState state) {
-        PROD_LOG("Observed state change: %s", toString(state));
+    system_.subscribe([this](SystemState state) {
+        PROD_LOG(kCliName, "Observed state change: %s", toString(state));
     });
     cli::printHelp();
     return true;
