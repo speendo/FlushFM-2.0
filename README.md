@@ -14,7 +14,7 @@ An ESP32-based internet radio with display and ambient light control.
 - PCM5102A I2S DAC output with runtime volume and balance control
 - Stable task/core setup for audio runtime under load
 - Persistent settings in NVS (WiFi credentials and last station)
-- Runtime maintenance commands (`play`, `switch`, `stop`, `forget`, `reset`, `tasks`)
+- Runtime maintenance commands (including `play`, `stop`, `forget`, `reset`, `tasks`, `volume`, `connect`)
 
 ## Planned Features
 
