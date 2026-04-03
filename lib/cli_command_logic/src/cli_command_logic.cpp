@@ -51,17 +51,6 @@ cli_output::CommandResult dispatchCommand(
         return {MessageKey::STREAM_STOPPED};
     }
 
-    if (strcmp(cmd, "switch") == 0) {
-        if (!arg || *arg == '\0') return {MessageKey::USAGE_SWITCH};
-        if (env.wifiConnectivity() != WiFiConnectivity::CONNECTED) {
-            return {MessageKey::WIFI_REQUIRED};
-        }
-        env.saveStation(arg);
-        audio.stop();
-        audio.connectToHost(arg);
-        return {MessageKey::SWITCHING_STREAM, arg};
-    }
-
     if (strcmp(cmd, "forget") == 0) {
         env.forgetSettings();
         return {MessageKey::SETTINGS_FORGOTTEN};

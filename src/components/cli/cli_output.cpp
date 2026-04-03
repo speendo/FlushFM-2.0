@@ -17,9 +17,8 @@ void printHelp(DebugHelpPrinter debugHelpPrinter) {
     Serial.println("  ssid <name>       Set WiFi SSID");
     Serial.println("  pass <password>   Set WiFi password");
     Serial.println("  connect           Connect to WiFi with stored credentials");
-    Serial.println("  play [url]        Start streaming (URL optional: uses last saved if omitted)");
+    Serial.println("  play [url]        Start or switch stream (URL optional: uses last saved if omitted)");
     Serial.println("  stop              Stop current stream");
-    Serial.println("  switch <url>      Switch to a different stream URL");
     Serial.println("  forget            Clear persisted ssid/pass/station from NVS");
     Serial.println("  reset             Stop stream and reset runtime WiFi session");
     Serial.printf ("  volume [0-%d]     Get or set playback volume\r\n", AUDIO_VOLUME_STEPS);
@@ -50,10 +49,7 @@ void render(const CommandResult& result, DebugHelpPrinter debugHelpPrinter) {
             ERROR_LOG(kLogSource, "Usage: pass <password>");
             return;
         case MessageKey::USAGE_PLAY:
-            ERROR_LOG(kLogSource, "Usage: play <url>");
-            return;
-        case MessageKey::USAGE_SWITCH:
-            ERROR_LOG(kLogSource, "Usage: switch <url>");
+            ERROR_LOG(kLogSource, "Usage: play [url]");
             return;
         case MessageKey::USAGE_MUTE:
             ERROR_LOG(kLogSource, "Usage: mute <on|off>");
@@ -75,9 +71,6 @@ void render(const CommandResult& result, DebugHelpPrinter debugHelpPrinter) {
             return;
         case MessageKey::STREAM_STOPPED:
             PROD_LOG(kLogSource, "Stream stopped");
-            return;
-        case MessageKey::SWITCHING_STREAM:
-            PROD_LOG(kLogSource, "Switching to stream: %s", result.text ? result.text : "");
             return;
         case MessageKey::VOLUME_CURRENT:
             PROD_LOG(kLogSource, "Current volume: %d (range 0-%d)", result.value, AUDIO_VOLUME_STEPS);
