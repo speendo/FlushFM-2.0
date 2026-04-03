@@ -2,13 +2,14 @@
 
 #include "IAudioPlayer.h"
 #include <Audio.h>
+#include <memory>
 
 /// Thin wrapper around the ESP32-audioI2S Audio class.
 ///
 /// Responsibilities:
 /// - Hold the Audio instance and configure I2S pins on begin()
 /// - Forward all IAudioPlayer calls to the underlying library
-/// - Track volume locally (ESP32-audioI2S has no getter)
+/// - Track volume locally for CLI/state management; mute is forwarded via the native library API
 ///
 /// Note: ESP32-audioI2S v3.4.x uses Audio::audio_info_callback
 /// (Audio::msg_t). Callback registration belongs to the application
@@ -24,6 +25,8 @@ public:
     void    loop()                         override;
     bool    connectToHost(const char* url) override;
     void    stop()                         override;
+    void    setMute(bool mute)             override;
+    bool    getMute()                      override;
     void    setVolume(uint8_t volume)      override;
     void    setVolumeSteps(uint8_t steps)  override;
     uint8_t getVolume() const              override;
@@ -36,5 +39,5 @@ private:
     int     _dout;
     uint8_t _volume = 0;
     RuntimeState _runtimeState = RuntimeState::IDLE;
-    Audio   _audio;
+    std::unique_ptr<Audio> _audio;
 };

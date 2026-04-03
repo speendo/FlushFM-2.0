@@ -13,6 +13,7 @@
 - `IAudioPlayer` interface + `AudioPlayerESP32` wrapper (`lib/audio/`)
 - I2S output to PCM5102A DAC (BCK=4, WS=5, DOUT=6); line-level output for headphones
 - Runtime volume control via `volume [0-N]` Serial command; step count configurable via `AUDIO_VOLUME_STEPS` in `config.h` (default 21)
+- Runtime mute control via `IAudioPlayer::setMute()` / native `Audio::setMute()`
 - Runtime stereo balance control via `balance <-16..16>` Serial command
 - Clean stream switching and stop verified; stereo L/R separation verified
 - Audio task pinned to Core 0, priority 2, with `vTaskDelay(pdMS_TO_TICKS(1))` to keep IDLE fed

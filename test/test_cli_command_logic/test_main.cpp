@@ -18,6 +18,15 @@ public:
 
     void stop() override { ++stopCalls; }
 
+    void setMute(bool mute) override {
+        ++setMuteCalls;
+        currentMute = mute;
+    }
+
+    bool getMute() override {
+        return currentMute;
+    }
+
     void setVolume(uint8_t volume) override {
         ++setVolumeCalls;
         currentVolume = volume;
@@ -40,11 +49,13 @@ public:
 
     int connectCalls = 0;
     int stopCalls = 0;
+    int setMuteCalls = 0;
     int setVolumeCalls = 0;
     int setBalanceCalls = 0;
     const char* lastUrl = nullptr;
     uint8_t currentVolume = 7;
     int8_t currentBalance = 0;
+    bool currentMute = false;
     RuntimeState currentRuntimeState = RuntimeState::IDLE;
 };
 
@@ -231,6 +242,71 @@ void test_play_without_url_fails_if_no_persisted_station() {
     TEST_ASSERT_EQUAL(0, audio.connectCalls);
 }
 
+void test_mute_without_arg_returns_current_state() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+    audio.currentMute = true;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "mute",
+        nullptr,
+        audio,
+        env,
+        21);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::MUTE_CURRENT), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(1, result.value);
+    TEST_ASSERT_EQUAL(0, audio.setMuteCalls);
+}
+
+void test_mute_on_sets_muted_state() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "mute",
+        "on",
+        audio,
+        env,
+        21);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::MUTE_SET), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(1, audio.setMuteCalls);
+    TEST_ASSERT_TRUE(audio.currentMute);
+}
+
+void test_mute_off_sets_unmuted_state() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+    audio.currentMute = true;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "mute",
+        "off",
+        audio,
+        env,
+        21);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::MUTE_SET), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(1, audio.setMuteCalls);
+    TEST_ASSERT_FALSE(audio.currentMute);
+}
+
+void test_mute_invalid_arg_returns_usage() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "mute",
+        "toggle",
+        audio,
+        env,
+        21);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::USAGE_MUTE), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(0, audio.setMuteCalls);
+}
+
 void test_status_shows_connected_and_streaming_state() {
     FakeAudioPlayer audio;
     FakeEnvironment env;
@@ -280,6 +356,10 @@ int main() {
     RUN_TEST(test_reset_command_stops_audio_and_resets_runtime_session);
     RUN_TEST(test_play_without_url_loads_persisted_station);
     RUN_TEST(test_play_without_url_fails_if_no_persisted_station);
+    RUN_TEST(test_mute_without_arg_returns_current_state);
+    RUN_TEST(test_mute_on_sets_muted_state);
+    RUN_TEST(test_mute_off_sets_unmuted_state);
+    RUN_TEST(test_mute_invalid_arg_returns_usage);
     RUN_TEST(test_status_shows_connected_and_streaming_state);
     RUN_TEST(test_status_shows_disconnected_and_idle_state);
     return UNITY_END();

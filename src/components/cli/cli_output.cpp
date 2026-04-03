@@ -23,6 +23,7 @@ void printHelp(DebugHelpPrinter debugHelpPrinter) {
     Serial.println("  forget            Clear persisted ssid/pass/station from NVS");
     Serial.println("  reset             Stop stream and reset runtime WiFi session");
     Serial.printf ("  volume [0-%d]     Get or set playback volume\r\n", AUDIO_VOLUME_STEPS);
+    Serial.println("  mute [on|off]     Get or set mute state");
     Serial.println("  balance <-16..16> Stereo balance (-16=L, 0=center, +16=R)");
     Serial.println("  status            Show WiFi, audio, and persisted settings");
     if (debugHelpPrinter) {
@@ -54,6 +55,9 @@ void render(const CommandResult& result, DebugHelpPrinter debugHelpPrinter) {
         case MessageKey::USAGE_SWITCH:
             ERROR_LOG(kLogSource, "Usage: switch <url>");
             return;
+        case MessageKey::USAGE_MUTE:
+            ERROR_LOG(kLogSource, "Usage: mute <on|off>");
+            return;
         case MessageKey::USAGE_BALANCE:
             ERROR_LOG(kLogSource, "Usage: balance <-16..16>  (-16=left, 0=center, +16=right)");
             return;
@@ -83,6 +87,12 @@ void render(const CommandResult& result, DebugHelpPrinter debugHelpPrinter) {
             return;
         case MessageKey::VOLUME_SET:
             PROD_LOG(kLogSource, "Volume set to %d", result.value);
+            return;
+        case MessageKey::MUTE_CURRENT:
+            PROD_LOG(kLogSource, "Current mute: %s", result.value ? "on" : "off");
+            return;
+        case MessageKey::MUTE_SET:
+            PROD_LOG(kLogSource, "Mute set to %s", result.text ? result.text : "unknown");
             return;
         case MessageKey::BALANCE_OUT_OF_RANGE:
             ERROR_LOG(kLogSource, "Balance must be -16..16");

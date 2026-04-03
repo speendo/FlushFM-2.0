@@ -83,6 +83,24 @@ cli_output::CommandResult dispatchCommand(
         return {MessageKey::VOLUME_SET, nullptr, vol};
     }
 
+    if (strcmp(cmd, "mute") == 0) {
+        if (!arg || *arg == '\0') {
+            return {MessageKey::MUTE_CURRENT, nullptr, audio.getMute() ? 1 : 0};
+        }
+
+        if (strcmp(arg, "on") == 0) {
+            audio.setMute(true);
+            return {MessageKey::MUTE_SET, "on"};
+        }
+
+        if (strcmp(arg, "off") == 0) {
+            audio.setMute(false);
+            return {MessageKey::MUTE_SET, "off"};
+        }
+
+        return {MessageKey::USAGE_MUTE};
+    }
+
     if (strcmp(cmd, "balance") == 0) {
         if (!arg || *arg == '\0') return {MessageKey::USAGE_BALANCE};
         const int bal = atoi(arg);

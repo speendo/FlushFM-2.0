@@ -35,6 +35,12 @@ public:
     /// Stop the current stream cleanly (flushes internal buffers).
     virtual void stop() = 0;
 
+    /// Mute or unmute audio output.
+    virtual void setMute(bool mute) = 0;
+
+    /// Return whether audio output is currently muted.
+    virtual bool getMute() = 0;
+
     /// Set playback volume (0 = mute, N = maximum where N is the configured step count).
     /// Default step count is 21 (ESP32-audioI2S default); can be changed via setVolumeSteps().
     virtual void setVolume(uint8_t volume) = 0;
