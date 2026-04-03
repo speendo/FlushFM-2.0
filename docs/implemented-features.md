@@ -5,14 +5,14 @@
 - WiFi connection via runtime Serial CLI (credentials never stored in code)
 - HTTP audio stream playback via ESP32-audioI2S (MP3, AAC)
 - Stream metadata display: station name, track title, bitrate
-- Stop / restart / switch streams without device reset
+- Stop and restart streams without device reset
 - Graceful WiFi reconnection after brief network interruption
 
 ## Audio Output via PCM5102A I2S DAC (US-0002)
 
 - `IAudioPlayer` interface + `AudioPlayerESP32` wrapper (`lib/audio/`)
 - I2S output to PCM5102A DAC (BCK=4, WS=5, DOUT=6); line-level output for headphones
-- Runtime volume control via `volume [0-N]` Serial command; step count configurable via `AUDIO_VOLUME_STEPS` in `config.h` (default 21)
+- Runtime volume control via `volume [0-N]` Serial command; step count configurable via `AUDIO_VOLUME_STEPS` in `config.h` (default 255)
 - Runtime mute control via `IAudioPlayer::setMute()` / native `Audio::setMute()`
 - Runtime stereo balance control via `balance <-16..16>` Serial command
 - Clean stream switching and stop verified; stereo L/R separation verified
@@ -32,7 +32,7 @@
 
 - Added dedicated `Settings` module under `lib/settings/` using `Preferences` namespace `flushfm`
 - Persist `ssid` / `pass` on CLI commands and restore them on boot for automatic WiFi connect
-- Persist last station URL on `play` / `switch` and auto-start playback after successful boot auto-connect
+- Persist last station URL on `play` and auto-start playback after successful boot auto-connect
 - `play` command works without URL argument – loads last station from NVS; falls back to usage error if no station saved
 - Added `forget` command to clear persisted `ssid` / `pass` / `station` from NVS
 - Added `reset` command to clear only runtime session state (stop stream, disconnect WiFi, clear volatile credentials)

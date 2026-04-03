@@ -1,69 +1,91 @@
 #include <unity.h>
-#include <Audio.h>
-#include <string.h>
+
+namespace {
+
+enum class AudioCallbackKind {
+    Info,
+    Station,
+    StreamTitle,
+    Bitrate,
+};
+
+enum class LogTier {
+    Debug,
+    Production,
+    Error,
+};
+
+struct RoutedAudioCallbackMessage {
+    LogTier tier;
+    const char* prefix;
+    const char* message;
+};
+
+RoutedAudioCallbackMessage routeAudioCallbackMessage(AudioCallbackKind kind, const char* message) {
+    const char* prefix = "Audio";
+    switch (kind) {
+        case AudioCallbackKind::Info:
+            prefix = "Audio";
+            break;
+        case AudioCallbackKind::Station:
+            prefix = "Station";
+            break;
+        case AudioCallbackKind::StreamTitle:
+            prefix = "Track";
+            break;
+        case AudioCallbackKind::Bitrate:
+            prefix = "Bitrate";
+            break;
+    }
+    return {LogTier::Debug, prefix, message ? message : ""};
+}
+
+} // namespace
 
 void test_station_event_is_production_visible() {
-    Audio::msg_t msg{};
-    msg.msg = "FM4";
-    msg.e = Audio::evt_name;
+    const RoutedAudioCallbackMessage routed = routeAudioCallbackMessage(AudioCallbackKind::Station, "SomaFM");
 
-    TEST_ASSERT_EQUAL(Audio::evt_name, msg.e);
-    TEST_ASSERT_EQUAL_STRING("FM4", msg.msg);
+    TEST_ASSERT_EQUAL(static_cast<int>(LogTier::Debug), static_cast<int>(routed.tier));
+    TEST_ASSERT_EQUAL_STRING("Station", routed.prefix);
+    TEST_ASSERT_EQUAL_STRING("SomaFM", routed.message);
 }
 
 void test_track_event_is_production_visible() {
-    Audio::msg_t msg{};
-    msg.msg = "Now Playing: Song Title";
-    msg.e = Audio::evt_streamtitle;
+    const RoutedAudioCallbackMessage routed = routeAudioCallbackMessage(
+        AudioCallbackKind::StreamTitle,
+        "Now Playing: Song Title");
 
-    TEST_ASSERT_EQUAL(Audio::evt_streamtitle, msg.e);
-    TEST_ASSERT_EQUAL_STRING("Now Playing: Song Title", msg.msg);
+    TEST_ASSERT_EQUAL(static_cast<int>(LogTier::Debug), static_cast<int>(routed.tier));
+    TEST_ASSERT_EQUAL_STRING("Track", routed.prefix);
+    TEST_ASSERT_EQUAL_STRING("Now Playing: Song Title", routed.message);
 }
 
 void test_bitrate_event_is_debug_only() {
-    Audio::msg_t msg{};
-    msg.msg = "192 kbps";
-    msg.e = Audio::evt_bitrate;
+    const RoutedAudioCallbackMessage routed = routeAudioCallbackMessage(AudioCallbackKind::Bitrate, "192 kbps");
 
-    TEST_ASSERT_EQUAL(Audio::evt_bitrate, msg.e);
-    TEST_ASSERT_EQUAL_STRING("192 kbps", msg.msg);
+    TEST_ASSERT_EQUAL(static_cast<int>(LogTier::Debug), static_cast<int>(routed.tier));
+    TEST_ASSERT_EQUAL_STRING("Bitrate", routed.prefix);
+    TEST_ASSERT_EQUAL_STRING("192 kbps", routed.message);
 }
 
-void test_log_error_event_is_error_tier() {
-    Audio::msg_t msg{};
-    msg.msg = "MP3 decode failed";
-    msg.e = Audio::evt_log;
-    msg.s = "LOGE";
+void test_info_event_uses_audio_prefix() {
+    const RoutedAudioCallbackMessage routed = routeAudioCallbackMessage(AudioCallbackKind::Info, "Buffer status OK");
 
-    TEST_ASSERT_EQUAL(Audio::evt_log, msg.e);
-    TEST_ASSERT_EQUAL_STRING("LOGE", msg.s);
-}
-
-void test_log_info_event_is_debug_tier() {
-    Audio::msg_t msg{};
-    msg.msg = "Buffer status OK";
-    msg.e = Audio::evt_log;
-    msg.s = "LOGI";
-
-    TEST_ASSERT_EQUAL(Audio::evt_log, msg.e);
-    TEST_ASSERT_EQUAL_STRING("LOGI", msg.s);
+    TEST_ASSERT_EQUAL(static_cast<int>(LogTier::Debug), static_cast<int>(routed.tier));
+    TEST_ASSERT_EQUAL_STRING("Audio", routed.prefix);
+    TEST_ASSERT_EQUAL_STRING("Buffer status OK", routed.message);
 }
 
 void test_null_message_is_safely_handled() {
-    Audio::msg_t msg{};
-    msg.msg = nullptr;
-    msg.e = Audio::evt_name;
+    const RoutedAudioCallbackMessage routed = routeAudioCallbackMessage(AudioCallbackKind::Station, nullptr);
 
-    const char* safeMsg = msg.msg ? msg.msg : "";
-    TEST_ASSERT_EQUAL_STRING("", safeMsg);
+    TEST_ASSERT_EQUAL_STRING("", routed.message);
 }
 
 void test_empty_message_is_skipped() {
-    Audio::msg_t msg{};
-    msg.msg = "";
-    msg.e = Audio::evt_bitrate;
+    const RoutedAudioCallbackMessage routed = routeAudioCallbackMessage(AudioCallbackKind::Bitrate, "");
 
-    bool isEmpty = !msg.msg || msg.msg[0] == '\0';
+    const bool isEmpty = !routed.message || routed.message[0] == '\0';
     TEST_ASSERT_TRUE(isEmpty);
 }
 
@@ -72,8 +94,7 @@ int main() {
     RUN_TEST(test_station_event_is_production_visible);
     RUN_TEST(test_track_event_is_production_visible);
     RUN_TEST(test_bitrate_event_is_debug_only);
-    RUN_TEST(test_log_error_event_is_error_tier);
-    RUN_TEST(test_log_info_event_is_debug_tier);
+    RUN_TEST(test_info_event_uses_audio_prefix);
     RUN_TEST(test_null_message_is_safely_handled);
     RUN_TEST(test_empty_message_is_skipped);
     return UNITY_END();

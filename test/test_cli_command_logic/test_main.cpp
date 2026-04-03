@@ -155,7 +155,7 @@ void test_play_command_with_wifi_starts_stream_and_persists_station() {
     TEST_ASSERT_EQUAL_STRING("http://example.com/play.mp3", env.lastStation);
 }
 
-void test_switch_command_with_wifi_restarts_stream_and_persists_station() {
+void test_switch_command_is_not_supported_anymore() {
     FakeAudioPlayer audio;
     FakeEnvironment env;
     env.connectivity = cli_command_logic::WiFiConnectivity::CONNECTED;
@@ -165,14 +165,12 @@ void test_switch_command_with_wifi_restarts_stream_and_persists_station() {
         "http://example.com/switch.mp3",
         audio,
         env,
-        21);
+        255);
 
-    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::SWITCHING_STREAM), static_cast<int>(result.key));
-    TEST_ASSERT_EQUAL(1, audio.stopCalls);
-    TEST_ASSERT_EQUAL(1, audio.connectCalls);
-    TEST_ASSERT_EQUAL_STRING("http://example.com/switch.mp3", audio.lastUrl);
-    TEST_ASSERT_EQUAL(1, env.saveStationCalls);
-    TEST_ASSERT_EQUAL_STRING("http://example.com/switch.mp3", env.lastStation);
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::NONE), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(0, audio.stopCalls);
+    TEST_ASSERT_EQUAL(0, audio.connectCalls);
+    TEST_ASSERT_EQUAL(0, env.saveStationCalls);
 }
 
 void test_forget_command_clears_persisted_settings() {
@@ -347,11 +345,42 @@ void test_status_shows_disconnected_and_idle_state() {
     TEST_ASSERT_EQUAL_STRING("", result.text);
 }
 
+void test_volume_command_accepts_high_values_with_max_255() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "volume",
+        "255",
+        audio,
+        env,
+        255);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::VOLUME_SET), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(1, audio.setVolumeCalls);
+    TEST_ASSERT_EQUAL(255, audio.currentVolume);
+}
+
+void test_volume_command_rejects_values_above_max() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "volume",
+        "256",
+        audio,
+        env,
+        255);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::VOLUME_OUT_OF_RANGE), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(0, audio.setVolumeCalls);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_play_command_requires_wifi_and_does_not_start_stream);
     RUN_TEST(test_play_command_with_wifi_starts_stream_and_persists_station);
-    RUN_TEST(test_switch_command_with_wifi_restarts_stream_and_persists_station);
+    RUN_TEST(test_switch_command_is_not_supported_anymore);
     RUN_TEST(test_forget_command_clears_persisted_settings);
     RUN_TEST(test_reset_command_stops_audio_and_resets_runtime_session);
     RUN_TEST(test_play_without_url_loads_persisted_station);
@@ -362,5 +391,7 @@ int main() {
     RUN_TEST(test_mute_invalid_arg_returns_usage);
     RUN_TEST(test_status_shows_connected_and_streaming_state);
     RUN_TEST(test_status_shows_disconnected_and_idle_state);
+    RUN_TEST(test_volume_command_accepts_high_values_with_max_255);
+    RUN_TEST(test_volume_command_rejects_values_above_max);
     return UNITY_END();
 }
