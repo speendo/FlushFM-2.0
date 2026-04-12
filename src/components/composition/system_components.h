@@ -1,8 +1,13 @@
 #pragma once
 
-#include "IAudioPlayer.h"
-#include "components/audio/audio_runtime.h"
-#include "state_machine/system_controller.h"
+#include <cstdint>
+
+class IAudioPlayer;
+class SystemController;
+
+namespace audio_runtime {
+enum class Signal;
+}
 
 class ISystemComponent {
 public:
@@ -10,6 +15,11 @@ public:
     virtual ~ISystemComponent() = default;
     const char* name() const { return name_; }
     virtual bool setup() = 0;
+    virtual uint32_t setOFF(uint32_t transitionId) = 0;
+    virtual uint32_t setIDLE(uint32_t transitionId) = 0;
+    virtual uint32_t setSTREAMING(uint32_t transitionId) = 0;
+    virtual uint32_t setERROR(uint32_t transitionId) = 0;
+    virtual void onTransitionTimeout(uint32_t transitionId) = 0;
     virtual void loop() {}
 
 private:
@@ -20,6 +30,11 @@ class BoardInfoComponent final : public ISystemComponent {
 public:
     BoardInfoComponent();
     bool setup() override;
+    uint32_t setOFF(uint32_t transitionId) override;
+    uint32_t setIDLE(uint32_t transitionId) override;
+    uint32_t setSTREAMING(uint32_t transitionId) override;
+    uint32_t setERROR(uint32_t transitionId) override;
+    void onTransitionTimeout(uint32_t transitionId) override;
 };
 
 class WiFiComponent final : public ISystemComponent {
@@ -27,6 +42,11 @@ public:
     explicit WiFiComponent(SystemController& system);
 
     bool setup() override;
+    uint32_t setOFF(uint32_t transitionId) override;
+    uint32_t setIDLE(uint32_t transitionId) override;
+    uint32_t setSTREAMING(uint32_t transitionId) override;
+    uint32_t setERROR(uint32_t transitionId) override;
+    void onTransitionTimeout(uint32_t transitionId) override;
     bool bootAutoConnectSucceeded() const;
 
 private:
@@ -42,6 +62,11 @@ public:
     AudioRuntimeComponent(IAudioPlayer& audio, SystemController& system);
 
     bool setup() override;
+    uint32_t setOFF(uint32_t transitionId) override;
+    uint32_t setIDLE(uint32_t transitionId) override;
+    uint32_t setSTREAMING(uint32_t transitionId) override;
+    uint32_t setERROR(uint32_t transitionId) override;
+    void onTransitionTimeout(uint32_t transitionId) override;
 
 private:
     static void onAudioSignal(audio_runtime::Signal signal, void* context);
@@ -55,6 +80,11 @@ public:
     CliComponent(IAudioPlayer& audio, SystemController& system);
 
     bool setup() override;
+    uint32_t setOFF(uint32_t transitionId) override;
+    uint32_t setIDLE(uint32_t transitionId) override;
+    uint32_t setSTREAMING(uint32_t transitionId) override;
+    uint32_t setERROR(uint32_t transitionId) override;
+    void onTransitionTimeout(uint32_t transitionId) override;
     void loop() override;
 
 private:

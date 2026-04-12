@@ -9,6 +9,7 @@
 #include "core/debug.h"
 #include "settings.h"
 #include "components/network/wifi_manager.h"
+#include "state_machine/system_controller.h"
 
 namespace {
 
@@ -17,6 +18,26 @@ constexpr const char* kWiFiName = "WiFi";
 constexpr const char* kAudioRuntimeName = "AudioRuntime";
 constexpr const char* kCliName = "CLI";
 
+constexpr uint32_t kBoardInfoTimeoutOffMs = 0;
+constexpr uint32_t kBoardInfoTimeoutIdleMs = 0;
+constexpr uint32_t kBoardInfoTimeoutStreamingMs = 0;
+constexpr uint32_t kBoardInfoTimeoutErrorMs = 0;
+
+constexpr uint32_t kWiFiTimeoutOffMs = 1000;
+constexpr uint32_t kWiFiTimeoutIdleMs = 8000;
+constexpr uint32_t kWiFiTimeoutStreamingMs = 15000;
+constexpr uint32_t kWiFiTimeoutErrorMs = 1000;
+
+constexpr uint32_t kAudioTimeoutOffMs = 2000;
+constexpr uint32_t kAudioTimeoutIdleMs = 2000;
+constexpr uint32_t kAudioTimeoutStreamingMs = 5000;
+constexpr uint32_t kAudioTimeoutErrorMs = 1000;
+
+constexpr uint32_t kCliTimeoutOffMs = 0;
+constexpr uint32_t kCliTimeoutIdleMs = 0;
+constexpr uint32_t kCliTimeoutStreamingMs = 0;
+constexpr uint32_t kCliTimeoutErrorMs = 0;
+
 }  // namespace
 
 BoardInfoComponent::BoardInfoComponent() : ISystemComponent(kBoardInfoName) {}
@@ -24,6 +45,30 @@ BoardInfoComponent::BoardInfoComponent() : ISystemComponent(kBoardInfoName) {}
 bool BoardInfoComponent::setup() {
     board_info::print();
     return true;
+}
+
+uint32_t BoardInfoComponent::setOFF(uint32_t transitionId) {
+    (void)transitionId;
+    return kBoardInfoTimeoutOffMs;
+}
+
+uint32_t BoardInfoComponent::setIDLE(uint32_t transitionId) {
+    (void)transitionId;
+    return kBoardInfoTimeoutIdleMs;
+}
+
+uint32_t BoardInfoComponent::setSTREAMING(uint32_t transitionId) {
+    (void)transitionId;
+    return kBoardInfoTimeoutStreamingMs;
+}
+
+uint32_t BoardInfoComponent::setERROR(uint32_t transitionId) {
+    (void)transitionId;
+    return kBoardInfoTimeoutErrorMs;
+}
+
+void BoardInfoComponent::onTransitionTimeout(uint32_t transitionId) {
+    DEBUG_LOG(kBoardInfoName, "Transition timeout for id=%lu", static_cast<unsigned long>(transitionId));
 }
 
 WiFiComponent::WiFiComponent(SystemController& system)
@@ -50,6 +95,30 @@ bool WiFiComponent::setup() {
     }
 
     return true;
+}
+
+uint32_t WiFiComponent::setOFF(uint32_t transitionId) {
+    (void)transitionId;
+    return kWiFiTimeoutOffMs;
+}
+
+uint32_t WiFiComponent::setIDLE(uint32_t transitionId) {
+    (void)transitionId;
+    return kWiFiTimeoutIdleMs;
+}
+
+uint32_t WiFiComponent::setSTREAMING(uint32_t transitionId) {
+    (void)transitionId;
+    return kWiFiTimeoutStreamingMs;
+}
+
+uint32_t WiFiComponent::setERROR(uint32_t transitionId) {
+    (void)transitionId;
+    return kWiFiTimeoutErrorMs;
+}
+
+void WiFiComponent::onTransitionTimeout(uint32_t transitionId) {
+    DEBUG_LOG(kWiFiName, "Transition timeout for id=%lu", static_cast<unsigned long>(transitionId));
 }
 
 bool WiFiComponent::bootAutoConnectSucceeded() const {
@@ -84,6 +153,30 @@ bool AudioRuntimeComponent::setup() {
     return started;
 }
 
+uint32_t AudioRuntimeComponent::setOFF(uint32_t transitionId) {
+    (void)transitionId;
+    return kAudioTimeoutOffMs;
+}
+
+uint32_t AudioRuntimeComponent::setIDLE(uint32_t transitionId) {
+    (void)transitionId;
+    return kAudioTimeoutIdleMs;
+}
+
+uint32_t AudioRuntimeComponent::setSTREAMING(uint32_t transitionId) {
+    (void)transitionId;
+    return kAudioTimeoutStreamingMs;
+}
+
+uint32_t AudioRuntimeComponent::setERROR(uint32_t transitionId) {
+    (void)transitionId;
+    return kAudioTimeoutErrorMs;
+}
+
+void AudioRuntimeComponent::onTransitionTimeout(uint32_t transitionId) {
+    DEBUG_LOG(kAudioRuntimeName, "Transition timeout for id=%lu", static_cast<unsigned long>(transitionId));
+}
+
 void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* context) {
     auto* self = static_cast<AudioRuntimeComponent*>(context);
     if (!self) {
@@ -109,6 +202,30 @@ bool CliComponent::setup() {
     });
     cli::printHelp();
     return true;
+}
+
+uint32_t CliComponent::setOFF(uint32_t transitionId) {
+    (void)transitionId;
+    return kCliTimeoutOffMs;
+}
+
+uint32_t CliComponent::setIDLE(uint32_t transitionId) {
+    (void)transitionId;
+    return kCliTimeoutIdleMs;
+}
+
+uint32_t CliComponent::setSTREAMING(uint32_t transitionId) {
+    (void)transitionId;
+    return kCliTimeoutStreamingMs;
+}
+
+uint32_t CliComponent::setERROR(uint32_t transitionId) {
+    (void)transitionId;
+    return kCliTimeoutErrorMs;
+}
+
+void CliComponent::onTransitionTimeout(uint32_t transitionId) {
+    DEBUG_LOG(kCliName, "Transition timeout for id=%lu", static_cast<unsigned long>(transitionId));
 }
 
 void CliComponent::loop() {
