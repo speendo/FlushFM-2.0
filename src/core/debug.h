@@ -1,6 +1,8 @@
 #pragma once
 
-#include <Arduino.h>
+// Logging policy and log-format macros.
+// Platform-specific Serial/millis wiring is isolated in debug_platform.h.
+#include "debug_platform.h"
 
 // ---------------------------------------------------------------------------
 // FlushFM 2.0 – Logging macros
