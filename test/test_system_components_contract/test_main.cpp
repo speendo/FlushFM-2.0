@@ -21,6 +21,10 @@ public:
 
     bool setup() override { return true; }
 
+    void registerWithController(SystemController& controller) const override {
+        (void)controller;
+    }
+
     uint32_t setOFF(uint32_t transitionId) override {
         lastTransitionId_ = transitionId;
         return offTimeout_;
@@ -60,6 +64,8 @@ private:
 
 static_assert(std::is_same<decltype(&BoardInfoComponent::setOFF), uint32_t (BoardInfoComponent::*)(uint32_t)>::value,
               "BoardInfoComponent::setOFF signature mismatch");
+static_assert(std::is_same<decltype(&BoardInfoComponent::registerWithController), void (BoardInfoComponent::*)(SystemController&) const>::value,
+              "BoardInfoComponent::registerWithController signature mismatch");
 static_assert(std::is_same<decltype(&BoardInfoComponent::setIDLE), uint32_t (BoardInfoComponent::*)(uint32_t)>::value,
               "BoardInfoComponent::setIDLE signature mismatch");
 static_assert(std::is_same<decltype(&BoardInfoComponent::setSTREAMING), uint32_t (BoardInfoComponent::*)(uint32_t)>::value,
@@ -71,6 +77,8 @@ static_assert(std::is_same<decltype(&BoardInfoComponent::onTransitionTimeout), v
 
 static_assert(std::is_same<decltype(&WiFiComponent::setOFF), uint32_t (WiFiComponent::*)(uint32_t)>::value,
               "WiFiComponent::setOFF signature mismatch");
+static_assert(std::is_same<decltype(&WiFiComponent::registerWithController), void (WiFiComponent::*)(SystemController&) const>::value,
+              "WiFiComponent::registerWithController signature mismatch");
 static_assert(std::is_same<decltype(&WiFiComponent::setIDLE), uint32_t (WiFiComponent::*)(uint32_t)>::value,
               "WiFiComponent::setIDLE signature mismatch");
 static_assert(std::is_same<decltype(&WiFiComponent::setSTREAMING), uint32_t (WiFiComponent::*)(uint32_t)>::value,
@@ -82,6 +90,8 @@ static_assert(std::is_same<decltype(&WiFiComponent::onTransitionTimeout), void (
 
 static_assert(std::is_same<decltype(&AudioRuntimeComponent::setOFF), uint32_t (AudioRuntimeComponent::*)(uint32_t)>::value,
               "AudioRuntimeComponent::setOFF signature mismatch");
+static_assert(std::is_same<decltype(&AudioRuntimeComponent::registerWithController), void (AudioRuntimeComponent::*)(SystemController&) const>::value,
+              "AudioRuntimeComponent::registerWithController signature mismatch");
 static_assert(std::is_same<decltype(&AudioRuntimeComponent::setIDLE), uint32_t (AudioRuntimeComponent::*)(uint32_t)>::value,
               "AudioRuntimeComponent::setIDLE signature mismatch");
 static_assert(std::is_same<decltype(&AudioRuntimeComponent::setSTREAMING), uint32_t (AudioRuntimeComponent::*)(uint32_t)>::value,
@@ -93,6 +103,8 @@ static_assert(std::is_same<decltype(&AudioRuntimeComponent::onTransitionTimeout)
 
 static_assert(std::is_same<decltype(&CliComponent::setOFF), uint32_t (CliComponent::*)(uint32_t)>::value,
               "CliComponent::setOFF signature mismatch");
+static_assert(std::is_same<decltype(&CliComponent::registerWithController), void (CliComponent::*)(SystemController&) const>::value,
+              "CliComponent::registerWithController signature mismatch");
 static_assert(std::is_same<decltype(&CliComponent::setIDLE), uint32_t (CliComponent::*)(uint32_t)>::value,
               "CliComponent::setIDLE signature mismatch");
 static_assert(std::is_same<decltype(&CliComponent::setSTREAMING), uint32_t (CliComponent::*)(uint32_t)>::value,

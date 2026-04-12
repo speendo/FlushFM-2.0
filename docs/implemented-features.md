@@ -45,6 +45,12 @@
 - Observer-based architecture prepared for additional components (for example display and LED)
 - Runtime behavior aligned with resilience goals for reconnect and restart scenarios
 
+## Component Lifecycle Registry (US-0015)
+
+- `SystemController` now tracks component lifecycle status, required/optional policy, disabled state, and last failure reason per component
+- Components self-register their role metadata during startup, so `main.cpp` stays limited to wiring and startup sequencing
+- Registry behavior is covered by native unit tests for registration, duplicate handling, safe fallbacks, and 20-component stress coverage
+
 ## Runtime Logging Cleanup (US-0010)
 
 - Reduced repetitive callback log noise for better debug readability

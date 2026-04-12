@@ -42,6 +42,10 @@ constexpr uint32_t kCliTimeoutErrorMs = 0;
 
 BoardInfoComponent::BoardInfoComponent() : ISystemComponent(kBoardInfoName) {}
 
+void BoardInfoComponent::registerWithController(SystemController& controller) const {
+    controller.registerComponent(name(), false);
+}
+
 bool BoardInfoComponent::setup() {
     board_info::print();
     return true;
@@ -73,6 +77,10 @@ void BoardInfoComponent::onTransitionTimeout(uint32_t transitionId) {
 
 WiFiComponent::WiFiComponent(SystemController& system)
     : ISystemComponent(kWiFiName), system_(system) {}
+
+void WiFiComponent::registerWithController(SystemController& controller) const {
+    controller.registerComponent(name(), true);
+}
 
 bool WiFiComponent::setup() {
     wifi_manager::setConnectedCallback(&WiFiComponent::onConnected, this);
@@ -144,6 +152,10 @@ void WiFiComponent::onDisconnected(void* context) {
 AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer& audio, SystemController& system)
     : ISystemComponent(kAudioRuntimeName), audio_(audio), system_(system) {}
 
+void AudioRuntimeComponent::registerWithController(SystemController& controller) const {
+    controller.registerComponent(name(), true);
+}
+
 bool AudioRuntimeComponent::setup() {
     audio_runtime::setSignalHandler(&AudioRuntimeComponent::onAudioSignal, this);
     const bool started = audio_runtime::start(audio_);
@@ -194,6 +206,10 @@ void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* co
 
 CliComponent::CliComponent(IAudioPlayer& audio, SystemController& system)
     : ISystemComponent(kCliName), audio_(audio), system_(system) {}
+
+void CliComponent::registerWithController(SystemController& controller) const {
+    controller.registerComponent(name(), false);
+}
 
 bool CliComponent::setup() {
     cli::init(audio_, audio_runtime::taskHandlePtr(), &system_);

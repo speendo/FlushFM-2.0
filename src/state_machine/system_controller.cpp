@@ -1,9 +1,16 @@
 #include "state_machine/system_controller.h"
 
+#include <cstring>
+#include <utility>
+
 #include "core/debug.h"
 
 SystemController::SystemController() {
+#if defined(ARDUINO)
     queue_ = xQueueCreate(16, sizeof(QueuedEvent));
+#else
+    queue_ = nullptr;
+#endif
 }
 
 SystemState SystemController::state() const {
@@ -15,6 +22,12 @@ void SystemController::subscribe(StateObserver observer) {
 }
 
 bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPolicy policy) {
+#if !defined(ARDUINO)
+    (void)event;
+    (void)reason;
+    (void)policy;
+    return false;
+#else
     if (!queue_) {
         return false;
     }
@@ -32,9 +45,13 @@ bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPo
     }
     
     return success;
+#endif
 }
 
 void SystemController::dispatchPending() {
+#if !defined(ARDUINO)
+    return;
+#else
     if (!queue_) {
         return;
     }
@@ -51,6 +68,105 @@ void SystemController::dispatchPending() {
     while (xQueueReceive(queue_, &queued, 0) == pdTRUE) {
         handleEvent(queued.event, queued.reason);
     }
+#endif
+}
+
+std::string SystemController::normalizeComponentName(const char* name) {
+    if (!name || name[0] == '\0') {
+        return {};
+    }
+
+    std::string normalized{name};
+    if (normalized.size() > kMaxComponentNameLen) {
+        ERROR_LOG("SystemController", "Component name truncated to %lu chars", static_cast<unsigned long>(kMaxComponentNameLen));
+        normalized.resize(kMaxComponentNameLen);
+    }
+    return normalized;
+}
+
+void SystemController::copyFailureReason(char* destination, size_t destinationSize, const char* reason) {
+    if (!destination || destinationSize == 0) {
+        return;
+    }
+
+    destination[0] = '\0';
+    if (!reason) {
+        return;
+    }
+
+    const size_t reasonLength = std::strlen(reason);
+    if (reasonLength >= destinationSize) {
+        ERROR_LOG("SystemController", "Failure reason truncated to %lu chars", static_cast<unsigned long>(destinationSize - 1));
+    }
+
+    std::strncpy(destination, reason, destinationSize - 1);
+    destination[destinationSize - 1] = '\0';
+}
+
+bool SystemController::registerComponent(const char* name, bool isRequired) {
+    const std::string normalizedName = normalizeComponentName(name);
+    if (normalizedName.empty()) {
+        ERROR_LOG("SystemController", "Rejected component registration with empty or null name");
+        return false;
+    }
+
+    auto [it, inserted] = componentRegistry_.emplace(normalizedName, ComponentRegistryEntry{});
+    it->second.isRequired = isRequired;
+    if (inserted) {
+        it->second.lifeCycleStatus = ComponentLifecycleStatus::Unknown;
+        it->second.isDisabled = false;
+        copyFailureReason(it->second.lastFailureReason, sizeof(it->second.lastFailureReason), nullptr);
+    }
+
+    PROD_LOG("SystemController", "Registered component %s (required=%s)",
+             normalizedName.c_str(), isRequired ? "true" : "false");
+    return true;
+}
+
+ComponentLifecycleStatus SystemController::getComponentStatus(const char* name) const {
+    const std::string normalizedName = normalizeComponentName(name);
+    if (normalizedName.empty()) {
+        return ComponentLifecycleStatus::Unknown;
+    }
+
+    const auto it = componentRegistry_.find(normalizedName);
+    if (it == componentRegistry_.end()) {
+        return ComponentLifecycleStatus::Unknown;
+    }
+
+    return it->second.lifeCycleStatus;
+}
+
+bool SystemController::markComponentFailed(const char* name, const char* reason) {
+    const std::string normalizedName = normalizeComponentName(name);
+    if (normalizedName.empty()) {
+        ERROR_LOG("SystemController", "Rejected component failure for empty or null name");
+        return false;
+    }
+
+    auto [it, inserted] = componentRegistry_.emplace(normalizedName, ComponentRegistryEntry{});
+    (void)inserted;
+    it->second.lifeCycleStatus = ComponentLifecycleStatus::Failed;
+    it->second.isDisabled = true;
+    copyFailureReason(it->second.lastFailureReason, sizeof(it->second.lastFailureReason), reason);
+
+    ERROR_LOG("SystemController", "Component %s marked failed: %s",
+              normalizedName.c_str(), reason ? reason : "<none>");
+    return true;
+}
+
+bool SystemController::isComponentRequired(const char* name) const {
+    const std::string normalizedName = normalizeComponentName(name);
+    if (normalizedName.empty()) {
+        return false;
+    }
+
+    const auto it = componentRegistry_.find(normalizedName);
+    if (it == componentRegistry_.end()) {
+        return false;
+    }
+
+    return it->second.isRequired;
 }
 
 void SystemController::handleEvent(SystemEvent event, SystemReason reason) {

@@ -45,6 +45,7 @@ void setup() {
     s_system.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE);
 
     for (ISystemComponent* component : s_components) {
+        component->registerWithController(s_system);
         if (!component->setup()) {
             ERROR_LOG("Main", "Component setup failed: %s", component->name());
             s_system.postEvent(SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::COMPONENT_SETUP);

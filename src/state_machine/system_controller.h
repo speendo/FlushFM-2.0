@@ -1,9 +1,23 @@
 #pragma once
 
+#include <map>
+#include <functional>
+#include <string>
+#include <vector>
+#include <cstdint>
+
+#if defined(ARDUINO)
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
-#include <functional>
-#include <vector>
+#else
+using QueueHandle_t = void*;
+using TickType_t = uint32_t;
+constexpr int pdTRUE = 1;
+constexpr int pdFALSE = 0;
+constexpr TickType_t pdMS_TO_TICKS(uint32_t milliseconds) { return milliseconds; }
+#endif
+
+#include "component_types.h"
 
 enum class SystemState {
     OFF,
@@ -65,11 +79,19 @@ public:
     // Core 0 only: process pending events and run transition logic.
     void dispatchPending();
 
+    bool registerComponent(const char* name, bool isRequired);
+    ComponentLifecycleStatus getComponentStatus(const char* name) const;
+    bool markComponentFailed(const char* name, const char* reason);
+    bool isComponentRequired(const char* name) const;
+
 private:
     struct QueuedEvent {
         SystemEvent event;
         SystemReason reason;
     };
+
+    static std::string normalizeComponentName(const char* name);
+    static void copyFailureReason(char* destination, size_t destinationSize, const char* reason);
 
     void handleEvent(SystemEvent event, SystemReason reason);
     void transitionTo(SystemState next, SystemEvent trigger, SystemReason reason);
@@ -81,6 +103,7 @@ private:
     bool pendingCriticalEvent_ = false;  // Sticky flag for critical event loss recovery.
     SystemEvent pendingEvent_ = SystemEvent::BOOT;
     SystemReason pendingReason_ = SystemReason::NONE;
+    std::map<std::string, ComponentRegistryEntry> componentRegistry_;
 };
 
 const char* toString(SystemState state);
