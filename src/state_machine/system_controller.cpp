@@ -1,9 +1,25 @@
 #include "state_machine/system_controller.h"
 
+#include <chrono>
 #include <cstring>
 #include <utility>
 
 #include "core/debug.h"
+
+namespace {
+
+uint32_t nowMs() {
+#if defined(ARDUINO)
+    return millis();
+#else
+    using Clock = std::chrono::steady_clock;
+    static const Clock::time_point kStart = Clock::now();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - kStart).count();
+    return static_cast<uint32_t>(elapsed);
+#endif
+}
+
+}  // namespace
 
 SystemController::SystemController() {
 #if defined(ARDUINO)
@@ -50,6 +66,7 @@ bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPo
 
 void SystemController::dispatchPending() {
 #if !defined(ARDUINO)
+    checkTransitionTimeouts();
     return;
 #else
     if (!queue_) {
@@ -68,6 +85,8 @@ void SystemController::dispatchPending() {
     while (xQueueReceive(queue_, &queued, 0) == pdTRUE) {
         handleEvent(queued.event, queued.reason);
     }
+
+    checkTransitionTimeouts();
 #endif
 }
 
@@ -123,6 +142,29 @@ bool SystemController::registerComponent(const char* name, bool isRequired) {
     return true;
 }
 
+bool SystemController::setComponentTransitionHooks(const char* name,
+                                                   TransitionInvoker transitionInvoker,
+                                                   TransitionTimeoutHook timeoutHook) {
+    const std::string normalizedName = normalizeComponentName(name);
+    if (normalizedName.empty()) {
+        ERROR_LOG("SystemController", "Rejected transition hooks for empty or null component name");
+        return false;
+    }
+
+    if (!transitionInvoker || !timeoutHook) {
+        ERROR_LOG("SystemController", "Rejected transition hooks for %s due to missing callbacks", normalizedName.c_str());
+        return false;
+    }
+
+    if (componentRegistry_.find(normalizedName) == componentRegistry_.end()) {
+        ERROR_LOG("SystemController", "Rejected transition hooks for unknown component %s", normalizedName.c_str());
+        return false;
+    }
+
+    componentHooks_[normalizedName] = ComponentTransitionHooks{std::move(transitionInvoker), std::move(timeoutHook)};
+    return true;
+}
+
 ComponentLifecycleStatus SystemController::getComponentStatus(const char* name) const {
     const std::string normalizedName = normalizeComponentName(name);
     if (normalizedName.empty()) {
@@ -169,7 +211,315 @@ bool SystemController::isComponentRequired(const char* name) const {
     return it->second.isRequired;
 }
 
+bool SystemController::beginComponentTransition(const char* name, uint32_t transitionId) {
+    const std::string normalizedName = normalizeComponentName(name);
+    if (normalizedName.empty()) {
+        ERROR_LOG("SystemController", "Rejected transition begin for empty or null component name");
+        return false;
+    }
+
+    const auto registryIt = componentRegistry_.find(normalizedName);
+    if (registryIt == componentRegistry_.end()) {
+        ERROR_LOG("SystemController", "Rejected transition begin for unknown component %s", normalizedName.c_str());
+        return false;
+    }
+
+    if (pendingTransitions_.find(normalizedName) != pendingTransitions_.end()) {
+        DEBUG_LOG("SystemController", "Rejected transition begin for %s: component already has in-flight transition", normalizedName.c_str());
+        return false;
+    }
+
+    pendingTransitions_.emplace(normalizedName, PendingComponentTransition{transitionId});
+    DEBUG_LOG("SystemController", "Transition armed for %s with id=%lu",
+              normalizedName.c_str(),
+              static_cast<unsigned long>(transitionId));
+    return true;
+}
+
+bool SystemController::reportCompletion(const char* componentName,
+                                        uint32_t transitionId,
+                                        TransitionStatus status,
+                                        DebugReason reason) {
+    const std::string normalizedName = normalizeComponentName(componentName);
+    if (normalizedName.empty()) {
+        ERROR_LOG("SystemController", "Rejected completion report for empty or null component name");
+        return false;
+    }
+
+    auto pendingIt = pendingTransitions_.find(normalizedName);
+    if (pendingIt == pendingTransitions_.end()) {
+        DEBUG_LOG("SystemController", "Ignoring completion for %s: no in-flight transition", normalizedName.c_str());
+        return false;
+    }
+
+    if (pendingIt->second.transitionId != transitionId) {
+        DEBUG_LOG("SystemController", "Ignoring stale completion for %s: expected id=%lu got id=%lu",
+                  normalizedName.c_str(),
+                  static_cast<unsigned long>(pendingIt->second.transitionId),
+                  static_cast<unsigned long>(transitionId));
+        return false;
+    }
+
+    auto registryIt = componentRegistry_.find(normalizedName);
+    if (registryIt == componentRegistry_.end()) {
+        ERROR_LOG("SystemController", "Ignoring completion for unknown component %s", normalizedName.c_str());
+        pendingTransitions_.erase(pendingIt);
+        return false;
+    }
+
+    if (status == TransitionStatus::Completed) {
+        registryIt->second.lifeCycleStatus = ComponentLifecycleStatus::Ready;
+        registryIt->second.isDisabled = false;
+        copyFailureReason(registryIt->second.lastFailureReason, sizeof(registryIt->second.lastFailureReason), nullptr);
+        PROD_LOG("SystemController", "Component %s reported completion for transition id=%lu",
+                 normalizedName.c_str(),
+                 static_cast<unsigned long>(transitionId));
+    } else {
+        registryIt->second.lifeCycleStatus = ComponentLifecycleStatus::Failed;
+        registryIt->second.isDisabled = true;
+        copyFailureReason(registryIt->second.lastFailureReason, sizeof(registryIt->second.lastFailureReason), reason);
+        if (orchestration_.active && orchestration_.transitionId == transitionId && registryIt->second.isRequired) {
+            orchestration_.requiredFailure = true;
+        }
+        ERROR_LOG("SystemController", "Component %s reported failure for transition id=%lu: %s",
+                  normalizedName.c_str(),
+                  static_cast<unsigned long>(transitionId),
+                  reason ? reason : "<none>");
+    }
+
+    pendingTransitions_.erase(pendingIt);
+
+    if (orchestration_.active && orchestration_.transitionId == transitionId && pendingTransitions_.empty()) {
+        if (orchestration_.requiredFailure) {
+            transitionTo(SystemState::ERROR,
+                         SystemEvent::COMPONENT_SETUP_FAILED,
+                         SystemReason::RECOVERY,
+                         transitionId);
+        } else {
+            transitionTo(orchestration_.target,
+                         orchestration_.trigger,
+                         orchestration_.reason,
+                         transitionId);
+        }
+
+        (void)finishTransition(transitionId);
+        orchestration_.active = false;
+    }
+
+    return true;
+}
+
+TransitionRequestDecision SystemController::requestTransition(SystemState from,
+                                                              SystemState target,
+                                                              uint32_t transitionId) {
+    if (from == target) {
+        return TransitionRequestDecision::Ignored;
+    }
+
+    if (!hasActiveStateTransition_) {
+        hasActiveStateTransition_ = true;
+        activeStateTransition_ = StateTransitionInfo{transitionId, from, target};
+        return TransitionRequestDecision::Started;
+    }
+
+    if (target == activeStateTransition_.from) {
+        // Reciprocal transition supersedes the currently active transition.
+        const StateTransitionInfo previous = activeStateTransition_;
+        (void)previous;
+        activeStateTransition_ = StateTransitionInfo{transitionId, from, target};
+        hasQueuedStateTransition_ = false;
+        return TransitionRequestDecision::Superseded;
+    }
+
+    queuedStateTransition_ = StateTransitionInfo{transitionId, from, target};
+    hasQueuedStateTransition_ = true;
+    return TransitionRequestDecision::Queued;
+}
+
+bool SystemController::finishTransition(uint32_t transitionId) {
+    if (!hasActiveStateTransition_) {
+        return false;
+    }
+
+    if (activeStateTransition_.transitionId != transitionId) {
+        return false;
+    }
+
+    if (hasQueuedStateTransition_) {
+        activeStateTransition_ = queuedStateTransition_;
+        hasQueuedStateTransition_ = false;
+        return true;
+    }
+
+    hasActiveStateTransition_ = false;
+    return true;
+}
+
+bool SystemController::beginOrchestration(SystemState target,
+                                          SystemEvent trigger,
+                                          SystemReason reason,
+                                          uint32_t transitionId) {
+    const TransitionRequestDecision decision = requestTransition(state_, target, transitionId);
+    if (decision == TransitionRequestDecision::Ignored || decision == TransitionRequestDecision::Queued) {
+        return false;
+    }
+
+    orchestration_.active = true;
+    orchestration_.transitionId = transitionId;
+    orchestration_.target = target;
+    orchestration_.trigger = trigger;
+    orchestration_.reason = reason;
+    orchestration_.requiredFailure = false;
+
+    pendingTransitions_.clear();
+    for (const auto& [componentName, entry] : componentRegistry_) {
+        if (entry.isDisabled) {
+            continue;
+        }
+        pendingTransitions_.emplace(componentName, PendingComponentTransition{transitionId});
+    }
+
+    if (pendingTransitions_.empty()) {
+        transitionTo(target, trigger, reason, transitionId);
+        (void)finishTransition(transitionId);
+        orchestration_.active = false;
+        return true;
+    }
+
+    std::vector<std::string> componentNames;
+    componentNames.reserve(pendingTransitions_.size());
+    for (const auto& [componentName, pending] : pendingTransitions_) {
+        (void)pending;
+        componentNames.push_back(componentName);
+    }
+
+    for (const std::string& componentName : componentNames) {
+        auto pendingIt = pendingTransitions_.find(componentName);
+        if (pendingIt == pendingTransitions_.end()) {
+            continue;
+        }
+
+        const auto hooksIt = componentHooks_.find(componentName);
+        if (hooksIt == componentHooks_.end()) {
+            DEBUG_LOG("SystemController", "No transition hooks registered for component %s", componentName.c_str());
+            continue;
+        }
+
+        pendingIt->second.startedAtMs = nowMs();
+        pendingIt->second.timeoutHandled = false;
+        pendingIt->second.timeoutMs = hooksIt->second.transitionInvoker(target, transitionId);
+    }
+
+    return true;
+}
+
+bool SystemController::isOrchestrationActive() const {
+    return orchestration_.active;
+}
+
+size_t SystemController::componentsWaitingForCompletion() const {
+    return pendingTransitions_.size();
+}
+
+bool SystemController::hasActiveTransition() const {
+    return hasActiveStateTransition_;
+}
+
+bool SystemController::hasQueuedTransition() const {
+    return hasQueuedStateTransition_;
+}
+
+uint32_t SystemController::activeTransitionId() const {
+    return activeStateTransition_.transitionId;
+}
+
+SystemState SystemController::activeTransitionFrom() const {
+    return activeStateTransition_.from;
+}
+
+SystemState SystemController::activeTransitionTarget() const {
+    return activeStateTransition_.target;
+}
+
+uint32_t SystemController::queuedTransitionId() const {
+    return queuedStateTransition_.transitionId;
+}
+
+SystemState SystemController::queuedTransitionFrom() const {
+    return queuedStateTransition_.from;
+}
+
+SystemState SystemController::queuedTransitionTarget() const {
+    return queuedStateTransition_.target;
+}
+void SystemController::checkTransitionTimeouts() {
+    if (!orchestration_.active) {
+        return;
+    }
+    
+    std::vector<std::string> timedOutComponents;
+    const uint32_t currentMs = nowMs();
+    
+    for (const auto& [componentName, pending] : pendingTransitions_) {
+        if (pending.transitionId != orchestration_.transitionId) {
+            continue;
+        }
+        
+        if (pending.timeoutHandled) {
+            continue;
+        }
+        
+        const bool timeoutReached = (pending.timeoutMs == 0) ||
+                                    (currentMs - pending.startedAtMs >= pending.timeoutMs);
+        if (timeoutReached) {
+            timedOutComponents.push_back(componentName);
+        }
+    }
+    
+    for (const std::string& componentName : timedOutComponents) {
+        auto pendingIt = pendingTransitions_.find(componentName);
+        if (pendingIt == pendingTransitions_.end()) {
+            continue;
+        }
+        
+        if (pendingIt->second.transitionId != orchestration_.transitionId || pendingIt->second.timeoutHandled) {
+            continue;
+        }
+        
+        pendingIt->second.timeoutHandled = true;
+        
+        const auto hooksIt = componentHooks_.find(componentName);
+        if (hooksIt == componentHooks_.end()) {
+            (void)reportCompletion(componentName.c_str(),
+                                   orchestration_.transitionId,
+                                   TransitionStatus::Failed,
+                                   "timeout hook missing");
+            continue;
+        }
+        
+        ERROR_LOG("SystemController", "Transition id=%lu timed out for component %s",
+                  static_cast<unsigned long>(orchestration_.transitionId),
+                  componentName.c_str());
+        hooksIt->second.timeoutHook(orchestration_.transitionId);
+    }
+}
+
 void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
+    auto requestStateTransition = [this, event, reason](SystemState target) {
+        uint32_t transitionId = nextTransitionId_;
+        ++nextTransitionId_;
+        if (nextTransitionId_ == 0) {
+            nextTransitionId_ = 1;
+        }
+
+        const bool started = beginOrchestration(target, event, reason, transitionId);
+        DEBUG_LOG("SystemController", "Transition request id=%lu %s -> %s started=%s",
+                  static_cast<unsigned long>(transitionId),
+                  toString(state_),
+                  toString(target),
+                  started ? "true" : "false");
+    };
+
     switch (state_) {
         case SystemState::OFF:
             if (event == SystemEvent::BOOT) {
@@ -193,7 +543,7 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
 
         case SystemState::IDLE:
             if (event == SystemEvent::PLAY_REQUESTED) {
-                transitionTo(SystemState::STREAMING, event, reason);
+                requestStateTransition(SystemState::STREAMING);
             } else if (event == SystemEvent::WIFI_DISCONNECTED) {
                 transitionTo(SystemState::ERROR, event, reason);
             } else if (event == SystemEvent::COMPONENT_SETUP_FAILED) {
@@ -207,7 +557,7 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
 
         case SystemState::STREAMING:
             if (event == SystemEvent::STOP_REQUESTED) {
-                transitionTo(SystemState::IDLE, event, reason);
+                requestStateTransition(SystemState::IDLE);
             } else if (event == SystemEvent::WIFI_DISCONNECTED) {
                 transitionTo(SystemState::ERROR, event, reason);
             } else if (event == SystemEvent::STREAM_LOST) {
@@ -229,7 +579,7 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
     }
 }
 
-void SystemController::transitionTo(SystemState next, SystemEvent trigger, SystemReason reason) {
+void SystemController::transitionTo(SystemState next, SystemEvent trigger, SystemReason reason, uint32_t transitionId) {
     if (next == state_) {
         return;
     }
@@ -244,8 +594,12 @@ void SystemController::transitionTo(SystemState next, SystemEvent trigger, Syste
         transientError_ = false;
     }
 
-    PROD_LOG("SystemController", "State transition: %s -> %s (event=%s reason=%s)",
-             toString(previous), toString(next), toString(trigger), toString(reason));
+    PROD_LOG("SystemController", "State transition id=%lu: %s -> %s (event=%s reason=%s)",
+             static_cast<unsigned long>(transitionId),
+             toString(previous),
+             toString(next),
+             toString(trigger),
+             toString(reason));
 
     for (const auto& observer : observers_) {
         observer(next);
@@ -316,6 +670,20 @@ const char* toString(SystemReason reason) {
             return "RECOVERY";
         case SystemReason::POWER_POLICY:
             return "POWER_POLICY";
+    }
+    return "UNKNOWN";
+}
+
+const char* toString(TransitionRequestDecision decision) {
+    switch (decision) {
+        case TransitionRequestDecision::Ignored:
+            return "Ignored";
+        case TransitionRequestDecision::Started:
+            return "Started";
+        case TransitionRequestDecision::Superseded:
+            return "Superseded";
+        case TransitionRequestDecision::Queued:
+            return "Queued";
     }
     return "UNKNOWN";
 }

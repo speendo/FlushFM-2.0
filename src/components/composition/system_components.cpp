@@ -38,12 +38,42 @@ constexpr uint32_t kCliTimeoutIdleMs = 0;
 constexpr uint32_t kCliTimeoutStreamingMs = 0;
 constexpr uint32_t kCliTimeoutErrorMs = 0;
 
+uint32_t invokeComponentTransition(ISystemComponent& component,
+                                   SystemState target,
+                                   uint32_t transitionId) {
+    switch (target) {
+        case SystemState::OFF:
+            return component.setOFF(transitionId);
+        case SystemState::STARTING:
+            return component.setIDLE(transitionId);
+        case SystemState::IDLE:
+            return component.setIDLE(transitionId);
+        case SystemState::STREAMING:
+            return component.setSTREAMING(transitionId);
+        case SystemState::ERROR:
+            return component.setERROR(transitionId);
+    }
+
+    return component.setERROR(transitionId);
+}
+
 }  // namespace
 
 BoardInfoComponent::BoardInfoComponent() : ISystemComponent(kBoardInfoName) {}
 
 void BoardInfoComponent::registerWithController(SystemController& controller) const {
     controller.registerComponent(name(), false);
+    controller.setComponentTransitionHooks(
+        name(),
+        [component = const_cast<BoardInfoComponent*>(this), &controller](SystemState target, uint32_t transitionId) {
+            const uint32_t timeoutMs = invokeComponentTransition(*component, target, transitionId);
+            (void)controller.reportCompletion(component->name(), transitionId, TransitionStatus::Completed, nullptr);
+            return timeoutMs;
+        },
+        [component = const_cast<BoardInfoComponent*>(this), &controller](uint32_t transitionId) {
+            component->onTransitionTimeout(transitionId);
+            (void)controller.reportCompletion(component->name(), transitionId, TransitionStatus::Failed, "timeout");
+        });
 }
 
 bool BoardInfoComponent::setup() {
@@ -80,6 +110,14 @@ WiFiComponent::WiFiComponent(SystemController& system)
 
 void WiFiComponent::registerWithController(SystemController& controller) const {
     controller.registerComponent(name(), true);
+    controller.setComponentTransitionHooks(
+        name(),
+        [component = const_cast<WiFiComponent*>(this)](SystemState target, uint32_t transitionId) {
+            return invokeComponentTransition(*component, target, transitionId);
+        },
+        [component = const_cast<WiFiComponent*>(this)](uint32_t transitionId) {
+            component->onTransitionTimeout(transitionId);
+        });
 }
 
 bool WiFiComponent::setup() {
@@ -106,27 +144,47 @@ bool WiFiComponent::setup() {
 }
 
 uint32_t WiFiComponent::setOFF(uint32_t transitionId) {
-    (void)transitionId;
+    startPendingTransition(false, transitionId);
+    completePendingTransition(TransitionStatus::Completed, nullptr);
     return kWiFiTimeoutOffMs;
 }
 
 uint32_t WiFiComponent::setIDLE(uint32_t transitionId) {
-    (void)transitionId;
+    startPendingTransition(false, transitionId);
+    completePendingTransition(TransitionStatus::Completed, nullptr);
     return kWiFiTimeoutIdleMs;
 }
 
 uint32_t WiFiComponent::setSTREAMING(uint32_t transitionId) {
-    (void)transitionId;
+    startPendingTransition(true, transitionId);
+    if (!wifi_manager::isConnected()) {
+        wifi_manager::connect();
+    }
+
     return kWiFiTimeoutStreamingMs;
 }
 
 uint32_t WiFiComponent::setERROR(uint32_t transitionId) {
-    (void)transitionId;
+    startPendingTransition(false, transitionId);
+    completePendingTransition(TransitionStatus::Completed, nullptr);
     return kWiFiTimeoutErrorMs;
 }
 
 void WiFiComponent::onTransitionTimeout(uint32_t transitionId) {
     DEBUG_LOG(kWiFiName, "Transition timeout for id=%lu", static_cast<unsigned long>(transitionId));
+    if (transitionPending_ && pendingTransitionId_ == transitionId) {
+        completePendingTransition(TransitionStatus::Failed, "timeout");
+    }
+}
+
+void WiFiComponent::loop() {
+    if (!transitionPending_ || !pendingStreamingTarget_) {
+        return;
+    }
+
+    if (wifi_manager::isConnected()) {
+        completePendingTransition(TransitionStatus::Completed, nullptr);
+    }
 }
 
 bool WiFiComponent::bootAutoConnectSucceeded() const {
@@ -138,6 +196,11 @@ void WiFiComponent::onConnected(void* context) {
     if (!self) {
         return;
     }
+
+    if (self->transitionPending_ && self->pendingStreamingTarget_) {
+        self->completePendingTransition(TransitionStatus::Completed, nullptr);
+    }
+
     self->system_.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED);
 }
 
@@ -146,7 +209,31 @@ void WiFiComponent::onDisconnected(void* context) {
     if (!self) {
         return;
     }
+
+    if (self->transitionPending_ && self->pendingStreamingTarget_) {
+        self->completePendingTransition(TransitionStatus::Failed, "wifi disconnected");
+    }
+
     self->system_.postEvent(SystemEvent::WIFI_DISCONNECTED, SystemReason::NONE, EventPolicy::BOUNDED_BLOCKING);
+}
+
+void WiFiComponent::startPendingTransition(bool streamingTarget, uint32_t transitionId) {
+    transitionPending_ = true;
+    pendingStreamingTarget_ = streamingTarget;
+    pendingTransitionId_ = transitionId;
+}
+
+void WiFiComponent::completePendingTransition(TransitionStatus status, const char* reason) {
+    if (!transitionPending_) {
+        return;
+    }
+
+    const uint32_t transitionId = pendingTransitionId_;
+    transitionPending_ = false;
+    pendingTransitionId_ = 0;
+    pendingStreamingTarget_ = false;
+
+    (void)system_.reportCompletion(name(), transitionId, status, reason);
 }
 
 AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer& audio, SystemController& system)
@@ -154,6 +241,14 @@ AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer& audio, SystemControll
 
 void AudioRuntimeComponent::registerWithController(SystemController& controller) const {
     controller.registerComponent(name(), true);
+    controller.setComponentTransitionHooks(
+        name(),
+        [component = const_cast<AudioRuntimeComponent*>(this)](SystemState target, uint32_t transitionId) {
+            return invokeComponentTransition(*component, target, transitionId);
+        },
+        [component = const_cast<AudioRuntimeComponent*>(this)](uint32_t transitionId) {
+            component->onTransitionTimeout(transitionId);
+        });
 }
 
 bool AudioRuntimeComponent::setup() {
@@ -166,27 +261,61 @@ bool AudioRuntimeComponent::setup() {
 }
 
 uint32_t AudioRuntimeComponent::setOFF(uint32_t transitionId) {
-    (void)transitionId;
+    startPendingTransition(false, transitionId);
+    pendingErrorTarget_ = false;
+    audio_.stop();
     return kAudioTimeoutOffMs;
 }
 
 uint32_t AudioRuntimeComponent::setIDLE(uint32_t transitionId) {
-    (void)transitionId;
+    startPendingTransition(false, transitionId);
+    pendingErrorTarget_ = false;
+    audio_.stop();
     return kAudioTimeoutIdleMs;
 }
 
 uint32_t AudioRuntimeComponent::setSTREAMING(uint32_t transitionId) {
-    (void)transitionId;
+    startPendingTransition(true, transitionId);
+    pendingErrorTarget_ = false;
     return kAudioTimeoutStreamingMs;
 }
 
 uint32_t AudioRuntimeComponent::setERROR(uint32_t transitionId) {
-    (void)transitionId;
+    startPendingTransition(false, transitionId);
+    pendingErrorTarget_ = true;
+    audio_.stop();
     return kAudioTimeoutErrorMs;
 }
 
 void AudioRuntimeComponent::onTransitionTimeout(uint32_t transitionId) {
     DEBUG_LOG(kAudioRuntimeName, "Transition timeout for id=%lu", static_cast<unsigned long>(transitionId));
+    if (transitionPending_ && pendingTransitionId_ == transitionId) {
+        audio_.stop();
+        completePendingTransition(TransitionStatus::Failed, "timeout");
+    }
+}
+
+void AudioRuntimeComponent::loop() {
+    if (!transitionPending_) {
+        return;
+    }
+
+    const IAudioPlayer::RuntimeState runtimeState = audio_.runtimeState();
+    if (pendingStreamingTarget_) {
+        if (runtimeState == IAudioPlayer::RuntimeState::STREAMING) {
+            completePendingTransition(TransitionStatus::Completed, nullptr);
+        } else if (runtimeState == IAudioPlayer::RuntimeState::ERROR) {
+            completePendingTransition(TransitionStatus::Failed, "audio runtime error");
+        }
+        return;
+    }
+
+    // For stop-like targets (OFF/IDLE/ERROR), completion means stream teardown is observable.
+    if (runtimeState == IAudioPlayer::RuntimeState::IDLE) {
+        completePendingTransition(TransitionStatus::Completed, nullptr);
+    } else if (runtimeState == IAudioPlayer::RuntimeState::ERROR && !pendingErrorTarget_) {
+        completePendingTransition(TransitionStatus::Failed, "audio stop failed");
+    }
 }
 
 void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* context) {
@@ -196,12 +325,41 @@ void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* co
     }
 
     if (signal == audio_runtime::Signal::INIT_OK) {
+        if (self->transitionPending_ && self->pendingStreamingTarget_) {
+            self->completePendingTransition(TransitionStatus::Completed, nullptr);
+        }
         self->system_.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED);
     } else if (signal == audio_runtime::Signal::STREAM_LOST) {
+        if (self->transitionPending_ && self->pendingStreamingTarget_) {
+            self->completePendingTransition(TransitionStatus::Failed, "stream lost");
+        }
         self->system_.postEvent(SystemEvent::STREAM_LOST, SystemReason::NONE, EventPolicy::BOUNDED_BLOCKING);
     } else {
+        if (self->transitionPending_ && self->pendingStreamingTarget_) {
+            self->completePendingTransition(TransitionStatus::Failed, "audio init failed");
+        }
         self->system_.postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::AUDIO_TASK_INIT_FAILED);
     }
+}
+
+void AudioRuntimeComponent::startPendingTransition(bool streamingTarget, uint32_t transitionId) {
+    transitionPending_ = true;
+    pendingStreamingTarget_ = streamingTarget;
+    pendingTransitionId_ = transitionId;
+}
+
+void AudioRuntimeComponent::completePendingTransition(TransitionStatus status, const char* reason) {
+    if (!transitionPending_) {
+        return;
+    }
+
+    const uint32_t transitionId = pendingTransitionId_;
+    transitionPending_ = false;
+    pendingTransitionId_ = 0;
+    pendingStreamingTarget_ = false;
+    pendingErrorTarget_ = false;
+
+    (void)system_.reportCompletion(name(), transitionId, status, reason);
 }
 
 CliComponent::CliComponent(IAudioPlayer& audio, SystemController& system)
@@ -209,6 +367,17 @@ CliComponent::CliComponent(IAudioPlayer& audio, SystemController& system)
 
 void CliComponent::registerWithController(SystemController& controller) const {
     controller.registerComponent(name(), false);
+    controller.setComponentTransitionHooks(
+        name(),
+        [component = const_cast<CliComponent*>(this), &controller](SystemState target, uint32_t transitionId) {
+            const uint32_t timeoutMs = invokeComponentTransition(*component, target, transitionId);
+            (void)controller.reportCompletion(component->name(), transitionId, TransitionStatus::Completed, nullptr);
+            return timeoutMs;
+        },
+        [component = const_cast<CliComponent*>(this), &controller](uint32_t transitionId) {
+            component->onTransitionTimeout(transitionId);
+            (void)controller.reportCompletion(component->name(), transitionId, TransitionStatus::Failed, "timeout");
+        });
 }
 
 bool CliComponent::setup() {

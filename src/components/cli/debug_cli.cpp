@@ -10,12 +10,14 @@
 
 #include "core/config.h"
 #include "core/debug.h"
+#include "state_machine/system_controller.h"
 
 // ---------------------------------------------------------------------------
 // Module-private state
 // ---------------------------------------------------------------------------
 static constexpr const char* kLogSource = "DebugCLI";
 static TaskHandle_t* s_audioTaskHandle = nullptr;
+static SystemController* s_controller = nullptr;
 
 // ---------------------------------------------------------------------------
 // Forward declarations
@@ -28,8 +30,49 @@ static void loadtestTask(void* param);
 // ---------------------------------------------------------------------------
 namespace debug_cli {
 
-void init(TaskHandle_t* audioTaskHandle) {
+static bool postManualTransition(const char* targetState) {
+    if (!s_controller) {
+        ERROR_LOG(kLogSource, "SystemController not available for transition command");
+        return true;
+    }
+
+    if (!targetState || targetState[0] == '\0') {
+        ERROR_LOG(kLogSource, "Usage: transition <idle|streaming|off|error>");
+        return true;
+    }
+
+    if (strcmp(targetState, "idle") == 0) {
+        (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
+        PROD_LOG(kLogSource, "Transition request posted: idle");
+        return true;
+    }
+
+    if (strcmp(targetState, "streaming") == 0) {
+        (void)s_controller->postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
+        PROD_LOG(kLogSource, "Transition request posted: streaming");
+        return true;
+    }
+
+    if (strcmp(targetState, "off") == 0) {
+        (void)s_controller->postEvent(SystemEvent::ENTER_OFF, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
+        PROD_LOG(kLogSource, "Transition request posted: off");
+        return true;
+    }
+
+    if (strcmp(targetState, "error") == 0) {
+        (void)s_controller->postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
+        PROD_LOG(kLogSource, "Transition request posted: error");
+        return true;
+    }
+
+    ERROR_LOG(kLogSource, "Unknown transition target: %s", targetState);
+    ERROR_LOG(kLogSource, "Usage: transition <idle|streaming|off|error>");
+    return true;
+}
+
+void init(TaskHandle_t* audioTaskHandle, SystemController* controller) {
     s_audioTaskHandle = audioTaskHandle;
+    s_controller = controller;
 }
 
 bool process(const char* cmd, const char* arg) {
@@ -64,6 +107,8 @@ bool process(const char* cmd, const char* arg) {
         vTaskResume(*s_audioTaskHandle);
         PROD_LOG(kLogSource, "AudioTask resumed");
         return true;
+    } else if (strcmp(cmd, "transition") == 0) {
+        return postManualTransition(arg);
     }
 
     return false;
@@ -74,6 +119,7 @@ void printHelp() {
     Serial.println("  loadtest         Run 5s busy-loop on Core 0, check audio stability");
     Serial.println("  suspend          Suspend AudioTask");
     Serial.println("  resume           Resume AudioTask");
+    Serial.println("  transition <s>   Request state transition: idle|streaming|off|error");
 }
 
 } // namespace debug_cli

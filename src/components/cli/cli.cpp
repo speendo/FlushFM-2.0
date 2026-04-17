@@ -113,7 +113,7 @@ void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, SystemController* 
     s_audio = &audio;
     s_controller = controller;
 #ifdef DEBUG_ENABLED
-    debug_cli::init(audioTaskHandle);
+    debug_cli::init(audioTaskHandle, controller);
 #else
     (void)audioTaskHandle;
 #endif

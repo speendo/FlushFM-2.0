@@ -51,6 +51,16 @@
 - Components self-register their role metadata during startup, so `main.cpp` stays limited to wiring and startup sequencing
 - Registry behavior is covered by native unit tests for registration, duplicate handling, safe fallbacks, and 20-component stress coverage
 
+## Transition Orchestration and Completion Callbacks (US-0016/US-0017)
+
+- `SystemController` orchestrates component transitions by assigning a unique transition ID, invoking `setXXX(transitionId)` hooks, and waiting for completion reports
+- Required/optional component policy is enforced during orchestration: required failures escalate to `ERROR`, optional failures keep forward progress with degraded optional components
+- Component watchdogs are driven by per-component timeout values returned from `setXXX(transitionId)`; timeout triggers `onTransitionTimeout(transitionId)` and failure reporting
+- Stale and duplicate completion reports are ignored safely using in-flight transition ID matching
+- State transition logging now includes transition IDs for traceability in debug/production logs
+- Audio stop-like transitions complete only after runtime confirms stream teardown (`IDLE`), not immediately after stop request
+- Debug builds provide manual orchestration trigger command `transition <idle|streaming|off|error>` for serial transition testing
+
 ## Runtime Logging Cleanup (US-0010)
 
 - Reduced repetitive callback log noise for better debug readability
