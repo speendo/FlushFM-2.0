@@ -136,7 +136,7 @@ void test_play_command_requires_wifi_and_does_not_start_stream() {
     TEST_ASSERT_EQUAL(0, env.saveStationCalls);
 }
 
-void test_play_command_with_wifi_starts_stream_and_persists_station() {
+void test_play_command_with_wifi_requests_transition_and_persists_station() {
     FakeAudioPlayer audio;
     FakeEnvironment env;
     env.connectivity = cli_command_logic::WiFiConnectivity::CONNECTED;
@@ -149,8 +149,7 @@ void test_play_command_with_wifi_starts_stream_and_persists_station() {
         21);
 
     TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::CONNECTING_STREAM), static_cast<int>(result.key));
-    TEST_ASSERT_EQUAL(1, audio.connectCalls);
-    TEST_ASSERT_EQUAL_STRING("http://example.com/play.mp3", audio.lastUrl);
+    TEST_ASSERT_EQUAL(0, audio.connectCalls);
     TEST_ASSERT_EQUAL(1, env.saveStationCalls);
     TEST_ASSERT_EQUAL_STRING("http://example.com/play.mp3", env.lastStation);
 }
@@ -188,7 +187,7 @@ void test_forget_command_clears_persisted_settings() {
     TEST_ASSERT_EQUAL(1, env.forgetSettingsCalls);
 }
 
-void test_reset_command_stops_audio_and_resets_runtime_session() {
+void test_reset_command_resets_runtime_session_without_direct_stop_call() {
     FakeAudioPlayer audio;
     FakeEnvironment env;
 
@@ -200,7 +199,7 @@ void test_reset_command_stops_audio_and_resets_runtime_session() {
         21);
 
     TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::SESSION_RESET), static_cast<int>(result.key));
-    TEST_ASSERT_EQUAL(1, audio.stopCalls);
+    TEST_ASSERT_EQUAL(0, audio.stopCalls);
     TEST_ASSERT_EQUAL(1, env.resetSessionCalls);
 }
 
@@ -218,8 +217,7 @@ void test_play_without_url_loads_persisted_station() {
         21);
 
     TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::CONNECTING_STREAM), static_cast<int>(result.key));
-    TEST_ASSERT_EQUAL(1, audio.connectCalls);
-    TEST_ASSERT_EQUAL_STRING("http://persisted.stream/music", audio.lastUrl);
+    TEST_ASSERT_EQUAL(0, audio.connectCalls);
     TEST_ASSERT_EQUAL(1, env.saveStationCalls);
 }
 
@@ -379,10 +377,10 @@ void test_volume_command_rejects_values_above_max() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_play_command_requires_wifi_and_does_not_start_stream);
-    RUN_TEST(test_play_command_with_wifi_starts_stream_and_persists_station);
+    RUN_TEST(test_play_command_with_wifi_requests_transition_and_persists_station);
     RUN_TEST(test_switch_command_is_not_supported_anymore);
     RUN_TEST(test_forget_command_clears_persisted_settings);
-    RUN_TEST(test_reset_command_stops_audio_and_resets_runtime_session);
+    RUN_TEST(test_reset_command_resets_runtime_session_without_direct_stop_call);
     RUN_TEST(test_play_without_url_loads_persisted_station);
     RUN_TEST(test_play_without_url_fails_if_no_persisted_station);
     RUN_TEST(test_mute_without_arg_returns_current_state);

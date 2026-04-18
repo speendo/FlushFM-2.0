@@ -42,12 +42,10 @@ cli_output::CommandResult dispatchCommand(
             return {MessageKey::WIFI_REQUIRED};
         }
         env.saveStation(url);
-        audio.connectToHost(url);
         return {MessageKey::CONNECTING_STREAM, url};
     }
 
     if (strcmp(cmd, "stop") == 0) {
-        audio.stop();
         return {MessageKey::STREAM_STOPPED};
     }
 
@@ -57,7 +55,6 @@ cli_output::CommandResult dispatchCommand(
     }
 
     if (strcmp(cmd, "reset") == 0) {
-        audio.stop();
         env.resetSession();
         return {MessageKey::SESSION_RESET};
     }

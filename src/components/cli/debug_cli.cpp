@@ -8,6 +8,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include "components/cli/cli.h"
+#include "component_types.h"
 #include "core/config.h"
 #include "core/debug.h"
 #include "state_machine/system_controller.h"
@@ -23,6 +25,7 @@ static SystemController* s_controller = nullptr;
 // Forward declarations
 // ---------------------------------------------------------------------------
 static void printTaskList();
+static void printTransitionStatus();
 static void loadtestTask(void* param);
 
 // ---------------------------------------------------------------------------
@@ -37,19 +40,21 @@ static bool postManualTransition(const char* targetState) {
     }
 
     if (!targetState || targetState[0] == '\0') {
-        ERROR_LOG(kLogSource, "Usage: transition <idle|streaming|off|error>");
+        ERROR_LOG(kLogSource, "Usage: transition <ready|live|off|error>");
         return true;
     }
 
-    if (strcmp(targetState, "idle") == 0) {
+    if (strcmp(targetState, "idle") == 0 || strcmp(targetState, "ready") == 0) {
         (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
-        PROD_LOG(kLogSource, "Transition request posted: idle");
+        PROD_LOG(kLogSource, "Transition request posted: ready");
         return true;
     }
 
-    if (strcmp(targetState, "streaming") == 0) {
-        (void)s_controller->postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
-        PROD_LOG(kLogSource, "Transition request posted: streaming");
+    if (strcmp(targetState, "streaming") == 0 || strcmp(targetState, "live") == 0) {
+        // Keep UX aligned with production command handling by reusing 'play'.
+        // cli::process("play") performs the same validation and posts the transition event on success.
+        cli::process("play");
+        PROD_LOG(kLogSource, "Transition request posted: live");
         return true;
     }
 
@@ -66,7 +71,7 @@ static bool postManualTransition(const char* targetState) {
     }
 
     ERROR_LOG(kLogSource, "Unknown transition target: %s", targetState);
-    ERROR_LOG(kLogSource, "Usage: transition <idle|streaming|off|error>");
+    ERROR_LOG(kLogSource, "Usage: transition <ready|live|off|error>");
     return true;
 }
 
@@ -107,6 +112,9 @@ bool process(const char* cmd, const char* arg) {
         vTaskResume(*s_audioTaskHandle);
         PROD_LOG(kLogSource, "AudioTask resumed");
         return true;
+    } else if (strcmp(cmd, "tstatus") == 0) {
+        printTransitionStatus();
+        return true;
     } else if (strcmp(cmd, "transition") == 0) {
         return postManualTransition(arg);
     }
@@ -115,11 +123,12 @@ bool process(const char* cmd, const char* arg) {
 }
 
 void printHelp() {
-    Serial.println("  tasks            Print FreeRTOS task list (core, state, stack HWM)");
-    Serial.println("  loadtest         Run 5s busy-loop on Core 0, check audio stability");
-    Serial.println("  suspend          Suspend AudioTask");
-    Serial.println("  resume           Resume AudioTask");
-    Serial.println("  transition <s>   Request state transition: idle|streaming|off|error");
+    Serial.println("  tasks               Print FreeRTOS task list (core, state, stack HWM)");
+    Serial.println("  loadtest            Run 5s busy-loop on Core 0, check audio stability");
+    Serial.println("  suspend             Suspend AudioTask");
+    Serial.println("  resume              Resume AudioTask");
+    Serial.println("  tstatus             Show transition and component lifecycle status");
+    Serial.println("  transition <s>      Request state transition: ready|live|off|error");
 }
 
 } // namespace debug_cli
@@ -147,6 +156,48 @@ static void printTaskList() {
     Serial.printf("  Free heap    : %u B\r\n",  (unsigned)ESP.getFreeHeap());
     if (psramFound()) {
         Serial.printf("  Free PSRAM   : %u B\r\n", (unsigned)ESP.getFreePsram());
+    }
+    Serial.println();
+}
+
+static void printTransitionStatus() {
+    if (!s_controller) {
+        ERROR_LOG(kLogSource, "SystemController not available");
+        return;
+    }
+
+    Serial.println();
+    Serial.printf("SM state:        %s\r\n", toString(s_controller->state()));
+    Serial.printf("Orchestration:   %s\r\n", s_controller->isOrchestrationActive() ? "active" : "inactive");
+    Serial.printf("Waiting count:   %u\r\n", static_cast<unsigned>(s_controller->componentsWaitingForCompletion()));
+
+    if (s_controller->hasActiveTransition()) {
+        Serial.printf("Active trans:    id=%lu %s -> %s\r\n",
+                      static_cast<unsigned long>(s_controller->activeTransitionId()),
+                      toString(s_controller->activeTransitionFrom()),
+                      toString(s_controller->activeTransitionTarget()));
+    } else {
+        Serial.println("Active trans:    none");
+    }
+
+    if (s_controller->hasQueuedTransition()) {
+        Serial.printf("Queued trans:    id=%lu %s -> %s\r\n",
+                      static_cast<unsigned long>(s_controller->queuedTransitionId()),
+                      toString(s_controller->queuedTransitionFrom()),
+                      toString(s_controller->queuedTransitionTarget()));
+    } else {
+        Serial.println("Queued trans:    none");
+    }
+
+    const char* names[] = {"WiFi", "AudioRuntime", "CLI", "BoardInfo"};
+    Serial.println("Components:");
+    for (const char* name : names) {
+        const ComponentLifecycleStatus status = s_controller->getComponentStatus(name);
+        const bool required = s_controller->isComponentRequired(name);
+        Serial.printf("  %-12s required=%s status=%s\r\n",
+                      name,
+                      required ? "true" : "false",
+                      toString(status));
     }
     Serial.println();
 }

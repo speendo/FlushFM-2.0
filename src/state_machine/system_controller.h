@@ -23,8 +23,8 @@ constexpr TickType_t pdMS_TO_TICKS(uint32_t milliseconds) { return milliseconds;
 enum class SystemState {
     OFF,
     STARTING,
-    IDLE,
-    STREAMING,
+    READY,
+    LIVE,
     ERROR,
 };
 
@@ -161,6 +161,7 @@ private:
     SystemState state_ = SystemState::OFF;
     bool transientError_ = false;
     QueueHandle_t queue_ = nullptr;
+    std::vector<QueuedEvent> deferredIntentEvents_{};
     std::vector<StateObserver> observers_;
     bool pendingCriticalEvent_ = false;  // Sticky flag for critical event loss recovery.
     SystemEvent pendingEvent_ = SystemEvent::BOOT;
@@ -174,6 +175,12 @@ private:
     bool hasQueuedStateTransition_ = false;
     StateTransitionInfo queuedStateTransition_{};
     OrchestrationContext orchestration_{};
+    bool pendingReplayRequested_ = false;
+    bool deferredReplayEvent_ = false;
+    bool pendingPlayAfterReady_ = false;
+    bool deferredPlayAfterReadyEvent_ = false;
+    bool startupWiFiReady_ = false;
+    bool startupAudioReady_ = false;
 };
 
 const char* toString(SystemState state);

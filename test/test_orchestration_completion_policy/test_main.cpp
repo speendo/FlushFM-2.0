@@ -14,7 +14,7 @@ void test_begin_orchestration_tracks_registered_components() {
 
     TEST_ASSERT_TRUE(controller.registerComponent("WiFi", true));
     TEST_ASSERT_TRUE(controller.registerComponent("CLI", false));
-    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::STREAMING,
+    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::LIVE,
                                                    SystemEvent::PLAY_REQUESTED,
                                                    SystemReason::USER_REQUEST,
                                                    100));
@@ -29,7 +29,7 @@ void test_all_successful_completions_commit_target_state() {
 
     TEST_ASSERT_TRUE(controller.registerComponent("WiFi", true));
     TEST_ASSERT_TRUE(controller.registerComponent("CLI", false));
-    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::IDLE,
+    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::READY,
                                                    SystemEvent::RECOVER,
                                                    SystemReason::RECOVERY,
                                                    200));
@@ -38,7 +38,7 @@ void test_all_successful_completions_commit_target_state() {
     TEST_ASSERT_TRUE(controller.reportCompletion("CLI", 200, TransitionStatus::Completed, nullptr));
 
     TEST_ASSERT_FALSE(controller.isOrchestrationActive());
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::IDLE), static_cast<int>(controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(controller.state()));
 }
 
 void test_required_failure_forces_error_state() {
@@ -46,7 +46,7 @@ void test_required_failure_forces_error_state() {
 
     TEST_ASSERT_TRUE(controller.registerComponent("WiFi", true));
     TEST_ASSERT_TRUE(controller.registerComponent("CLI", false));
-    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::STREAMING,
+    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::LIVE,
                                                    SystemEvent::PLAY_REQUESTED,
                                                    SystemReason::USER_REQUEST,
                                                    300));
@@ -63,7 +63,7 @@ void test_optional_failure_still_commits_target_state() {
 
     TEST_ASSERT_TRUE(controller.registerComponent("WiFi", true));
     TEST_ASSERT_TRUE(controller.registerComponent("CLI", false));
-    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::STREAMING,
+    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::LIVE,
                                                    SystemEvent::PLAY_REQUESTED,
                                                    SystemReason::USER_REQUEST,
                                                    400));
@@ -72,14 +72,14 @@ void test_optional_failure_still_commits_target_state() {
     TEST_ASSERT_TRUE(controller.reportCompletion("WiFi", 400, TransitionStatus::Completed, nullptr));
 
     TEST_ASSERT_FALSE(controller.isOrchestrationActive());
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::STREAMING), static_cast<int>(controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(controller.state()));
 }
 
 void test_stale_completion_is_ignored_during_orchestration() {
     SystemController controller;
 
     TEST_ASSERT_TRUE(controller.registerComponent("WiFi", true));
-    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::IDLE,
+    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::READY,
                                                    SystemEvent::RECOVER,
                                                    SystemReason::RECOVERY,
                                                    500));

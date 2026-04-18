@@ -14,21 +14,21 @@ constexpr const char* kLogSource = "CliOutput";
 void printHelp(DebugHelpPrinter debugHelpPrinter) {
     Serial.println();
     Serial.println("FlushFM - Serial Commands:");
-    Serial.println("  ssid <name>       Set WiFi SSID");
-    Serial.println("  pass <password>   Set WiFi password");
-    Serial.println("  connect           Connect to WiFi with stored credentials");
-    Serial.println("  play [url]        Start or switch stream (URL optional: uses last saved if omitted)");
-    Serial.println("  stop              Stop current stream");
-    Serial.println("  forget            Clear persisted ssid/pass/station from NVS");
-    Serial.println("  reset             Stop stream and reset runtime WiFi session");
-    Serial.printf ("  volume [0-%d]     Get or set playback volume\r\n", AUDIO_VOLUME_STEPS);
-    Serial.println("  mute [on|off]     Get or set mute state");
-    Serial.println("  balance <-16..16> Stereo balance (-16=L, 0=center, +16=R)");
-    Serial.println("  status            Show WiFi, audio, and persisted settings");
+    Serial.println("  ssid <name>         Set WiFi SSID");
+    Serial.println("  pass <password>     Set WiFi password");
+    Serial.println("  connect             Connect to WiFi with stored credentials");
+    Serial.println("  play [url]          Start or switch stream (URL optional: uses last saved if omitted)");
+    Serial.println("  stop                Stop current stream");
+    Serial.println("  forget              Clear persisted ssid/pass/station from NVS");
+    Serial.println("  reset               Stop stream and reset runtime WiFi session");
+    Serial.printf ("  volume [0-%d]       Get or set playback volume\r\n", AUDIO_VOLUME_STEPS);
+    Serial.println("  mute [on|off]       Get or set mute state");
+    Serial.println("  balance <-16..16>   Stereo balance (-16=L, 0=center, +16=R)");
+    Serial.println("  status              Show WiFi, audio, and persisted settings");
     if (debugHelpPrinter) {
         debugHelpPrinter();
     }
-    Serial.println("  help              Show this help");
+    Serial.println("  help                Show this help");
     Serial.println();
     Serial.println("Test stations:");
     Serial.println("  http://ice1.somafm.com/groovesalad-256-mp3");

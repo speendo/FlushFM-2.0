@@ -1,5 +1,5 @@
 # Rule: State Management
-[Status: Active | Updated: 2026-03-28]
+[Status: Active | Updated: 2026-04-18]
 **Context:** ESP32-S3 / FreeRTOS | **Goal:** Centralize system control while ensuring thread-safe; decoupled component communication
 
 ---
@@ -8,14 +8,14 @@
 ### States
 - **Orchestration:** Use a single SystemController (Core 0) as the "Single Source of Truth" to manage the following states
     - **`OFF`:** deep sleep Tier 2; WiFi dropped; ULP active (→ `software-architecture.md`)
-    - **`STARTING`:** initializing WiFi
-    - **`IDLE`:** WiFi ready; Switched Domain (Display/DAC) powered off via Relay; Light Sleep Tier 1 (→ `software-architecture.md`, `hardware.md`)
-    - **`STREAMING`:** playing audio, display on
+    - **`STARTING`:** internal init state (not a direct request target)
+    - **`READY`:** WiFi connected and audio ready; Switched Domain (Display/DAC) powered off via Relay (→ `software-architecture.md`, `hardware.md`)
+    - **`LIVE`:** playing audio, display on
     - **`ERROR`:** recoverable failure
-- **Transitions:** Use explicit event-driven triggers via callbacks, ISRs, or FreeRTOS task notifications
-- **Lifecycle Invocation:** Follow the lifecycle contract defined in `modularity.md` 
+- **Transitions:** Intents are state-independent; use explicit event-driven triggers via callbacks, ISRs, or FreeRTOS task notifications
+- **Prerequisites:** `READY` and `LIVE` require WiFi connected and audio ready; if missing, wait up to the target timeout, then enter `ERROR`
 - **Local Encapsulation:** Components must own their internal state and provide read-only access via public getters (→ `modularity.md`)
-- **Error Handling:** Clear transient error states when entering states `OFF`, `STARTING` or `IDLE` to prepare a clean restart
+- **Error Handling:** Clear transient error states when entering states `OFF`, `STARTING` or `READY` to prepare a clean restart
 
 ### Events
 - **LDR Master Trigger:** Treat the light sensor as a hardware-level interrupt; implement light sensor logic as the highest priority event

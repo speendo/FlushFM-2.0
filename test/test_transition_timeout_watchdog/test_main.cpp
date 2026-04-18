@@ -18,7 +18,7 @@ void test_timeout_hook_is_invoked_when_component_does_not_complete() {
             (void)controller.reportCompletion("WiFi", transitionId, TransitionStatus::Failed, "timeout");
         }));
 
-    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::STREAMING,
+    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::LIVE,
                                                    SystemEvent::PLAY_REQUESTED,
                                                    SystemReason::USER_REQUEST,
                                                    900));
@@ -42,7 +42,7 @@ void test_zero_timeout_is_treated_as_immediate_timeout() {
             (void)controller.reportCompletion("AudioRuntime", transitionId, TransitionStatus::Failed, "timeout");
         }));
 
-    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::STREAMING,
+    TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::LIVE,
                                                    SystemEvent::PLAY_REQUESTED,
                                                    SystemReason::USER_REQUEST,
                                                    901));

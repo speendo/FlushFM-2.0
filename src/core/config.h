@@ -51,7 +51,7 @@ static constexpr int RELAY_PIN = 21;
 // Default volume at startup (0 = mute, up to AUDIO_VOLUME_STEPS max).
 // Suitable for headphones connected directly to PCM5102A LOUT/ROUT.
 static constexpr uint8_t AUDIO_VOLUME_STEPS   = 255;  // passed to setVolumeSteps() – finer default control
-static constexpr uint8_t AUDIO_VOLUME_DEFAULT = 10;
+static constexpr uint8_t AUDIO_VOLUME_DEFAULT = 128;
 
 static_assert(AUDIO_VOLUME_STEPS >= 21 && AUDIO_VOLUME_STEPS <= 255,
 			  "AUDIO_VOLUME_STEPS must be within 21..255");

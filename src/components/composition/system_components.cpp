@@ -46,9 +46,9 @@ uint32_t invokeComponentTransition(ISystemComponent& component,
             return component.setOFF(transitionId);
         case SystemState::STARTING:
             return component.setIDLE(transitionId);
-        case SystemState::IDLE:
+        case SystemState::READY:
             return component.setIDLE(transitionId);
-        case SystemState::STREAMING:
+        case SystemState::LIVE:
             return component.setSTREAMING(transitionId);
         case SystemState::ERROR:
             return component.setERROR(transitionId);
@@ -277,6 +277,17 @@ uint32_t AudioRuntimeComponent::setIDLE(uint32_t transitionId) {
 uint32_t AudioRuntimeComponent::setSTREAMING(uint32_t transitionId) {
     startPendingTransition(true, transitionId);
     pendingErrorTarget_ = false;
+
+    char station[settings::kStationMaxLen] = {};
+    if (!settings::loadStation(station, sizeof(station)) || station[0] == '\0') {
+        completePendingTransition(TransitionStatus::Failed, "no station configured");
+        return kAudioTimeoutStreamingMs;
+    }
+
+    if (!audio_.connectToHost(station)) {
+        completePendingTransition(TransitionStatus::Failed, "audio connect failed");
+    }
+
     return kAudioTimeoutStreamingMs;
 }
 
@@ -416,26 +427,7 @@ void CliComponent::onTransitionTimeout(uint32_t transitionId) {
 void CliComponent::loop() {
     static char cmdBuf[SERIAL_CMD_BUF_SIZE];
     if (cli::readLine(cmdBuf, sizeof(cmdBuf))) {
-        // Extract command word before passing to cli::process
-        char cmd[32] = {};
-        const char* space = strchr(cmdBuf, ' ');
-        if (space) {
-            const size_t cmdLen = static_cast<size_t>(space - cmdBuf);
-            memcpy(cmd, cmdBuf, cmdLen < sizeof(cmd) - 1 ? cmdLen : sizeof(cmd) - 1);
-        } else {
-            strncpy(cmd, cmdBuf, sizeof(cmd) - 1);
-        }
-
-        // Route state-relevant commands through SystemController
-        if (strcmp(cmd, "play") == 0) {
-            system_.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
-        } else if (strcmp(cmd, "stop") == 0) {
-            system_.postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
-        } else if (strcmp(cmd, "reset") == 0) {
-            system_.postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
-        }
-
-        // Always process the command for output and validation.
+        // Process command first so transitions are posted only for valid user input.
         cli::process(cmdBuf);
     }
 }

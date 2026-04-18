@@ -55,17 +55,18 @@ void setup() {
 
     if (s_wifi.bootAutoConnectSucceeded()) {
         char station[settings::kStationMaxLen] = {};
-        if (settings::loadStation(station, sizeof(station))) {
-            PROD_LOG("Main", "Boot auto-play: starting persisted station");
-            s_audio.connectToHost(station);
-            s_system.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
-            s_system.dispatchPending();
+        if (settings::loadStation(station, sizeof(station)) && station[0] != '\0') {
+            PROD_LOG("Main", "Boot auto-play: queue PLAY request");
+            (void)s_system.postEvent(SystemEvent::PLAY_REQUESTED,
+                                     SystemReason::USER_REQUEST,
+                                     EventPolicy::BOUNDED_BLOCKING);
         }
     }
 }
 
 void loop() {
     s_system.dispatchPending();
+
     for (ISystemComponent* component : s_components) {
         component->loop();
     }

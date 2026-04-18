@@ -1,7 +1,7 @@
 # Guideline: State Management
 
 > **Status:** Active  
-> **Last updated:** 2026-03-28
+> **Last updated:** 2026-04-18
 
 ---
 
@@ -13,25 +13,23 @@ Defines how FlushFM 2.0 manages system-level state and coordinates between compo
 
 ## Rules
 
-1. **Centralized system state:** A single SystemController component owns and manages the main system state machine with states: OFF (sleeping), STARTING (initializing WiFi), IDLE (WiFi ready, non-essential peripherals off, Relay cuts power to Display/DAC), STREAMING (playing audio), ERROR (recoverable failures). Transitions are bidirectional between adjacent states as appropriate.
+1. **Centralized system state:** A single SystemController component owns and manages the main system state machine with states: OFF (sleeping), STARTING (internal init only), READY (WiFi ready, audio ready, Display/DAC off), LIVE (playing audio), ERROR (recoverable failures). `STARTING` is internal only. `READY` and `LIVE` require WiFi connected and audio ready; if prerequisites are missing, wait up to the target state's timeout, then enter `ERROR`.
 
 2. **Error recovery strategy:** Graceful degradation with limited retries. Errors are displayed on screen when possible. Light sensor OFF always takes priority and can interrupt error recovery at any time, clearing error state for fresh restart on next activation.
 
 3. **Component-local state:** Individual components own their internal state. State may be readable via public getter methods for debugging and status purposes, but other components must not directly modify another component's state.
 
-4. **Lifecycle invocation:** Follow the lifecycle contract in `human_guidelines/modularity.md` (orchestrator-owned `setup()` once; optional `loop()` only for periodic work).
+4. **State transitions are explicit:** State changes are triggered by specific events or conditions. Avoid continuous polling – use event-driven design with callbacks, interrupts, or timer expiration events where time-based transitions are needed (e.g. sleep timeout).
 
-5. **State transitions are explicit:** State changes are triggered by specific events or conditions. Avoid continuous polling – use event-driven design with callbacks, interrupts, or timer expiration events where time-based transitions are needed (e.g. sleep timeout).
+5. **No global state variables:** State is owned by specific components – avoid global variables or singletons for state storage.
 
-6. **No global state variables:** State is owned by specific components – avoid global variables or singletons for state storage.
+6. **State persistence:** Critical configuration (WiFi credentials, last station) is stored in ESP32 NVS (Non-Volatile Storage) and restored on startup.
 
-7. **State persistence:** Critical configuration (WiFi credentials, last station) is stored in ESP32 NVS (Non-Volatile Storage) and restored on startup.
+7. **State observation via callbacks:** Components that need to react to state changes register callback functions rather than polling for changes.
 
-8. **State observation via callbacks:** Components that need to react to state changes register callback functions rather than polling for changes.
+8. **Cross-task state changes must use FreeRTOS queues.** Never modify SystemController state directly from a Core 1 task – send a command via queue to Core 0 instead.
 
-9. **Cross-task state changes must use FreeRTOS queues.** Never modify SystemController state directly from a Core 1 task – send a command via queue to Core 0 instead.
-
-10. **Cross-core data sharing requires explicit synchronization.** Use FreeRTOS queues for producer-consumer message-passing (commands, notifications, events) where you need message history or sequence. Use FreeRTOS mutexes for shared state variables that represent current values (volume, connection status, current track title) – even if only one core writes to them. Choose based on whether you need message flow or shared state access.
+9. **Cross-core data sharing requires explicit synchronization.** Use FreeRTOS queues for producer-consumer message-passing (commands, notifications, events) where you need message history or sequence. Use FreeRTOS mutexes for shared state variables that represent current values (volume, connection status, current track title) – even if only one core writes to them. Choose based on whether you need message flow or shared state access.
 
 ---
 
@@ -61,8 +59,8 @@ Explicit thread safety rules (queues, mutexes) prevent race conditions when the 
 enum SystemState {
     OFF,
     STARTING,
-    IDLE,
-    STREAMING,
+    READY,
+    LIVE,
     ERROR
 };
 
@@ -99,7 +97,7 @@ public:
             case STARTING:
                 showStartupScreen();
                 break;
-            case STREAMING:
+            case LIVE:
                 showNowPlaying();
                 break;
             case ERROR:

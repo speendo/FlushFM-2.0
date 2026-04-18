@@ -159,6 +159,22 @@ void process(const char* line) {
         s_env,
         AUDIO_VOLUME_STEPS);
 
+    if (s_controller) {
+        if (strcmp(cmd, "play") == 0 && result.key == cli_output::MessageKey::CONNECTING_STREAM) {
+            (void)s_controller->postEvent(SystemEvent::PLAY_REQUESTED,
+                                          SystemReason::USER_REQUEST,
+                                          EventPolicy::BOUNDED_BLOCKING);
+        } else if (strcmp(cmd, "stop") == 0 && result.key == cli_output::MessageKey::STREAM_STOPPED) {
+            (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED,
+                                          SystemReason::USER_REQUEST,
+                                          EventPolicy::BOUNDED_BLOCKING);
+        } else if (strcmp(cmd, "reset") == 0 && result.key == cli_output::MessageKey::SESSION_RESET) {
+            (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED,
+                                          SystemReason::USER_REQUEST,
+                                          EventPolicy::BOUNDED_BLOCKING);
+        }
+    }
+
     if (result.key == cli_output::MessageKey::NONE) {
         if (!TRY_DEBUG_COMMAND(cmd, arg)) {
             result = {cli_output::MessageKey::UNKNOWN_COMMAND, cmd};

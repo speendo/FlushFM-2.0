@@ -19,6 +19,12 @@ uint32_t nowMs() {
 #endif
 }
 
+bool isIntentEvent(SystemEvent event) {
+    return event == SystemEvent::PLAY_REQUESTED ||
+           event == SystemEvent::STOP_REQUESTED ||
+           event == SystemEvent::ENTER_OFF;
+}
+
 }  // namespace
 
 SystemController::SystemController() {
@@ -39,10 +45,9 @@ void SystemController::subscribe(StateObserver observer) {
 
 bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPolicy policy) {
 #if !defined(ARDUINO)
-    (void)event;
-    (void)reason;
     (void)policy;
-    return false;
+    handleEvent(event, reason);
+    return true;
 #else
     if (!queue_) {
         return false;
@@ -66,6 +71,13 @@ bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPo
 
 void SystemController::dispatchPending() {
 #if !defined(ARDUINO)
+    const bool transitionBusy = orchestration_.active || hasActiveStateTransition_ || state_ == SystemState::STARTING;
+    if (!transitionBusy && !deferredIntentEvents_.empty()) {
+        const QueuedEvent deferred = deferredIntentEvents_.front();
+        deferredIntentEvents_.erase(deferredIntentEvents_.begin());
+        handleEvent(deferred.event, deferred.reason);
+    }
+
     checkTransitionTimeouts();
     return;
 #else
@@ -73,17 +85,36 @@ void SystemController::dispatchPending() {
         return;
     }
 
+    auto isTransitionBusy = [this]() {
+        return orchestration_.active || hasActiveStateTransition_ || state_ == SystemState::STARTING;
+    };
+
     // Process any pending critical event first (sticky fallback from queue-full condition).
     if (pendingCriticalEvent_) {
-        PROD_LOG("SystemController", "Processing pending critical event: %s", toString(pendingEvent_));
-        handleEvent(pendingEvent_, pendingReason_);
+        if (isIntentEvent(pendingEvent_) && isTransitionBusy()) {
+            deferredIntentEvents_.push_back(QueuedEvent{pendingEvent_, pendingReason_});
+        } else {
+            PROD_LOG("SystemController", "Processing pending critical event: %s", toString(pendingEvent_));
+            handleEvent(pendingEvent_, pendingReason_);
+        }
         pendingCriticalEvent_ = false;
     }
 
     // Drain normal queue.
     QueuedEvent queued{};
     while (xQueueReceive(queue_, &queued, 0) == pdTRUE) {
+        if (isIntentEvent(queued.event) && isTransitionBusy()) {
+            deferredIntentEvents_.push_back(queued);
+            continue;
+        }
+
         handleEvent(queued.event, queued.reason);
+    }
+
+    if (!isTransitionBusy() && !deferredIntentEvents_.empty()) {
+        const QueuedEvent deferred = deferredIntentEvents_.front();
+        deferredIntentEvents_.erase(deferredIntentEvents_.begin());
+        handleEvent(deferred.event, deferred.reason);
     }
 
     checkTransitionTimeouts();
@@ -304,6 +335,16 @@ bool SystemController::reportCompletion(const char* componentName,
 
         (void)finishTransition(transitionId);
         orchestration_.active = false;
+
+        if (deferredReplayEvent_ || deferredPlayAfterReadyEvent_) {
+            const bool dispatchReplay = deferredReplayEvent_;
+            const bool dispatchStartupPlay = deferredPlayAfterReadyEvent_;
+            deferredReplayEvent_ = false;
+            deferredPlayAfterReadyEvent_ = false;
+            if (dispatchReplay || dispatchStartupPlay) {
+                handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
+            }
+        }
     }
 
     return true;
@@ -383,6 +424,17 @@ bool SystemController::beginOrchestration(SystemState target,
         transitionTo(target, trigger, reason, transitionId);
         (void)finishTransition(transitionId);
         orchestration_.active = false;
+
+        if (deferredReplayEvent_ || deferredPlayAfterReadyEvent_) {
+            const bool dispatchReplay = deferredReplayEvent_;
+            const bool dispatchStartupPlay = deferredPlayAfterReadyEvent_;
+            deferredReplayEvent_ = false;
+            deferredPlayAfterReadyEvent_ = false;
+            if (dispatchReplay || dispatchStartupPlay) {
+                handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
+            }
+        }
+
         return true;
     }
 
@@ -520,60 +572,89 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
                   started ? "true" : "false");
     };
 
+    // User intents are state-independent and map directly to target states.
+    if (event == SystemEvent::ENTER_OFF) {
+        pendingReplayRequested_ = false;
+        pendingPlayAfterReady_ = false;
+        requestStateTransition(SystemState::OFF);
+        return;
+    }
+    if (event == SystemEvent::STOP_REQUESTED) {
+        pendingReplayRequested_ = false;
+        pendingPlayAfterReady_ = false;
+        if (state_ == SystemState::STARTING) {
+            return;
+        }
+        requestStateTransition(SystemState::READY);
+        return;
+    }
+    if (event == SystemEvent::PLAY_REQUESTED) {
+        if (state_ == SystemState::STARTING) {
+            pendingPlayAfterReady_ = true;
+            return;
+        }
+
+        if (state_ == SystemState::LIVE) {
+            // Keep UX responsive: replay/switch while stopping is deferred until READY is reached.
+            pendingReplayRequested_ = true;
+            requestStateTransition(SystemState::READY);
+            return;
+        }
+
+        requestStateTransition(SystemState::LIVE);
+        return;
+    }
+
     switch (state_) {
         case SystemState::OFF:
             if (event == SystemEvent::BOOT) {
+                startupWiFiReady_ = false;
+                startupAudioReady_ = false;
                 transitionTo(SystemState::STARTING, event, reason);
             }
             break;
 
         case SystemState::STARTING:
             if (event == SystemEvent::AUDIO_INIT_OK) {
-                transitionTo(SystemState::IDLE, event, reason);
+                startupAudioReady_ = true;
+                if (startupWiFiReady_) {
+                    requestStateTransition(SystemState::READY);
+                }
             } else if (event == SystemEvent::WIFI_READY) {
-                transitionTo(SystemState::IDLE, event, reason);
+                startupWiFiReady_ = true;
+                if (startupAudioReady_) {
+                    requestStateTransition(SystemState::READY);
+                }
             } else if (event == SystemEvent::COMPONENT_SETUP_FAILED) {
                 transitionTo(SystemState::ERROR, event, reason);
             } else if (event == SystemEvent::AUDIO_INIT_FAILED) {
                 transitionTo(SystemState::ERROR, event, reason);
-            } else if (event == SystemEvent::ENTER_OFF) {
-                transitionTo(SystemState::OFF, event, reason);
             }
             break;
 
-        case SystemState::IDLE:
-            if (event == SystemEvent::PLAY_REQUESTED) {
-                requestStateTransition(SystemState::STREAMING);
-            } else if (event == SystemEvent::WIFI_DISCONNECTED) {
+        case SystemState::READY:
+            if (event == SystemEvent::WIFI_DISCONNECTED) {
                 transitionTo(SystemState::ERROR, event, reason);
             } else if (event == SystemEvent::COMPONENT_SETUP_FAILED) {
                 transitionTo(SystemState::ERROR, event, reason);
             } else if (event == SystemEvent::AUDIO_INIT_FAILED) {
                 transitionTo(SystemState::ERROR, event, reason);
-            } else if (event == SystemEvent::ENTER_OFF) {
-                transitionTo(SystemState::OFF, event, reason);
             }
             break;
 
-        case SystemState::STREAMING:
-            if (event == SystemEvent::STOP_REQUESTED) {
-                requestStateTransition(SystemState::IDLE);
-            } else if (event == SystemEvent::WIFI_DISCONNECTED) {
+        case SystemState::LIVE:
+            if (event == SystemEvent::WIFI_DISCONNECTED) {
                 transitionTo(SystemState::ERROR, event, reason);
             } else if (event == SystemEvent::STREAM_LOST) {
                 transitionTo(SystemState::ERROR, event, reason);
             } else if (event == SystemEvent::AUDIO_INIT_FAILED) {
                 transitionTo(SystemState::ERROR, event, reason);
-            } else if (event == SystemEvent::ENTER_OFF) {
-                transitionTo(SystemState::OFF, event, reason);
             }
             break;
 
         case SystemState::ERROR:
             if (event == SystemEvent::RECOVER) {
-                transitionTo(SystemState::IDLE, event, reason);
-            } else if (event == SystemEvent::ENTER_OFF) {
-                transitionTo(SystemState::OFF, event, reason);
+                transitionTo(SystemState::READY, event, reason);
             }
             break;
     }
@@ -589,8 +670,9 @@ void SystemController::transitionTo(SystemState next, SystemEvent trigger, Syste
 
     if (next == SystemState::ERROR) {
         transientError_ = true;
+        pendingPlayAfterReady_ = false;
     }
-    if (next == SystemState::OFF || next == SystemState::STARTING || next == SystemState::IDLE) {
+    if (next == SystemState::OFF || next == SystemState::STARTING || next == SystemState::READY) {
         transientError_ = false;
     }
 
@@ -604,6 +686,16 @@ void SystemController::transitionTo(SystemState next, SystemEvent trigger, Syste
     for (const auto& observer : observers_) {
         observer(next);
     }
+
+    if (previous == SystemState::LIVE && next == SystemState::READY && pendingReplayRequested_) {
+        pendingReplayRequested_ = false;
+        deferredReplayEvent_ = true;
+    }
+
+    if (previous == SystemState::STARTING && next == SystemState::READY && pendingPlayAfterReady_) {
+        pendingPlayAfterReady_ = false;
+        deferredPlayAfterReadyEvent_ = true;
+    }
 }
 
 const char* toString(SystemState state) {
@@ -612,10 +704,10 @@ const char* toString(SystemState state) {
             return "OFF";
         case SystemState::STARTING:
             return "STARTING";
-        case SystemState::IDLE:
-            return "IDLE";
-        case SystemState::STREAMING:
-            return "STREAMING";
+        case SystemState::READY:
+            return "READY";
+        case SystemState::LIVE:
+            return "LIVE";
         case SystemState::ERROR:
             return "ERROR";
     }
