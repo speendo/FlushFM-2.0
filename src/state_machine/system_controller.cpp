@@ -71,7 +71,7 @@ bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPo
 
 void SystemController::dispatchPending() {
 #if !defined(ARDUINO)
-    const bool transitionBusy = orchestration_.active || hasActiveStateTransition_ || state_ == SystemState::STARTING;
+    const bool transitionBusy = orchestration_.active || hasActiveStateTransition_ || state_ == SystemState::BOOTING || state_ == SystemState::CONNECTING;
     if (!transitionBusy && !deferredIntentEvents_.empty()) {
         const QueuedEvent deferred = deferredIntentEvents_.front();
         deferredIntentEvents_.erase(deferredIntentEvents_.begin());
@@ -86,7 +86,7 @@ void SystemController::dispatchPending() {
     }
 
     auto isTransitionBusy = [this]() {
-        return orchestration_.active || hasActiveStateTransition_ || state_ == SystemState::STARTING;
+        return orchestration_.active || hasActiveStateTransition_ || state_ == SystemState::BOOTING || state_ == SystemState::CONNECTING;
     };
 
     // Process any pending critical event first (sticky fallback from queue-full condition).
@@ -576,21 +576,30 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
     if (event == SystemEvent::ENTER_OFF) {
         pendingReplayRequested_ = false;
         pendingPlayAfterReady_ = false;
-        requestStateTransition(SystemState::OFF);
+        requestStateTransition(SystemState::SLEEP);
         return;
     }
     if (event == SystemEvent::STOP_REQUESTED) {
         pendingReplayRequested_ = false;
         pendingPlayAfterReady_ = false;
-        if (state_ == SystemState::STARTING) {
+        if (state_ == SystemState::CONNECTING) {
             return;
         }
         requestStateTransition(SystemState::READY);
         return;
     }
     if (event == SystemEvent::PLAY_REQUESTED) {
-        if (state_ == SystemState::STARTING) {
+        if (state_ == SystemState::CONNECTING) {
             pendingPlayAfterReady_ = true;
+            return;
+        }
+
+        if (state_ == SystemState::SLEEP) {
+            pendingPlayAfterReady_ = true;
+            transitionTo(SystemState::CONNECTING, event, reason);
+            if (startupWiFiReady_ && startupAudioReady_) {
+                requestStateTransition(SystemState::READY);
+            }
             return;
         }
 
@@ -606,15 +615,28 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
     }
 
     switch (state_) {
-        case SystemState::OFF:
+        case SystemState::BOOTING:
             if (event == SystemEvent::BOOT) {
                 startupWiFiReady_ = false;
                 startupAudioReady_ = false;
-                transitionTo(SystemState::STARTING, event, reason);
+                transitionTo(SystemState::SLEEP, event, reason);
             }
             break;
 
-        case SystemState::STARTING:
+        case SystemState::SLEEP:
+            // Keep readiness flags up to date while idle so PLAY can immediately continue.
+            if (event == SystemEvent::WIFI_READY) {
+                startupWiFiReady_ = true;
+            } else if (event == SystemEvent::AUDIO_INIT_OK) {
+                startupAudioReady_ = true;
+            } else if (event == SystemEvent::WIFI_DISCONNECTED) {
+                startupWiFiReady_ = false;
+            } else if (event == SystemEvent::AUDIO_INIT_FAILED) {
+                startupAudioReady_ = false;
+            }
+            break;
+
+        case SystemState::CONNECTING:
             if (event == SystemEvent::AUDIO_INIT_OK) {
                 startupAudioReady_ = true;
                 if (startupWiFiReady_) {
@@ -672,7 +694,7 @@ void SystemController::transitionTo(SystemState next, SystemEvent trigger, Syste
         transientError_ = true;
         pendingPlayAfterReady_ = false;
     }
-    if (next == SystemState::OFF || next == SystemState::STARTING || next == SystemState::READY) {
+    if (next == SystemState::SLEEP || next == SystemState::CONNECTING || next == SystemState::READY) {
         transientError_ = false;
     }
 
@@ -692,7 +714,7 @@ void SystemController::transitionTo(SystemState next, SystemEvent trigger, Syste
         deferredReplayEvent_ = true;
     }
 
-    if (previous == SystemState::STARTING && next == SystemState::READY && pendingPlayAfterReady_) {
+    if (previous == SystemState::CONNECTING && next == SystemState::READY && pendingPlayAfterReady_) {
         pendingPlayAfterReady_ = false;
         deferredPlayAfterReadyEvent_ = true;
     }
@@ -700,10 +722,12 @@ void SystemController::transitionTo(SystemState next, SystemEvent trigger, Syste
 
 const char* toString(SystemState state) {
     switch (state) {
-        case SystemState::OFF:
-            return "OFF";
-        case SystemState::STARTING:
-            return "STARTING";
+        case SystemState::BOOTING:
+            return "BOOTING";
+        case SystemState::SLEEP:
+            return "SLEEP";
+        case SystemState::CONNECTING:
+            return "CONNECTING";
         case SystemState::READY:
             return "READY";
         case SystemState::LIVE:

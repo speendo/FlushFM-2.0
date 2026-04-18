@@ -53,15 +53,12 @@ void setup() {
         s_system.dispatchPending();
     }
 
-    if (s_wifi.bootAutoConnectSucceeded()) {
-        char station[settings::kStationMaxLen] = {};
-        if (settings::loadStation(station, sizeof(station)) && station[0] != '\0') {
-            PROD_LOG("Main", "Boot auto-play: queue PLAY request");
-            (void)s_system.postEvent(SystemEvent::PLAY_REQUESTED,
-                                     SystemReason::USER_REQUEST,
-                                     EventPolicy::BOUNDED_BLOCKING);
-        }
-    }
+    // Boot auto-play: queue PLAY request unconditionally.
+    // Controller will defer it until CONNECTING/READY is reached.
+    PROD_LOG("Main", "Boot auto-play: queue PLAY request");
+    (void)s_system.postEvent(SystemEvent::PLAY_REQUESTED,
+                             SystemReason::USER_REQUEST,
+                             EventPolicy::BOUNDED_BLOCKING);
 }
 
 void loop() {

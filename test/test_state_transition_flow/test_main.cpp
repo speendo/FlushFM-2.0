@@ -38,53 +38,57 @@ struct TransitionHooksFixture {
     }
 };
 
-void test_boot_transitions_off_to_starting() {
+void test_boot_transitions_booting_to_sleep() {
     TransitionHooksFixture fixture;
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
 
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::STARTING), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 }
 
-void test_starting_waits_for_both_ready_signals_audio_first() {
+void test_connecting_waits_for_both_ready_signals_audio_first() {
     TransitionHooksFixture fixture;
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::STARTING), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
 
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
 }
 
-void test_starting_waits_for_both_ready_signals_wifi_first() {
+void test_connecting_waits_for_both_ready_signals_wifi_first() {
     TransitionHooksFixture fixture;
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::STARTING), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
 
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
 }
 
-void test_play_requested_during_starting_is_deferred_until_ready() {
+void test_play_requested_during_connecting_is_deferred_until_ready() {
     TransitionHooksFixture fixture;
     fixture.install();
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::STARTING), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::STARTING), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
 
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::STARTING), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
 
     fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
@@ -94,12 +98,33 @@ void test_play_requested_during_starting_is_deferred_until_ready() {
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 }
 
-void test_stop_requested_during_starting_cancels_deferred_play() {
+void test_play_requested_uses_readiness_signals_received_while_sleeping() {
+    TransitionHooksFixture fixture;
+    fixture.install();
+
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
+
+    // Signals can arrive before autoplay/user play request while system is idle.
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
+
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
+
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
+
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
+}
+
+void test_stop_requested_during_connecting_cancels_deferred_play() {
     TransitionHooksFixture fixture;
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::STARTING), static_cast<int>(fixture.controller.state()));
-
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST));
 
@@ -110,31 +135,33 @@ void test_stop_requested_during_starting_cancels_deferred_play() {
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
 }
 
-void test_enter_off_during_starting_cancels_deferred_play() {
+void test_enter_off_during_connecting_cancels_deferred_play() {
     TransitionHooksFixture fixture;
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::STARTING), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::ENTER_OFF, SystemReason::USER_REQUEST));
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::OFF), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
 
     TEST_ASSERT_FALSE(fixture.controller.isOrchestrationActive());
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::OFF), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 }
 
-void test_starting_transitions_to_error_on_init_failure_events() {
+void test_connecting_transitions_to_error_on_init_failure_events() {
     TransitionHooksFixture fixtureA;
     TEST_ASSERT_TRUE(fixtureA.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_TRUE(fixtureA.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixtureA.controller.postEvent(SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::COMPONENT_SETUP));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR), static_cast<int>(fixtureA.controller.state()));
 
     TransitionHooksFixture fixtureB;
     TEST_ASSERT_TRUE(fixtureB.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_TRUE(fixtureB.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixtureB.controller.postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::AUDIO_TASK_INIT_FAILED));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR), static_cast<int>(fixtureB.controller.state()));
 }
@@ -144,8 +171,22 @@ void test_play_requested_requires_orchestration_completion_before_streaming() {
     fixture.install();
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
+
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
+
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
+
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
+
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST));
+    fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
@@ -164,9 +205,11 @@ void test_stop_requested_requires_orchestration_completion_before_idle() {
     fixture.install();
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    fixture.completeAllActive();
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
@@ -186,9 +229,11 @@ void test_play_requested_while_streaming_restarts_after_idle_transition() {
     fixture.install();
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    fixture.completeAllActive();
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
@@ -207,14 +252,16 @@ void test_play_requested_while_streaming_restarts_after_idle_transition() {
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 }
 
-void test_enter_off_requires_orchestration_completion_before_off() {
+void test_enter_off_requires_orchestration_completion_before_sleep() {
     TransitionHooksFixture fixture;
     fixture.install();
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    fixture.completeAllActive();
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
@@ -226,35 +273,45 @@ void test_enter_off_requires_orchestration_completion_before_off() {
     fixture.completeAllActive();
 
     TEST_ASSERT_FALSE(fixture.controller.isOrchestrationActive());
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::OFF), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 }
 
-void test_play_requested_while_off_transitions_directly_to_streaming() {
+void test_play_requested_while_sleep_transitions_directly_to_streaming() {
     TransitionHooksFixture fixture;
     fixture.install();
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    fixture.completeAllActive();
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
-    // Transition to OFF
+    // Transition to SLEEP
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::ENTER_OFF, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
     fixture.completeAllActive();
     TEST_ASSERT_FALSE(fixture.controller.isOrchestrationActive());
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::OFF), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 
-    // Now test: PLAY_REQUESTED while OFF should transition OFF -> STREAMING
+    // Now test: PLAY_REQUESTED while SLEEP should transition SLEEP -> STREAMING
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
 
-    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::OFF), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_FALSE(fixture.controller.isOrchestrationActive());
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
 
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
+
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
+
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     fixture.completeAllActive();
 
     TEST_ASSERT_FALSE(fixture.controller.isOrchestrationActive());
@@ -266,8 +323,14 @@ void test_error_state_transitions() {
     fixture.install();
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
+    fixture.completeAllActive();
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
+
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::AUDIO_TASK_INIT_FAILED));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR), static_cast<int>(fixture.controller.state()));
 
@@ -282,25 +345,26 @@ void test_error_state_transitions() {
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR), static_cast<int>(fixture.controller.state()));
 
     fixture.completeAllActive();
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::OFF), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 }
 
 }  // namespace
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_boot_transitions_off_to_starting);
-    RUN_TEST(test_starting_waits_for_both_ready_signals_audio_first);
-    RUN_TEST(test_starting_waits_for_both_ready_signals_wifi_first);
-    RUN_TEST(test_play_requested_during_starting_is_deferred_until_ready);
-    RUN_TEST(test_stop_requested_during_starting_cancels_deferred_play);
-    RUN_TEST(test_enter_off_during_starting_cancels_deferred_play);
-    RUN_TEST(test_starting_transitions_to_error_on_init_failure_events);
+    RUN_TEST(test_boot_transitions_booting_to_sleep);
+    RUN_TEST(test_connecting_waits_for_both_ready_signals_audio_first);
+    RUN_TEST(test_connecting_waits_for_both_ready_signals_wifi_first);
+    RUN_TEST(test_play_requested_during_connecting_is_deferred_until_ready);
+    RUN_TEST(test_play_requested_uses_readiness_signals_received_while_sleeping);
+    RUN_TEST(test_stop_requested_during_connecting_cancels_deferred_play);
+    RUN_TEST(test_enter_off_during_connecting_cancels_deferred_play);
+    RUN_TEST(test_connecting_transitions_to_error_on_init_failure_events);
     RUN_TEST(test_play_requested_requires_orchestration_completion_before_streaming);
     RUN_TEST(test_stop_requested_requires_orchestration_completion_before_idle);
     RUN_TEST(test_play_requested_while_streaming_restarts_after_idle_transition);
-    RUN_TEST(test_enter_off_requires_orchestration_completion_before_off);
-    RUN_TEST(test_play_requested_while_off_transitions_directly_to_streaming);
+    RUN_TEST(test_enter_off_requires_orchestration_completion_before_sleep);
+    RUN_TEST(test_play_requested_while_sleep_transitions_directly_to_streaming);
     RUN_TEST(test_error_state_transitions);
     return UNITY_END();
 }

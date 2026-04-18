@@ -42,9 +42,11 @@ uint32_t invokeComponentTransition(ISystemComponent& component,
                                    SystemState target,
                                    uint32_t transitionId) {
     switch (target) {
-        case SystemState::OFF:
+        case SystemState::BOOTING:
             return component.setOFF(transitionId);
-        case SystemState::STARTING:
+        case SystemState::SLEEP:
+            return component.setOFF(transitionId);
+        case SystemState::CONNECTING:
             return component.setIDLE(transitionId);
         case SystemState::READY:
             return component.setIDLE(transitionId);

@@ -21,8 +21,9 @@ constexpr TickType_t pdMS_TO_TICKS(uint32_t milliseconds) { return milliseconds;
 #include "component_types.h"
 
 enum class SystemState {
-    OFF,
-    STARTING,
+    BOOTING,
+    SLEEP,
+    CONNECTING,
     READY,
     LIVE,
     ERROR,
@@ -141,14 +142,14 @@ private:
 
     struct StateTransitionInfo {
         uint32_t transitionId = 0;
-        SystemState from = SystemState::OFF;
-        SystemState target = SystemState::OFF;
+        SystemState from = SystemState::BOOTING;
+        SystemState target = SystemState::BOOTING;
     };
 
     struct OrchestrationContext {
         bool active = false;
         uint32_t transitionId = 0;
-        SystemState target = SystemState::OFF;
+        SystemState target = SystemState::BOOTING;
         SystemEvent trigger = SystemEvent::BOOT;
         SystemReason reason = SystemReason::NONE;
         bool requiredFailure = false;
@@ -158,7 +159,7 @@ private:
     void transitionTo(SystemState next, SystemEvent trigger, SystemReason reason, uint32_t transitionId = 0);
     void checkTransitionTimeouts();
 
-    SystemState state_ = SystemState::OFF;
+    SystemState state_ = SystemState::BOOTING;
     bool transientError_ = false;
     QueueHandle_t queue_ = nullptr;
     std::vector<QueuedEvent> deferredIntentEvents_{};

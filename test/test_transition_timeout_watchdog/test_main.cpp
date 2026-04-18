@@ -10,6 +10,9 @@ namespace {
 void test_timeout_hook_is_invoked_when_component_does_not_complete() {
     SystemController controller;
 
+    TEST_ASSERT_TRUE(controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(controller.state()));
+
     TEST_ASSERT_TRUE(controller.registerComponent("WiFi", true));
     TEST_ASSERT_TRUE(controller.setComponentTransitionHooks(
         "WiFi",
@@ -33,6 +36,9 @@ void test_timeout_hook_is_invoked_when_component_does_not_complete() {
 
 void test_zero_timeout_is_treated_as_immediate_timeout() {
     SystemController controller;
+
+    TEST_ASSERT_TRUE(controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(controller.state()));
 
     TEST_ASSERT_TRUE(controller.registerComponent("AudioRuntime", true));
     TEST_ASSERT_TRUE(controller.setComponentTransitionHooks(

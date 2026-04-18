@@ -13,7 +13,7 @@ Defines how FlushFM 2.0 manages system-level state and coordinates between compo
 
 ## Rules
 
-1. **Centralized system state:** A single SystemController component owns and manages the main system state machine with states: OFF (sleeping), STARTING (internal init only), READY (WiFi ready, audio ready, Display/DAC off), LIVE (playing audio), ERROR (recoverable failures). `STARTING` is internal only. `READY` and `LIVE` require WiFi connected and audio ready; if prerequisites are missing, wait up to the target state's timeout, then enter `ERROR`.
+1. **Centralized system state:** A single SystemController component owns and manages the main system state machine with states: BOOTING (initial controller initialization), SLEEP (ready, peripherals off), CONNECTING (WiFi/Audio setup in progress), READY (WiFi ready, audio ready, Display/DAC off), LIVE (playing audio), ERROR (recoverable failures). `BOOTING` and `CONNECTING` are internal only and cannot be requested directly. `READY` and `LIVE` require WiFi connected and audio ready; if prerequisites are missing, wait up to the target state's timeout, then enter `ERROR`.
 
 2. **Error recovery strategy:** Graceful degradation with limited retries. Errors are displayed on screen when possible. Light sensor OFF always takes priority and can interrupt error recovery at any time, clearing error state for fresh restart on next activation.
 
@@ -57,8 +57,9 @@ Explicit thread safety rules (queues, mutexes) prevent race conditions when the 
 ```cpp
 // Good: Centralized state management with callbacks
 enum SystemState {
-    OFF,
-    STARTING,
+    BOOTING,
+    SLEEP,
+    CONNECTING,
     READY,
     LIVE,
     ERROR
@@ -66,7 +67,7 @@ enum SystemState {
 
 class SystemController {
 private:
-    SystemState currentState_ = OFF;
+    SystemState currentState_ = BOOTING;
     std::vector<std::function<void(SystemState)>> stateCallbacks_;
     
 public:
@@ -94,7 +95,7 @@ class DisplayManager {
 public:
     void onSystemStateChanged(SystemState state) {
         switch (state) {
-            case STARTING:
+            case CONNECTING:
                 showStartupScreen();
                 break;
             case LIVE:
