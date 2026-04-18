@@ -145,6 +145,7 @@ bool WiFiComponent::setup() {
 
 uint32_t WiFiComponent::setOFF(uint32_t transitionId) {
     startPendingTransition(false, transitionId);
+    wifi_manager::disconnect();
     completePendingTransition(TransitionStatus::Completed, nullptr);
     return kWiFiTimeoutOffMs;
 }

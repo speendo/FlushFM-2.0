@@ -6,6 +6,7 @@
 
 #include "cli_command_logic.h"
 #include "components/cli/cli_output.h"
+#include "component_types.h"
 #include "core/config.h"
 #include "settings.h"
 #include "state_machine/system_controller.h"
@@ -98,6 +99,89 @@ public:
 
 CliEnvironment s_env;
 
+const char* lifecycleLabel(ComponentLifecycleStatus status) {
+    switch (status) {
+        case ComponentLifecycleStatus::Ready:
+            return "OK";
+        case ComponentLifecycleStatus::Failed:
+            return "FAILED";
+        case ComponentLifecycleStatus::Disabled:
+            return "DISABLED";
+        case ComponentLifecycleStatus::Unknown:
+            return "UNKNOWN";
+    }
+
+    return "UNKNOWN";
+}
+
+const char* wifiModeLabel() {
+    switch (wifi_manager::state()) {
+        case wifi_manager::WiFiState::CONNECTED:
+            return "connected";
+        case wifi_manager::WiFiState::CONNECTING:
+            return "connecting";
+        case wifi_manager::WiFiState::DISCONNECTED:
+            return "disconnected";
+        case wifi_manager::WiFiState::ERROR:
+            return "error";
+    }
+
+    return "unknown";
+}
+
+const char* audioModeLabel() {
+    if (!s_audio) {
+        return "unknown";
+    }
+
+    switch (s_audio->runtimeState()) {
+        case IAudioPlayer::RuntimeState::IDLE:
+            return "idle";
+        case IAudioPlayer::RuntimeState::CONNECTING:
+            return "connecting";
+        case IAudioPlayer::RuntimeState::STREAMING:
+            return "streaming";
+        case IAudioPlayer::RuntimeState::ERROR:
+            return "error";
+    }
+
+    return "unknown";
+}
+
+const char* componentModeLabel(const char* name) {
+    if (strcmp(name, "WiFi") == 0) {
+        return wifiModeLabel();
+    }
+    if (strcmp(name, "AudioRuntime") == 0) {
+        return audioModeLabel();
+    }
+    if (strcmp(name, "CLI") == 0) {
+        return "active";
+    }
+    if (strcmp(name, "BoardInfo") == 0) {
+        return "active";
+    }
+
+    return "n/a";
+}
+
+void printComponentStatusSummary(const SystemController& controller) {
+    const char* names[] = {"WiFi", "AudioRuntime", "CLI", "BoardInfo"};
+
+    Serial.printf("System:     %s\r\n", toString(controller.state()));
+    Serial.println("Components:");
+    for (const char* name : names) {
+        const ComponentLifecycleStatus status = controller.getComponentStatus(name);
+        const bool required = controller.isComponentRequired(name);
+        Serial.printf("  %-12s %-8s mode=%-12s (%s)\r\n",
+                      name,
+                      lifecycleLabel(status),
+                      componentModeLabel(name),
+                      required ? "required" : "optional");
+    }
+    Serial.println();
+}
+
 } // namespace
 
 static void printDebugHelp() {
@@ -182,6 +266,10 @@ void process(const char* line) {
     }
 
     cli_output::render(result, &printDebugHelp);
+
+    if (result.key == cli_output::MessageKey::STATUS && s_controller) {
+        printComponentStatusSummary(*s_controller);
+    }
 }
 
 void printHelp() {

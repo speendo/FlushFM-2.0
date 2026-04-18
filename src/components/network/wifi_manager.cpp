@@ -110,6 +110,18 @@ void connect() {
     }
 }
 
+void disconnect() {
+    s_suppressReconnectOnce = (s_state == WiFiState::CONNECTED ||
+                               s_state == WiFiState::CONNECTING ||
+                               WiFi.status() == WL_CONNECTED);
+    WiFi.disconnect(true, false);
+
+    s_connected = false;
+    s_state = WiFiState::DISCONNECTED;
+
+    PROD_LOG(kLogSource, "WiFi runtime disconnect requested");
+}
+
 void resetSession() {
     s_suppressReconnectOnce = (s_state == WiFiState::CONNECTED ||
                                s_state == WiFiState::CONNECTING ||
