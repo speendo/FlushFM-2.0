@@ -10,9 +10,9 @@
 class IAudioPlayer {
 public:
     enum class RuntimeState {
-        IDLE,
+        SLEEP,
         CONNECTING,
-        STREAMING,
+        LIVE,
         ERROR,
     };
 

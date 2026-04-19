@@ -56,7 +56,7 @@ public:
     uint8_t currentVolume = 7;
     int8_t currentBalance = 0;
     bool currentMute = false;
-    RuntimeState currentRuntimeState = RuntimeState::IDLE;
+    RuntimeState currentRuntimeState = RuntimeState::SLEEP;
 };
 
 class FakeEnvironment final : public cli_command_logic::IEnvironment {
@@ -105,7 +105,7 @@ public:
     }
 
     cli_command_logic::WiFiConnectivity connectivity = cli_command_logic::WiFiConnectivity::DISCONNECTED;
-    cli_command_logic::AudioState currentAudioState = cli_command_logic::AudioState::IDLE;
+    cli_command_logic::AudioState currentAudioState = cli_command_logic::AudioState::SLEEP;
     int setSsidCalls = 0;
     int setPassCalls = 0;
     int connectWiFiCalls = 0;
@@ -307,7 +307,7 @@ void test_status_shows_connected_and_streaming_state() {
     FakeAudioPlayer audio;
     FakeEnvironment env;
     env.connectivity = cli_command_logic::WiFiConnectivity::CONNECTED;
-    env.currentAudioState = cli_command_logic::AudioState::STREAMING;
+    env.currentAudioState = cli_command_logic::AudioState::LIVE;
     env.persistedStation = "http://example.com/stream.mp3";
 
     const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
@@ -319,7 +319,7 @@ void test_status_shows_connected_and_streaming_state() {
 
     TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::STATUS), static_cast<int>(result.key));
     TEST_ASSERT_EQUAL(1, result.aux & 0x01);  // WiFi connected (bit 0)
-    TEST_ASSERT_EQUAL(2, (result.aux >> 1) & 0x03);  // Audio STREAMING (bits 1-2 = 2)
+    TEST_ASSERT_EQUAL(2, (result.aux >> 1) & 0x03);  // Audio LIVE (bits 1-2 = 2)
     TEST_ASSERT_EQUAL_STRING("http://example.com/stream.mp3", result.text);
 }
 
@@ -327,7 +327,7 @@ void test_status_shows_disconnected_and_idle_state() {
     FakeAudioPlayer audio;
     FakeEnvironment env;
     env.connectivity = cli_command_logic::WiFiConnectivity::DISCONNECTED;
-    env.currentAudioState = cli_command_logic::AudioState::IDLE;
+    env.currentAudioState = cli_command_logic::AudioState::SLEEP;
     env.persistedStation = nullptr;
 
     const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
@@ -339,7 +339,7 @@ void test_status_shows_disconnected_and_idle_state() {
 
     TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::STATUS), static_cast<int>(result.key));
     TEST_ASSERT_EQUAL(0, result.aux & 0x01);  // WiFi disconnected
-    TEST_ASSERT_EQUAL(0, (result.aux >> 1) & 0x03);  // Audio IDLE
+    TEST_ASSERT_EQUAL(0, (result.aux >> 1) & 0x03);  // Audio SLEEP
     TEST_ASSERT_EQUAL_STRING("", result.text);
 }
 

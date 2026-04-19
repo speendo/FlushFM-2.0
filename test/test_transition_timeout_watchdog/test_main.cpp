@@ -28,7 +28,7 @@ void test_timeout_hook_is_invoked_when_component_does_not_complete() {
     TEST_ASSERT_TRUE(controller.isOrchestrationActive());
 
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    controller.dispatchPending();
+    controller.processEventQueue();
 
     TEST_ASSERT_FALSE(controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR), static_cast<int>(controller.state()));
@@ -52,7 +52,7 @@ void test_zero_timeout_is_treated_as_immediate_timeout() {
                                                    SystemEvent::PLAY_REQUESTED,
                                                    SystemReason::USER_REQUEST,
                                                    901));
-    controller.dispatchPending();
+    controller.processEventQueue();
 
     TEST_ASSERT_FALSE(controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR), static_cast<int>(controller.state()));

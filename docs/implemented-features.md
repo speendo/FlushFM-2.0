@@ -41,7 +41,7 @@
 ## State-Machine Hardening (US-0004a to US-0004f)
 
 - Event-driven state ownership centralized in `SystemController`
-- Clear transition handling for OFF, STARTING, IDLE, STREAMING, and ERROR
+- Clear transition handling for BOOTING, SLEEP, CONNECTING, LIVE, and ERROR
 - Observer-based architecture prepared for additional components (for example display and LED)
 - Runtime behavior aligned with resilience goals for reconnect and restart scenarios
 
@@ -58,8 +58,8 @@
 - Component watchdogs are driven by per-component timeout values returned from `setXXX(transitionId)`; timeout triggers `onTransitionTimeout(transitionId)` and failure reporting
 - Stale and duplicate completion reports are ignored safely using in-flight transition ID matching
 - State transition logging now includes transition IDs for traceability in debug/production logs
-- Audio stop-like transitions complete only after runtime confirms stream teardown (`IDLE`), not immediately after stop request
-- Debug builds provide manual orchestration trigger command `transition <idle|streaming|off|error>` for serial transition testing
+- Audio stop-like transitions complete only after runtime confirms stream teardown (`SLEEP`), not immediately after stop request
+- Debug builds provide manual orchestration trigger command `transition <ready|live|sleep|error>` for serial transition testing
 
 ## Runtime Logging Cleanup (US-0010)
 

@@ -11,7 +11,7 @@
 - **Light Sensor:** Connect TEMT6000 analog sensor to ADC1 pins only
 - **Power Isolation:** Use a physical relay to switch VCC for the "Switched Domain"
 - **Domain Mapping:** Always-On (MCU, WiFi, Sensor, Relay); Switched (Display, Audio)
-- **Switching Logic:** Physically disconnect the Switched Domain during idle/off states to achieve zero standby current for peripherals (→ `state-management.md`: IDLE state)
+- **Switching Logic:** Physically disconnect the Switched Domain during sleep states to achieve zero standby current for peripherals (→ `state-management.md`: `SLEEP` state)
 
 ## 2. Constraints & Exceptions
 - **Limit:** Use ADC1 pins for the TEMT6000 (ADC2 is unavailable when WiFi is active)

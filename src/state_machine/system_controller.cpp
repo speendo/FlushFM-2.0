@@ -1,12 +1,19 @@
 #include "state_machine/system_controller.h"
 
-#include <chrono>
 #include <cstring>
 #include <utility>
+
+#if !defined(ARDUINO)
+#include <chrono>
+#else
+#include <esp_system.h>
+#endif
 
 #include "core/debug.h"
 
 namespace {
+
+constexpr const char* kLogSource = "SystemController";
 
 uint32_t nowMs() {
 #if defined(ARDUINO)
@@ -22,7 +29,7 @@ uint32_t nowMs() {
 bool isIntentEvent(SystemEvent event) {
     return event == SystemEvent::PLAY_REQUESTED ||
            event == SystemEvent::STOP_REQUESTED ||
-           event == SystemEvent::ENTER_OFF;
+           event == SystemEvent::ENTER_SLEEP;
 }
 
 }  // namespace
@@ -30,7 +37,11 @@ bool isIntentEvent(SystemEvent event) {
 SystemController::SystemController() {
 #if defined(ARDUINO)
     queue_ = xQueueCreate(16, sizeof(QueuedEvent));
+    if (!queue_) {
+        ERROR_LOG(kLogSource, "Critical: event queue allocation failed; state-machine event processing is unavailable");
+    }
 #else
+    // Native/host builds do not use a FreeRTOS queue; postEvent() dispatches directly.
     queue_ = nullptr;
 #endif
 }
@@ -50,6 +61,9 @@ bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPo
     return true;
 #else
     if (!queue_) {
+        ERROR_LOG(kLogSource, "Critical: event queue missing in postEvent(); restarting")
+        delay(50);
+        esp_restart();
         return false;
     }
     const QueuedEvent queued{event, reason};
@@ -58,8 +72,8 @@ bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPo
     const bool success = xQueueSend(queue_, &queued, timeout) == pdTRUE;
     
     if (!success && policy == EventPolicy::BOUNDED_BLOCKING) {
-        // Critical event lost: set sticky flag and log for recovery in dispatchPending().
-        ERROR_LOG("SystemController", "Event queue full; critical event %s will retry on next dispatch", toString(event));
+        // Critical event lost: set sticky flag and log for recovery in processEventQueue().
+        ERROR_LOG(kLogSource, "Event queue full; critical event %s will retry on next dispatch", toString(event));
         pendingCriticalEvent_ = true;
         pendingEvent_ = event;
         pendingReason_ = reason;
@@ -69,7 +83,7 @@ bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPo
 #endif
 }
 
-void SystemController::dispatchPending() {
+void SystemController::processEventQueue() {
 #if !defined(ARDUINO)
     const bool transitionBusy = orchestration_.active || hasActiveStateTransition_ || state_ == SystemState::BOOTING || state_ == SystemState::CONNECTING;
     if (!transitionBusy && !deferredIntentEvents_.empty()) {
@@ -82,6 +96,9 @@ void SystemController::dispatchPending() {
     return;
 #else
     if (!queue_) {
+        ERROR_LOG(kLogSource, "Critical: event queue missing in processEventQueue(); restarting");
+        delay(50);
+        esp_restart();
         return;
     }
 
@@ -94,7 +111,7 @@ void SystemController::dispatchPending() {
         if (isIntentEvent(pendingEvent_) && isTransitionBusy()) {
             deferredIntentEvents_.push_back(QueuedEvent{pendingEvent_, pendingReason_});
         } else {
-            PROD_LOG("SystemController", "Processing pending critical event: %s", toString(pendingEvent_));
+            PROD_LOG(kLogSource, "Processing pending critical event: %s", toString(pendingEvent_));
             handleEvent(pendingEvent_, pendingReason_);
         }
         pendingCriticalEvent_ = false;
@@ -128,7 +145,7 @@ std::string SystemController::normalizeComponentName(const char* name) {
 
     std::string normalized{name};
     if (normalized.size() > kMaxComponentNameLen) {
-        ERROR_LOG("SystemController", "Component name truncated to %lu chars", static_cast<unsigned long>(kMaxComponentNameLen));
+        ERROR_LOG(kLogSource, "Component name truncated to %lu chars", static_cast<unsigned long>(kMaxComponentNameLen));
         normalized.resize(kMaxComponentNameLen);
     }
     return normalized;
@@ -146,7 +163,7 @@ void SystemController::copyFailureReason(char* destination, size_t destinationSi
 
     const size_t reasonLength = std::strlen(reason);
     if (reasonLength >= destinationSize) {
-        ERROR_LOG("SystemController", "Failure reason truncated to %lu chars", static_cast<unsigned long>(destinationSize - 1));
+        ERROR_LOG(kLogSource, "Failure reason truncated to %lu chars", static_cast<unsigned long>(destinationSize - 1));
     }
 
     std::strncpy(destination, reason, destinationSize - 1);
@@ -156,7 +173,7 @@ void SystemController::copyFailureReason(char* destination, size_t destinationSi
 bool SystemController::registerComponent(const char* name, bool isRequired) {
     const std::string normalizedName = normalizeComponentName(name);
     if (normalizedName.empty()) {
-        ERROR_LOG("SystemController", "Rejected component registration with empty or null name");
+        ERROR_LOG(kLogSource, "Rejected component registration with empty or null name");
         return false;
     }
 
@@ -168,7 +185,7 @@ bool SystemController::registerComponent(const char* name, bool isRequired) {
         copyFailureReason(it->second.lastFailureReason, sizeof(it->second.lastFailureReason), nullptr);
     }
 
-    PROD_LOG("SystemController", "Registered component %s (required=%s)",
+    PROD_LOG(kLogSource, "Registered component %s (required=%s)",
              normalizedName.c_str(), isRequired ? "true" : "false");
     return true;
 }
@@ -178,17 +195,17 @@ bool SystemController::setComponentTransitionHooks(const char* name,
                                                    TransitionTimeoutHook timeoutHook) {
     const std::string normalizedName = normalizeComponentName(name);
     if (normalizedName.empty()) {
-        ERROR_LOG("SystemController", "Rejected transition hooks for empty or null component name");
+        ERROR_LOG(kLogSource, "Rejected transition hooks for empty or null component name");
         return false;
     }
 
     if (!transitionInvoker || !timeoutHook) {
-        ERROR_LOG("SystemController", "Rejected transition hooks for %s due to missing callbacks", normalizedName.c_str());
+        ERROR_LOG(kLogSource, "Rejected transition hooks for %s due to missing callbacks", normalizedName.c_str());
         return false;
     }
 
     if (componentRegistry_.find(normalizedName) == componentRegistry_.end()) {
-        ERROR_LOG("SystemController", "Rejected transition hooks for unknown component %s", normalizedName.c_str());
+        ERROR_LOG(kLogSource, "Rejected transition hooks for unknown component %s", normalizedName.c_str());
         return false;
     }
 
@@ -213,7 +230,7 @@ ComponentLifecycleStatus SystemController::getComponentStatus(const char* name) 
 bool SystemController::markComponentFailed(const char* name, const char* reason) {
     const std::string normalizedName = normalizeComponentName(name);
     if (normalizedName.empty()) {
-        ERROR_LOG("SystemController", "Rejected component failure for empty or null name");
+        ERROR_LOG(kLogSource, "Rejected component failure for empty or null name");
         return false;
     }
 
@@ -223,7 +240,7 @@ bool SystemController::markComponentFailed(const char* name, const char* reason)
     it->second.isDisabled = true;
     copyFailureReason(it->second.lastFailureReason, sizeof(it->second.lastFailureReason), reason);
 
-    ERROR_LOG("SystemController", "Component %s marked failed: %s",
+    ERROR_LOG(kLogSource, "Component %s marked failed: %s",
               normalizedName.c_str(), reason ? reason : "<none>");
     return true;
 }
@@ -245,23 +262,23 @@ bool SystemController::isComponentRequired(const char* name) const {
 bool SystemController::beginComponentTransition(const char* name, uint32_t transitionId) {
     const std::string normalizedName = normalizeComponentName(name);
     if (normalizedName.empty()) {
-        ERROR_LOG("SystemController", "Rejected transition begin for empty or null component name");
+        ERROR_LOG(kLogSource, "Rejected transition begin for empty or null component name");
         return false;
     }
 
     const auto registryIt = componentRegistry_.find(normalizedName);
     if (registryIt == componentRegistry_.end()) {
-        ERROR_LOG("SystemController", "Rejected transition begin for unknown component %s", normalizedName.c_str());
+        ERROR_LOG(kLogSource, "Rejected transition begin for unknown component %s", normalizedName.c_str());
         return false;
     }
 
     if (pendingTransitions_.find(normalizedName) != pendingTransitions_.end()) {
-        DEBUG_LOG("SystemController", "Rejected transition begin for %s: component already has in-flight transition", normalizedName.c_str());
+        DEBUG_LOG(kLogSource, "Rejected transition begin for %s: component already has in-flight transition", normalizedName.c_str());
         return false;
     }
 
     pendingTransitions_.emplace(normalizedName, PendingComponentTransition{transitionId});
-    DEBUG_LOG("SystemController", "Transition armed for %s with id=%lu",
+    DEBUG_LOG(kLogSource, "Transition armed for %s with id=%lu",
               normalizedName.c_str(),
               static_cast<unsigned long>(transitionId));
     return true;
@@ -273,18 +290,18 @@ bool SystemController::reportCompletion(const char* componentName,
                                         DebugReason reason) {
     const std::string normalizedName = normalizeComponentName(componentName);
     if (normalizedName.empty()) {
-        ERROR_LOG("SystemController", "Rejected completion report for empty or null component name");
+        ERROR_LOG(kLogSource, "Rejected completion report for empty or null component name");
         return false;
     }
 
     auto pendingIt = pendingTransitions_.find(normalizedName);
     if (pendingIt == pendingTransitions_.end()) {
-        DEBUG_LOG("SystemController", "Ignoring completion for %s: no in-flight transition", normalizedName.c_str());
+        DEBUG_LOG(kLogSource, "Ignoring completion for %s: no in-flight transition", normalizedName.c_str());
         return false;
     }
 
     if (pendingIt->second.transitionId != transitionId) {
-        DEBUG_LOG("SystemController", "Ignoring stale completion for %s: expected id=%lu got id=%lu",
+        DEBUG_LOG(kLogSource, "Ignoring stale completion for %s: expected id=%lu got id=%lu",
                   normalizedName.c_str(),
                   static_cast<unsigned long>(pendingIt->second.transitionId),
                   static_cast<unsigned long>(transitionId));
@@ -293,7 +310,7 @@ bool SystemController::reportCompletion(const char* componentName,
 
     auto registryIt = componentRegistry_.find(normalizedName);
     if (registryIt == componentRegistry_.end()) {
-        ERROR_LOG("SystemController", "Ignoring completion for unknown component %s", normalizedName.c_str());
+        ERROR_LOG(kLogSource, "Ignoring completion for unknown component %s", normalizedName.c_str());
         pendingTransitions_.erase(pendingIt);
         return false;
     }
@@ -302,7 +319,7 @@ bool SystemController::reportCompletion(const char* componentName,
         registryIt->second.lifeCycleStatus = ComponentLifecycleStatus::Ready;
         registryIt->second.isDisabled = false;
         copyFailureReason(registryIt->second.lastFailureReason, sizeof(registryIt->second.lastFailureReason), nullptr);
-        PROD_LOG("SystemController", "Component %s reported completion for transition id=%lu",
+        PROD_LOG(kLogSource, "Component %s reported completion for transition id=%lu",
                  normalizedName.c_str(),
                  static_cast<unsigned long>(transitionId));
     } else {
@@ -312,7 +329,7 @@ bool SystemController::reportCompletion(const char* componentName,
         if (orchestration_.active && orchestration_.transitionId == transitionId && registryIt->second.isRequired) {
             orchestration_.requiredFailure = true;
         }
-        ERROR_LOG("SystemController", "Component %s reported failure for transition id=%lu: %s",
+        ERROR_LOG(kLogSource, "Component %s reported failure for transition id=%lu: %s",
                   normalizedName.c_str(),
                   static_cast<unsigned long>(transitionId),
                   reason ? reason : "<none>");
@@ -453,7 +470,7 @@ bool SystemController::beginOrchestration(SystemState target,
 
         const auto hooksIt = componentHooks_.find(componentName);
         if (hooksIt == componentHooks_.end()) {
-            DEBUG_LOG("SystemController", "No transition hooks registered for component %s", componentName.c_str());
+            DEBUG_LOG(kLogSource, "No transition hooks registered for component %s", componentName.c_str());
             continue;
         }
 
@@ -521,8 +538,7 @@ void SystemController::checkTransitionTimeouts() {
             continue;
         }
         
-        const bool timeoutReached = (pending.timeoutMs == 0) ||
-                                    (currentMs - pending.startedAtMs >= pending.timeoutMs);
+        const bool timeoutReached = (currentMs - pending.startedAtMs >= pending.timeoutMs);
         if (timeoutReached) {
             timedOutComponents.push_back(componentName);
         }
@@ -549,7 +565,7 @@ void SystemController::checkTransitionTimeouts() {
             continue;
         }
         
-        ERROR_LOG("SystemController", "Transition id=%lu timed out for component %s",
+        ERROR_LOG(kLogSource, "Transition id=%lu timed out for component %s",
                   static_cast<unsigned long>(orchestration_.transitionId),
                   componentName.c_str());
         hooksIt->second.timeoutHook(orchestration_.transitionId);
@@ -565,7 +581,7 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
         }
 
         const bool started = beginOrchestration(target, event, reason, transitionId);
-        DEBUG_LOG("SystemController", "Transition request id=%lu %s -> %s started=%s",
+        DEBUG_LOG(kLogSource, "Transition request id=%lu %s -> %s started=%s",
                   static_cast<unsigned long>(transitionId),
                   toString(state_),
                   toString(target),
@@ -573,7 +589,7 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
     };
 
     // User intents are state-independent and map directly to target states.
-    if (event == SystemEvent::ENTER_OFF) {
+    if (event == SystemEvent::ENTER_SLEEP) {
         pendingReplayRequested_ = false;
         pendingPlayAfterReady_ = false;
         requestStateTransition(SystemState::SLEEP);
@@ -698,7 +714,7 @@ void SystemController::transitionTo(SystemState next, SystemEvent trigger, Syste
         transientError_ = false;
     }
 
-    PROD_LOG("SystemController", "State transition id=%lu: %s -> %s (event=%s reason=%s)",
+    PROD_LOG(kLogSource, "State transition id=%lu: %s -> %s (event=%s reason=%s)",
              static_cast<unsigned long>(transitionId),
              toString(previous),
              toString(next),
@@ -760,8 +776,8 @@ const char* toString(SystemEvent event) {
             return "STREAM_LOST";
         case SystemEvent::RECOVER:
             return "RECOVER";
-        case SystemEvent::ENTER_OFF:
-            return "ENTER_OFF";
+        case SystemEvent::ENTER_SLEEP:
+            return "ENTER_SLEEP";
     }
     return "UNKNOWN";
 }

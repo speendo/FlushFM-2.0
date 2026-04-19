@@ -40,7 +40,7 @@ static bool postManualTransition(const char* targetState) {
     }
 
     if (!targetState || targetState[0] == '\0') {
-        ERROR_LOG(kLogSource, "Usage: transition <ready|live|off|error>");
+        ERROR_LOG(kLogSource, "Usage: transition <ready|live|sleep|error>");
         return true;
     }
 
@@ -58,9 +58,9 @@ static bool postManualTransition(const char* targetState) {
         return true;
     }
 
-    if (strcmp(targetState, "off") == 0) {
-        (void)s_controller->postEvent(SystemEvent::ENTER_OFF, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
-        PROD_LOG(kLogSource, "Transition request posted: off");
+    if (strcmp(targetState, "sleep") == 0) {
+        (void)s_controller->postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
+        PROD_LOG(kLogSource, "Transition request posted: sleep");
         return true;
     }
 
@@ -71,7 +71,7 @@ static bool postManualTransition(const char* targetState) {
     }
 
     ERROR_LOG(kLogSource, "Unknown transition target: %s", targetState);
-    ERROR_LOG(kLogSource, "Usage: transition <ready|live|off|error>");
+    ERROR_LOG(kLogSource, "Usage: transition <ready|live|sleep|error>");
     return true;
 }
 
@@ -128,7 +128,7 @@ void printHelp() {
     Serial.println("  suspend             Suspend AudioTask");
     Serial.println("  resume              Resume AudioTask");
     Serial.println("  tstatus             Show transition and component lifecycle status");
-    Serial.println("  transition <s>      Request state transition: ready|live|off|error");
+    Serial.println("  transition <s>      Request state transition: ready|live|sleep|error");
 }
 
 } // namespace debug_cli

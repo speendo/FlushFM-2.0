@@ -7,7 +7,7 @@ bool AudioPlayerESP32::begin() {
     _audio->setPinout(_bck, _ws, _dout);
     _audio->setVolume(_volume);
     setMute(false);
-    _runtimeState = RuntimeState::IDLE;
+    _runtimeState = RuntimeState::SLEEP;
     return true;  // ESP32-audioI2S setPinout has no error return value
 }
 
@@ -19,14 +19,14 @@ bool AudioPlayerESP32::connectToHost(const char* url) {
     setMute(false);
     _runtimeState = RuntimeState::CONNECTING;
     const bool ok = _audio->connecttohost(url);
-    _runtimeState = ok ? RuntimeState::STREAMING : RuntimeState::ERROR;
+    _runtimeState = ok ? RuntimeState::LIVE : RuntimeState::ERROR;
     return ok;
 }
 
 void AudioPlayerESP32::stop() {
     setMute(true);
     _audio->stopSong();
-    _runtimeState = RuntimeState::IDLE;
+    _runtimeState = RuntimeState::SLEEP;
 }
 
 void AudioPlayerESP32::setMute(bool mute) {

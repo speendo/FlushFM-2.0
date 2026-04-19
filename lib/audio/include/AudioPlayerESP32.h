@@ -38,6 +38,6 @@ private:
     int     _ws;
     int     _dout;
     uint8_t _volume = 0;
-    RuntimeState _runtimeState = RuntimeState::IDLE;
+    RuntimeState _runtimeState = RuntimeState::SLEEP;
     std::unique_ptr<Audio> _audio;
 };

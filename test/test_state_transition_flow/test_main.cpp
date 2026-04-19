@@ -135,14 +135,14 @@ void test_stop_requested_during_connecting_cancels_deferred_play() {
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
 }
 
-void test_enter_off_during_connecting_cancels_deferred_play() {
+void test_enter_sleep_during_connecting_cancels_deferred_play() {
     TransitionHooksFixture fixture;
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::ENTER_OFF, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
@@ -252,7 +252,7 @@ void test_play_requested_while_streaming_restarts_after_idle_transition() {
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 }
 
-void test_enter_off_requires_orchestration_completion_before_sleep() {
+void test_enter_sleep_requires_orchestration_completion_before_sleep() {
     TransitionHooksFixture fixture;
     fixture.install();
 
@@ -265,7 +265,7 @@ void test_enter_off_requires_orchestration_completion_before_sleep() {
     fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::ENTER_OFF, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST));
 
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
@@ -290,7 +290,7 @@ void test_play_requested_while_sleep_transitions_directly_to_streaming() {
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
     // Transition to SLEEP
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::ENTER_OFF, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
@@ -340,7 +340,7 @@ void test_error_state_transitions() {
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::AUDIO_TASK_INIT_FAILED));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR), static_cast<int>(fixture.controller.state()));
 
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::ENTER_OFF, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR), static_cast<int>(fixture.controller.state()));
 
@@ -358,12 +358,12 @@ int main() {
     RUN_TEST(test_play_requested_during_connecting_is_deferred_until_ready);
     RUN_TEST(test_play_requested_uses_readiness_signals_received_while_sleeping);
     RUN_TEST(test_stop_requested_during_connecting_cancels_deferred_play);
-    RUN_TEST(test_enter_off_during_connecting_cancels_deferred_play);
+    RUN_TEST(test_enter_sleep_during_connecting_cancels_deferred_play);
     RUN_TEST(test_connecting_transitions_to_error_on_init_failure_events);
     RUN_TEST(test_play_requested_requires_orchestration_completion_before_streaming);
     RUN_TEST(test_stop_requested_requires_orchestration_completion_before_idle);
     RUN_TEST(test_play_requested_while_streaming_restarts_after_idle_transition);
-    RUN_TEST(test_enter_off_requires_orchestration_completion_before_sleep);
+    RUN_TEST(test_enter_sleep_requires_orchestration_completion_before_sleep);
     RUN_TEST(test_play_requested_while_sleep_transitions_directly_to_streaming);
     RUN_TEST(test_error_state_transitions);
     return UNITY_END();

@@ -101,16 +101,16 @@ void render(const CommandResult& result, DebugHelpPrinter debugHelpPrinter) {
             return;
         case MessageKey::STATUS:
             // Status will be rendered via aux field (packed audio + wifi state) and text (station)
-            // Format: [WiFi: CONNECTED|DISCONNECTED] [Audio: IDLE|CONNECTING|STREAMING|ERROR] [Persisted: URL or empty]
+            // Format: [WiFi: CONNECTED|DISCONNECTED] [Audio: SLEEP|CONNECTING|LIVE|ERROR] [Persisted: URL or empty]
             Serial.println();
             Serial.printf("WiFi:      %s\r\n", result.aux & 0x01 ? "CONNECTED" : "DISCONNECTED");
             Serial.printf("Audio:     ");
             {
                 uint8_t audioState = (result.aux >> 1) & 0x03;
                 switch (audioState) {
-                    case 0: Serial.println("IDLE"); break;
+                    case 0: Serial.println("SLEEP"); break;
                     case 1: Serial.println("CONNECTING"); break;
-                    case 2: Serial.println("STREAMING"); break;
+                    case 2: Serial.println("LIVE"); break;
                     case 3: Serial.println("ERROR"); break;
                     default: Serial.println("UNKNOWN"); break;
                 }

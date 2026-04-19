@@ -316,7 +316,7 @@ void AudioRuntimeComponent::loop() {
 
     const IAudioPlayer::RuntimeState runtimeState = audio_.runtimeState();
     if (pendingStreamingTarget_) {
-        if (runtimeState == IAudioPlayer::RuntimeState::STREAMING) {
+        if (runtimeState == IAudioPlayer::RuntimeState::LIVE) {
             completePendingTransition(TransitionStatus::Completed, nullptr);
         } else if (runtimeState == IAudioPlayer::RuntimeState::ERROR) {
             completePendingTransition(TransitionStatus::Failed, "audio runtime error");
@@ -324,8 +324,8 @@ void AudioRuntimeComponent::loop() {
         return;
     }
 
-    // For stop-like targets (OFF/IDLE/ERROR), completion means stream teardown is observable.
-    if (runtimeState == IAudioPlayer::RuntimeState::IDLE) {
+    // For stop-like targets (SLEEP/READY/ERROR), completion means stream teardown is observable.
+    if (runtimeState == IAudioPlayer::RuntimeState::SLEEP) {
         completePendingTransition(TransitionStatus::Completed, nullptr);
     } else if (runtimeState == IAudioPlayer::RuntimeState::ERROR && !pendingErrorTarget_) {
         completePendingTransition(TransitionStatus::Failed, "audio stop failed");

@@ -20,14 +20,26 @@ constexpr TickType_t pdMS_TO_TICKS(uint32_t milliseconds) { return milliseconds;
 
 #include "component_types.h"
 
-enum class SystemState {
-    BOOTING,
-    SLEEP,
-    CONNECTING,
-    READY,
-    LIVE,
-    ERROR,
+enum class SystemState : uint8_t {
+    ERROR = 0,
+    BOOTING = 10,
+    SLEEP = 20,
+    CONNECTING = 30,
+    READY = 40,
+    LIVE = 50,
 };
+
+constexpr uint8_t stateRank(SystemState state) {
+    return static_cast<uint8_t>(state);
+}
+
+constexpr bool isBelowState(SystemState lhs, SystemState rhs) {
+    return stateRank(lhs) < stateRank(rhs);
+}
+
+constexpr bool isAtLeastState(SystemState lhs, SystemState rhs) {
+    return stateRank(lhs) >= stateRank(rhs);
+}
 
 enum class SystemEvent {
     BOOT,
@@ -87,8 +99,8 @@ public:
     // a short timeout to signal critical events and fall back to sticky pending flags.
     bool postEvent(SystemEvent event, SystemReason reason, EventPolicy policy = EventPolicy::FIRE_AND_FORGET);
 
-    // Core 0 only: process pending events and run transition logic.
-    void dispatchPending();
+    // Core 0 only: drain the event queue and run transition logic.
+    void processEventQueue();
 
     bool registerComponent(const char* name, bool isRequired);
     bool setComponentTransitionHooks(const char* name,

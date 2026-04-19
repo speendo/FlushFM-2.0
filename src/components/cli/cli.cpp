@@ -76,16 +76,16 @@ public:
 
     cli_command_logic::AudioState audioState() const override {
         switch (s_audio->runtimeState()) {
-            case IAudioPlayer::RuntimeState::IDLE:
-                return cli_command_logic::AudioState::IDLE;
+            case IAudioPlayer::RuntimeState::SLEEP:
+                return cli_command_logic::AudioState::SLEEP;
             case IAudioPlayer::RuntimeState::CONNECTING:
                 return cli_command_logic::AudioState::CONNECTING;
-            case IAudioPlayer::RuntimeState::STREAMING:
-                return cli_command_logic::AudioState::STREAMING;
+            case IAudioPlayer::RuntimeState::LIVE:
+                return cli_command_logic::AudioState::LIVE;
             case IAudioPlayer::RuntimeState::ERROR:
                 return cli_command_logic::AudioState::ERROR;
         }
-        return cli_command_logic::AudioState::IDLE;
+        return cli_command_logic::AudioState::SLEEP;
     }
 
     const char* getPersistedStation() const override {
@@ -135,12 +135,12 @@ const char* audioModeLabel() {
     }
 
     switch (s_audio->runtimeState()) {
-        case IAudioPlayer::RuntimeState::IDLE:
-            return "idle";
+        case IAudioPlayer::RuntimeState::SLEEP:
+            return "sleep";
         case IAudioPlayer::RuntimeState::CONNECTING:
             return "connecting";
-        case IAudioPlayer::RuntimeState::STREAMING:
-            return "streaming";
+        case IAudioPlayer::RuntimeState::LIVE:
+            return "live";
         case IAudioPlayer::RuntimeState::ERROR:
             return "error";
     }

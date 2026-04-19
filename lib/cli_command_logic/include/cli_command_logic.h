@@ -13,9 +13,9 @@ enum class WiFiConnectivity {
 };
 
 enum class AudioState {
-    IDLE,
+    SLEEP,
     CONNECTING,
-    STREAMING,
+    LIVE,
     ERROR,
 };
 

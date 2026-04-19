@@ -1,30 +1,20 @@
 {
-  "name": "Debian-Trixie-PIO-Sandbox",
-  // Wir nutzen direkt das offizielle Debian Stable Image
-  "image": "debian:stable-slim",
-
-  "features": {
-    // Installiert Python & Pip automatisch
-    "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.11" 
-    },
-    // Installiert Git für Versionsverwaltung
-    "ghcr.io/devcontainers/features/git:1": {}
-  },
-
-  // PlatformIO CLI nach dem Start installieren
-  "postCreateCommand": "pip install -U platformio",
-
+  "name": "FlushFM ESP32-S3",
+  "image": "ghcr.io/platformio/platformio-core:latest",
+  "runArgs": [
+    "--device=/dev/ttyACM0",
+    "--group-add=dialout"
+  ],
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspace,type=bind"
+  ],
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": "pio pkg install",
   "customizations": {
     "vscode": {
-      "extensions": ["platformio.platformio-ide"]
+      "extensions": [
+        "platformio.platformio-ide"
+      ]
     }
-  },
-
-  "runArgs": [
-    "--privileged",
-    "--device=/dev/ttyUSB0:/dev/ttyUSB0"
-  ],
-  
-  "remoteUser": "root" 
+  }
 }

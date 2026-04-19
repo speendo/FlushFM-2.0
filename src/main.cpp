@@ -9,6 +9,12 @@
 #include "state_machine/system_controller.h"
 #include "components/composition/system_components.h"
 
+namespace {
+
+constexpr const char* kLogSource = "Main";
+
+}  // namespace
+
 // ---------------------------------------------------------------------------
 // Audio – concrete instance wired here; rest of code depends on interface only
 // ---------------------------------------------------------------------------
@@ -40,29 +46,29 @@ void setup() {
         delay(10);
     }
 
-    PROD_LOG("Main", "Hello FlushFM");
+    PROD_LOG(kLogSource, "Hello FlushFM");
     registerAudioLibraryCallbacks();
     s_system.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE);
 
     for (ISystemComponent* component : s_components) {
         component->registerWithController(s_system);
         if (!component->setup()) {
-            ERROR_LOG("Main", "Component setup failed: %s", component->name());
+            ERROR_LOG(kLogSource, "Component setup failed: %s", component->name());
             s_system.postEvent(SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::COMPONENT_SETUP);
         }
-        s_system.dispatchPending();
+        s_system.processEventQueue();
     }
 
     // Boot auto-play: queue PLAY request unconditionally.
     // Controller will defer it until CONNECTING/READY is reached.
-    PROD_LOG("Main", "Boot auto-play: queue PLAY request");
+    PROD_LOG(kLogSource, "Boot auto-play: queue PLAY request");
     (void)s_system.postEvent(SystemEvent::PLAY_REQUESTED,
                              SystemReason::USER_REQUEST,
                              EventPolicy::BOUNDED_BLOCKING);
 }
 
 void loop() {
-    s_system.dispatchPending();
+    s_system.processEventQueue();
 
     for (ISystemComponent* component : s_components) {
         component->loop();
