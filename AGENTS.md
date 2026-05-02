@@ -17,6 +17,7 @@
 - Update `docs/` after any change that affects functionality or pinout (→ `requirements/guidelines/documentation.md`)
 - Run `pio test -e native` before marking a user story done (→ `requirements/guidelines/testing.md`)
 - Commit messages follow `<story-id>: <summary>` format when linked to a user story; see git log for examples
+- Never commit changes without explicit user permission
 
 ---
 
