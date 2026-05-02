@@ -1,4 +1,4 @@
-# CLAUDE.md – Project Rules for AI Assistants
+# AGENTS.md – Project Rules for AI Assistants
 
 **FlushFM 2.0** – ESP32-S3 internet radio with audio streaming, ILI9341 TFT display, and a light sensor for automatic on/off control.
 
@@ -15,13 +15,15 @@
 - Never modify files outside the project root
 - Never install anything without explicit permission
 - Update `docs/` after any change that affects functionality or pinout (→ `requirements/guidelines/documentation.md`)
+- Run `pio test -e native` before marking a user story done (→ `requirements/guidelines/testing.md`)
+- Commit messages follow `<story-id>: <summary>` format when linked to a user story; see git log for examples
 
 ---
 
 ## Folder Structure
 
 ```
-FlushFM 2.0/
+FlushFM-2.0/
 ├── AGENTS.md
 ├── README.md
 ├── requirements/
@@ -46,3 +48,14 @@ FlushFM 2.0/
 2. Read relevant guidelines
 3. Ask if acceptance criteria are ambiguous
 4. Implement; keep changes small and focused
+5. Run tests (`pio test -e native`) and verify on hardware if possible
+6. Update `docs/` if functionality or pinout changed
+
+---
+
+## Quick Commands
+| Action | Command |
+|--------|---------|
+| Build | `pio run -e production` |
+| Test | `pio test -e native` |
+| Flash | `pio run --target upload` |

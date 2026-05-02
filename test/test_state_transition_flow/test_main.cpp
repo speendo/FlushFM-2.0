@@ -276,7 +276,7 @@ void test_enter_sleep_requires_orchestration_completion_before_sleep() {
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 }
 
-void test_play_requested_while_sleep_transitions_directly_to_streaming() {
+void test_play_requested_while_sleep_wakes_to_connecting_then_streaming() {
     TransitionHooksFixture fixture;
     fixture.install();
 
@@ -298,10 +298,10 @@ void test_play_requested_while_sleep_transitions_directly_to_streaming() {
     TEST_ASSERT_FALSE(fixture.controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 
-    // Now test: PLAY_REQUESTED while SLEEP should transition SLEEP -> STREAMING
+    // Now test: PLAY_REQUESTED while SLEEP should transition SLEEP -> CONNECTING -> STREAMING
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
 
-    TEST_ASSERT_FALSE(fixture.controller.isOrchestrationActive());
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
@@ -364,7 +364,7 @@ int main() {
     RUN_TEST(test_stop_requested_requires_orchestration_completion_before_idle);
     RUN_TEST(test_play_requested_while_streaming_restarts_after_idle_transition);
     RUN_TEST(test_enter_sleep_requires_orchestration_completion_before_sleep);
-    RUN_TEST(test_play_requested_while_sleep_transitions_directly_to_streaming);
+    RUN_TEST(test_play_requested_while_sleep_wakes_to_connecting_then_streaming);
     RUN_TEST(test_error_state_transitions);
     return UNITY_END();
 }

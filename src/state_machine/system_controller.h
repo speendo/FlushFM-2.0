@@ -52,7 +52,7 @@ enum class SystemEvent {
     WIFI_DISCONNECTED,
     STREAM_LOST,
     RECOVER,
-    ENTER_OFF,
+    ENTER_SLEEP,
 };
 
 // Event posting policy: controls how postEvent handles queue backpressure.
