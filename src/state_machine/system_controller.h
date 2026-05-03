@@ -172,6 +172,7 @@ private:
     void checkTransitionTimeouts();
 
     SystemState state_ = SystemState::BOOTING;
+    SystemState targetState_ = SystemState::SLEEP;
     bool transientError_ = false;
     QueueHandle_t queue_ = nullptr;
     std::vector<QueuedEvent> deferredIntentEvents_{};
@@ -190,8 +191,6 @@ private:
     OrchestrationContext orchestration_{};
     bool pendingReplayRequested_ = false;
     bool deferredReplayEvent_ = false;
-    bool pendingPlayAfterReady_ = false;
-    bool deferredPlayAfterReadyEvent_ = false;
     bool startupWiFiReady_ = false;
     bool startupAudioReady_ = false;
 };

@@ -353,14 +353,12 @@ bool SystemController::reportCompletion(const char* componentName,
         (void)finishTransition(transitionId);
         orchestration_.active = false;
 
-        if (deferredReplayEvent_ || deferredPlayAfterReadyEvent_) {
-            const bool dispatchReplay = deferredReplayEvent_;
-            const bool dispatchStartupPlay = deferredPlayAfterReadyEvent_;
+        if (state_ == SystemState::READY && targetState_ == SystemState::LIVE) {
+            handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
+        }
+        if (deferredReplayEvent_) {
             deferredReplayEvent_ = false;
-            deferredPlayAfterReadyEvent_ = false;
-            if (dispatchReplay || dispatchStartupPlay) {
-                handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
-            }
+            handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
         }
     }
 
@@ -406,6 +404,9 @@ bool SystemController::finishTransition(uint32_t transitionId) {
     if (hasQueuedStateTransition_) {
         activeStateTransition_ = queuedStateTransition_;
         hasQueuedStateTransition_ = false;
+        if (activeStateTransition_.target == state_) {
+            hasActiveStateTransition_ = false;
+        }
         return true;
     }
 
@@ -442,14 +443,12 @@ bool SystemController::beginOrchestration(SystemState target,
         (void)finishTransition(transitionId);
         orchestration_.active = false;
 
-        if (deferredReplayEvent_ || deferredPlayAfterReadyEvent_) {
-            const bool dispatchReplay = deferredReplayEvent_;
-            const bool dispatchStartupPlay = deferredPlayAfterReadyEvent_;
+        if (state_ == SystemState::READY && targetState_ == SystemState::LIVE) {
+            handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
+        }
+        if (deferredReplayEvent_) {
             deferredReplayEvent_ = false;
-            deferredPlayAfterReadyEvent_ = false;
-            if (dispatchReplay || dispatchStartupPlay) {
-                handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
-            }
+            handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
         }
 
         return true;
@@ -591,13 +590,13 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
     // User intents are state-independent and map directly to target states.
     if (event == SystemEvent::ENTER_SLEEP) {
         pendingReplayRequested_ = false;
-        pendingPlayAfterReady_ = false;
+        targetState_ = SystemState::SLEEP;
         requestStateTransition(SystemState::SLEEP);
         return;
     }
     if (event == SystemEvent::STOP_REQUESTED) {
         pendingReplayRequested_ = false;
-        pendingPlayAfterReady_ = false;
+        targetState_ = SystemState::SLEEP;
         if (state_ == SystemState::CONNECTING) {
             return;
         }
@@ -606,12 +605,12 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
     }
     if (event == SystemEvent::PLAY_REQUESTED) {
         if (state_ == SystemState::CONNECTING) {
-            pendingPlayAfterReady_ = true;
+            targetState_ = SystemState::LIVE;
             return;
         }
 
         if (state_ == SystemState::SLEEP) {
-            pendingPlayAfterReady_ = true;
+            targetState_ = SystemState::LIVE;
             transitionTo(SystemState::CONNECTING, event, reason);
             if (startupWiFiReady_ && startupAudioReady_) {
                 requestStateTransition(SystemState::READY);
@@ -708,7 +707,7 @@ void SystemController::transitionTo(SystemState next, SystemEvent trigger, Syste
 
     if (next == SystemState::ERROR) {
         transientError_ = true;
-        pendingPlayAfterReady_ = false;
+        targetState_ = SystemState::SLEEP;
     }
     if (next == SystemState::SLEEP || next == SystemState::CONNECTING || next == SystemState::READY) {
         transientError_ = false;
@@ -730,9 +729,8 @@ void SystemController::transitionTo(SystemState next, SystemEvent trigger, Syste
         deferredReplayEvent_ = true;
     }
 
-    if (previous == SystemState::CONNECTING && next == SystemState::READY && pendingPlayAfterReady_) {
-        pendingPlayAfterReady_ = false;
-        deferredPlayAfterReadyEvent_ = true;
+    if (next == targetState_) {
+        targetState_ = SystemState::SLEEP;
     }
 }
 
