@@ -16,6 +16,7 @@
 - Never install anything without explicit permission
 - Update `docs/` after any change that affects functionality or pinout (→ `requirements/guidelines/documentation.md`)
 - Run `pio test -e native` before marking a user story done (→ `requirements/guidelines/testing.md`)
+- If `pio` is not available on the shell PATH, use the VS Code PlatformIO task that runs `platformio test --environment native` instead of guessing at an alternate command
 - Commit messages follow `<story-id>: <summary>` format when linked to a user story; see git log for examples
 - Never commit changes without explicit user permission
 

@@ -20,13 +20,17 @@ constexpr TickType_t pdMS_TO_TICKS(uint32_t milliseconds) { return milliseconds;
 
 #include "component_types.h"
 
+#define SYSTEM_STATE_X(V) \
+    V(ERROR, 0) \
+    V(BOOTING, 10) \
+    V(SLEEP, 20) \
+    V(CONNECTING, 30) \
+    V(READY, 40) \
+    V(LIVE, 50)
+
+#define SYSTEM_STATE_ENUM(name, value) name = value,
 enum class SystemState : uint8_t {
-    ERROR = 0,
-    BOOTING = 10,
-    SLEEP = 20,
-    CONNECTING = 30,
-    READY = 40,
-    LIVE = 50,
+    SYSTEM_STATE_X(SYSTEM_STATE_ENUM)
 };
 
 constexpr uint8_t stateRank(SystemState state) {
@@ -41,46 +45,122 @@ constexpr bool isAtLeastState(SystemState lhs, SystemState rhs) {
     return stateRank(lhs) >= stateRank(rhs);
 }
 
+inline const char* toString(SystemState state) {
+    switch (state) {
+#define SYSTEM_STATE_STRING(name, value) case SystemState::name: return #name;
+        SYSTEM_STATE_X(SYSTEM_STATE_STRING)
+#undef SYSTEM_STATE_STRING
+    }
+    return "UNKNOWN";
+}
+
+#undef SYSTEM_STATE_ENUM
+#undef SYSTEM_STATE_X
+
+#define SYSTEM_EVENT_X(V) \
+    V(BOOT) \
+    V(COMPONENT_SETUP_FAILED) \
+    V(WIFI_READY) \
+    V(AUDIO_INIT_OK) \
+    V(AUDIO_INIT_FAILED) \
+    V(PLAY_REQUESTED) \
+    V(STOP_REQUESTED) \
+    V(WIFI_DISCONNECTED) \
+    V(STREAM_LOST) \
+    V(RECOVER) \
+    V(ENTER_SLEEP)
+
+#define SYSTEM_EVENT_ENUM(name) name,
 enum class SystemEvent {
-    BOOT,
-    COMPONENT_SETUP_FAILED,
-    WIFI_READY,
-    AUDIO_INIT_OK,
-    AUDIO_INIT_FAILED,
-    PLAY_REQUESTED,
-    STOP_REQUESTED,
-    WIFI_DISCONNECTED,
-    STREAM_LOST,
-    RECOVER,
-    ENTER_SLEEP,
+    SYSTEM_EVENT_X(SYSTEM_EVENT_ENUM)
 };
+
+inline const char* toString(SystemEvent event) {
+    switch (event) {
+#define SYSTEM_EVENT_STRING(name) case SystemEvent::name: return #name;
+        SYSTEM_EVENT_X(SYSTEM_EVENT_STRING)
+#undef SYSTEM_EVENT_STRING
+    }
+    return "UNKNOWN";
+}
+
+#undef SYSTEM_EVENT_ENUM
+#undef SYSTEM_EVENT_X
 
 // Event posting policy: controls how postEvent handles queue backpressure.
+#define EVENT_POLICY_X(V) \
+    V(FIRE_AND_FORGET) \
+    V(BOUNDED_BLOCKING)
+
+#define EVENT_POLICY_ENUM(name) name,
 enum class EventPolicy {
-    FIRE_AND_FORGET,      // Non-blocking; silent loss acceptable for optional events.
-    BOUNDED_BLOCKING,     // Short timeout for critical state-machine events; ERROR_LOG on failure.
+    EVENT_POLICY_X(EVENT_POLICY_ENUM)
 };
 
+inline const char* toString(EventPolicy policy) {
+    switch (policy) {
+#define EVENT_POLICY_STRING(name) case EventPolicy::name: return #name;
+        EVENT_POLICY_X(EVENT_POLICY_STRING)
+#undef EVENT_POLICY_STRING
+    }
+    return "UNKNOWN";
+}
+
+#undef EVENT_POLICY_ENUM
+#undef EVENT_POLICY_X
+
+#define SYSTEM_REASON_X(V) \
+    V(NONE) \
+    V(BOOT_SEQUENCE) \
+    V(COMPONENT_SETUP) \
+    V(WIFI_INITIALIZED) \
+    V(AUDIO_TASK_STARTED) \
+    V(AUDIO_TASK_INIT_FAILED) \
+    V(USER_REQUEST) \
+    V(RECOVERY) \
+    V(POWER_POLICY)
+
+#define SYSTEM_REASON_ENUM(name) name,
 enum class SystemReason {
     // Event origin/context used for transition telemetry and diagnostics.
     // This is not a causal rule engine input.
-    NONE,
-    BOOT_SEQUENCE,
-    COMPONENT_SETUP,
-    WIFI_INITIALIZED,
-    AUDIO_TASK_STARTED,
-    AUDIO_TASK_INIT_FAILED,
-    USER_REQUEST,
-    RECOVERY,
-    POWER_POLICY,
+    SYSTEM_REASON_X(SYSTEM_REASON_ENUM)
 };
 
+inline const char* toString(SystemReason reason) {
+    switch (reason) {
+#define SYSTEM_REASON_STRING(name) case SystemReason::name: return #name;
+        SYSTEM_REASON_X(SYSTEM_REASON_STRING)
+#undef SYSTEM_REASON_STRING
+    }
+    return "UNKNOWN";
+}
+
+#undef SYSTEM_REASON_ENUM
+#undef SYSTEM_REASON_X
+
+#define TRANSITION_REQUEST_DECISION_X(V) \
+    V(Ignored) \
+    V(Started) \
+    V(Superseded) \
+    V(Queued)
+
+#define TRANSITION_REQUEST_DECISION_ENUM(name) name,
 enum class TransitionRequestDecision : uint8_t {
-    Ignored,
-    Started,
-    Superseded,
-    Queued,
+    TRANSITION_REQUEST_DECISION_X(TRANSITION_REQUEST_DECISION_ENUM)
 };
+
+inline const char* toString(TransitionRequestDecision decision) {
+    switch (decision) {
+#define TRANSITION_REQUEST_DECISION_STRING(name) case TransitionRequestDecision::name: return #name;
+        TRANSITION_REQUEST_DECISION_X(TRANSITION_REQUEST_DECISION_STRING)
+#undef TRANSITION_REQUEST_DECISION_STRING
+    }
+    return "UNKNOWN";
+}
+
+#undef TRANSITION_REQUEST_DECISION_ENUM
+#undef TRANSITION_REQUEST_DECISION_X
 
 class SystemController {
 public:
@@ -95,8 +175,8 @@ public:
 
     // Thread-safe event enqueue for any core/task.
     // reason carries origin/context metadata for logging and debugging.
-    // policy controls queue backpressure strategy: FIRE_AND_FORGET may lose events; BOUNDED_BLOCKING uses
-    // a short timeout to signal critical events and fall back to sticky pending flags.
+    // policy controls queue backpressure strategy; the non-blocking mode may lose events while the
+    // bounded mode waits briefly and falls back to sticky pending flags.
     bool postEvent(SystemEvent event, SystemReason reason, EventPolicy policy = EventPolicy::FIRE_AND_FORGET);
 
     // Core 0 only: drain the event queue and run transition logic.
@@ -194,8 +274,3 @@ private:
     bool startupWiFiReady_ = false;
     bool startupAudioReady_ = false;
 };
-
-const char* toString(SystemState state);
-const char* toString(SystemEvent event);
-const char* toString(SystemReason reason);
-const char* toString(TransitionRequestDecision decision);
