@@ -61,7 +61,7 @@ bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPo
     return true;
 #else
     if (!queue_) {
-        ERROR_LOG(kLogSource, "Critical: event queue missing in postEvent(); restarting")
+        ERROR_LOG(kLogSource, "Critical: event queue missing in postEvent(); restarting");
         delay(50);
         esp_restart();
         return false;

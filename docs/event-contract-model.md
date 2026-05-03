@@ -1,6 +1,6 @@
 # Event Contract Model
 
-**Status:** Contract Freeze (US-0025c) | **Updated:** 2026-04-25
+**Status:** Frozen / Approved (US-0025c) | **Updated:** 2026-05-03
 
 ## Overview
 
@@ -29,6 +29,11 @@ Components may maintain internal lifecycle states that mirror the global guarant
 - Each SystemState defines guarantees that all components must satisfy
 - Components are responsible for their own internal state consistency
 - Components never push component-local state logic into SystemController
+
+**Examples of mirrored local states:**
+- **WiFi:** maintains `CONNECTED`/`DISCONNECTED`/`CONNECTING` local lifecycle; mirrors global `READY` guarantee when connected
+- **AudioRuntime:** maintains `LIVE`/`SLEEP`/`ERROR` runtime local state; mirrors global `LIVE` guarantee when streaming
+- **CLI/BoardInfo:** stateless or trivially ready; always satisfy SLEEP baseline guarantees
 
 **State Guarantee Model:**
 
@@ -104,7 +109,7 @@ The primary event-draining entrypoint is named **`processEventQueue()`** (replac
 On enqueue failure in `postEvent(...)`:
 - **Minimum reaction:** Log `ERROR_LOG` with event context (type, target state, timestamp)
 - **Example:** `[ERROR] postEvent failed: STATE_REQUESTED(LIVE) discarded`
-- **Harder escalation** (automatic restart, ERROR-state transition) deferred to follow-up decisions
+- **Harder escalation** (automatic restart, ERROR-state transition) deferred to follow-up story (→ future "Error Recovery Policy")
 - Every failed enqueue is logged; **no silent failures**
 
 ---
@@ -171,6 +176,8 @@ Event ordering is determined by:
 3. **Stale outcome detection** (`transitionId` mismatch, active transition state)
 
 **No static priority table:** Events are not assigned inherent priorities; ordering is entirely context-dependent.
+
+**Follow-up:** Per-state/per-event outcome matrix template is defined here; the full implementation matrix with all event×state cells is test-backed in US-0025h.
 
 ### Per-State/Per-Event Outcome Matrix
 

@@ -1,6 +1,6 @@
 # SystemController API Boundary
 
-**Status:** To Be Defined (US-0027a) | **Updated:** 2026-04-25
+**Status:** Frozen / Approved (US-0025c) | **Updated:** 2026-05-03
 
 ## Overview
 
