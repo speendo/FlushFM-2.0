@@ -9,7 +9,7 @@
 - **Dependency Injection (DI):** Pass dependencies into constructors; never instantiate them internally via `new` or global state
 - **Abstractions:** Use pure virtual classes (Interfaces) to define what a component needs, not who provides it
 - **Isolation:** Ensure each component is testable by substituting real hardware with stubs/mocks
-- **Interaction:** Communicate exclusively through public interfaces; use FreeRTOS queues for cross-core messages, callbacks for same-core observation (→ `concurrency.md`, `state-management.md`); never reach into another component's internals
+- **Interaction:** Communicate exclusively through public interfaces; use FreeRTOS queues for cross-core messages, use callbacks for same-core communication; in a Supervisor Pattern, components push state actively via callback rather than being observed passively (→ `concurrency.md`, `state-management.md`); never reach into another component's internals
 - **Lifecycle Contract:** Components integrated by orchestration must expose `setup()` and may expose `loop()`; `setup()` is called once by the orchestrator, `loop()` is optional for event-driven components and must not be forced for state polling
 - **Graceful Degradation:** Handle optional or missing dependencies (e.g., disconnected display) without crashing
 
