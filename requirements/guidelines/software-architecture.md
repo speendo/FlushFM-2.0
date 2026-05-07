@@ -1,5 +1,5 @@
 # Rule: Software Architecture
-[Status: Active | Updated: 2026-03-10]
+[Status: Active | Updated: 2026-05-07]
 **Context:** ESP32-S3 Framework & Tasking | **Goal:** Define the library stack, task distribution, and power/config strategies
 
 ---
@@ -19,9 +19,13 @@
 - **Core 1 (Audio):** Dedicated to the `IAudioPlayer` implementation. Handles HTTP stream fetching, decoding, and I2S DMA output
 - See `concurrency.md` for task creation rules and IPC patterns.
 
+### Boot Sequence
+- **Global `setup()`:** Arduino entry point; runs before the FreeRTOS scheduler starts. Responsible for hardware initialisation, task creation, and starting the Supervisor. Global `setup()` initiates the `BOOTING` state (→ `state-management.md`).
+- **Component `setup()`:** Called by the Supervisor once per component during `BOOTING`. Must not be called directly from `setup()` or `main.cpp`.
+
 ### Power & Relay Strategy
-- **Tier 1 (Light Sleep):** Default idle; CPU suspended; WiFi association maintained; ULP monitors Light Sensor; **Relay cuts VCC to Display & DAC**; wake latency <1ms
-- **Tier 2 (Deep Sleep):** Triggered after long (e.g. >24h) inactivity; WiFi dropped; CPU off; ULP active; Wake latency 5-8s
+- **`READY` (Software Standby):** WiFi connected, Audio stopped, Display off, CPU idle. No hardware sleep mode. Relay cuts VCC to Display & DAC.
+- **`SLEEP` (ESP32 Deep Sleep):** Triggered after long inactivity (e.g. >24h); WiFi dropped; CPU off; ULP monitors Light Sensor; wake latency 5-8s. Wake event initiates full boot sequence via `BOOTING → CONNECTING → READY` (→ `state-management.md`).
 - **Relay Management:** Must support a primary relay for Display/DAC and provide logic for an **optional second relay** for external speakers
 
 ### Configuration & Recovery
