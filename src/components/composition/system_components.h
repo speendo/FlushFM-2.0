@@ -13,8 +13,10 @@ enum class Signal;
 
 class ISystemComponent {
 public:
-    explicit ISystemComponent(const char* componentName) : name_(componentName) {}
+    explicit ISystemComponent(ComponentID componentId, const char* componentName)
+        : id_(componentId), name_(componentName) {}
     virtual ~ISystemComponent() = default;
+    ComponentID id() const { return id_; }
     const char* name() const { return name_; }
     virtual void registerWithController(Supervisor& controller) const = 0;
     virtual bool setup() = 0;
@@ -26,6 +28,7 @@ public:
     virtual void loop() {}
 
 private:
+    const ComponentID id_;
     const char* name_;
 };
 

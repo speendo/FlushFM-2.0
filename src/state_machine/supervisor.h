@@ -186,12 +186,15 @@ public:
     void processEventQueue();
 
     bool registerComponent(const char* name, bool isRequired);
+    bool registerComponent(ComponentID id, bool isRequired);
     bool setComponentTransitionHooks(const char* name,
                                      TransitionInvoker transitionInvoker,
                                      TransitionTimeoutHook timeoutHook);
     ComponentLifecycleStatus getComponentStatus(const char* name) const;
+    ComponentLifecycleStatus getComponentStatus(ComponentID id) const;
     bool markComponentFailed(const char* name, const char* reason);
     bool isComponentRequired(const char* name) const;
+    bool isComponentRequired(ComponentID id) const;
     bool beginComponentTransition(const char* name, uint32_t transitionId);
     bool reportCompletion(const char* componentName,
                           uint32_t transitionId,

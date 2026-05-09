@@ -47,6 +47,30 @@ inline const char* toString(ComponentLifecycleStatus status) {
 #undef COMPONENT_TYPES_LIFECYCLE_STATUS_ENUM
 #undef COMPONENT_TYPES_LIFECYCLE_STATUS_X
 
+#define COMPONENT_ID_X(V) \
+    V(BoardInfo) \
+    V(WiFi) \
+    V(AudioRuntime) \
+    V(CLI)
+
+#define COMPONENT_ID_ENUM(name) name,
+enum class ComponentID : uint8_t {
+    COMPONENT_ID_X(COMPONENT_ID_ENUM)
+    Count
+};
+
+inline const char* componentName(ComponentID id) {
+    switch (id) {
+#define COMPONENT_ID_STRING(name) case ComponentID::name: return #name;
+        COMPONENT_ID_X(COMPONENT_ID_STRING)
+#undef COMPONENT_ID_STRING
+        default: return "UNKNOWN";
+    }
+}
+
+#undef COMPONENT_ID_ENUM
+#undef COMPONENT_ID_X
+
 using DebugReason = const char*;
 
 constexpr size_t kMaxComponentNameLen = 256;

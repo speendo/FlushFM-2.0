@@ -61,7 +61,7 @@ uint32_t invokeComponentTransition(ISystemComponent& component,
 
 }  // namespace
 
-BoardInfoComponent::BoardInfoComponent() : ISystemComponent(kBoardInfoName) {}
+BoardInfoComponent::BoardInfoComponent() : ISystemComponent(ComponentID::BoardInfo, kBoardInfoName) {}
 
 void BoardInfoComponent::registerWithController(Supervisor& controller) const {
     controller.registerComponent(name(), false);
@@ -108,7 +108,7 @@ void BoardInfoComponent::onTransitionTimeout(uint32_t transitionId) {
 }
 
 WiFiComponent::WiFiComponent(Supervisor& system)
-    : ISystemComponent(kWiFiName), system_(system) {}
+    : ISystemComponent(ComponentID::WiFi, kWiFiName), system_(system) {}
 
 void WiFiComponent::registerWithController(Supervisor& controller) const {
     controller.registerComponent(name(), true);
@@ -240,7 +240,7 @@ void WiFiComponent::completePendingTransition(TransitionStatus status, const cha
 }
 
 AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer& audio, Supervisor& system)
-    : ISystemComponent(kAudioRuntimeName), audio_(audio), system_(system) {}
+    : ISystemComponent(ComponentID::AudioRuntime, kAudioRuntimeName), audio_(audio), system_(system) {}
 
 void AudioRuntimeComponent::registerWithController(Supervisor& controller) const {
     controller.registerComponent(name(), true);
@@ -377,7 +377,7 @@ void AudioRuntimeComponent::completePendingTransition(TransitionStatus status, c
 }
 
 CliComponent::CliComponent(IAudioPlayer& audio, Supervisor& system)
-    : ISystemComponent(kCliName), audio_(audio), system_(system) {}
+    : ISystemComponent(ComponentID::CLI, kCliName), audio_(audio), system_(system) {}
 
 void CliComponent::registerWithController(Supervisor& controller) const {
     controller.registerComponent(name(), false);

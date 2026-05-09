@@ -190,6 +190,10 @@ bool Supervisor::registerComponent(const char* name, bool isRequired) {
     return true;
 }
 
+bool Supervisor::registerComponent(ComponentID id, bool isRequired) {
+    return registerComponent(componentName(id), isRequired);
+}
+
 bool Supervisor::setComponentTransitionHooks(const char* name,
                                                    TransitionInvoker transitionInvoker,
                                                    TransitionTimeoutHook timeoutHook) {
@@ -227,6 +231,10 @@ ComponentLifecycleStatus Supervisor::getComponentStatus(const char* name) const 
     return it->second.lifeCycleStatus;
 }
 
+ComponentLifecycleStatus Supervisor::getComponentStatus(ComponentID id) const {
+    return getComponentStatus(componentName(id));
+}
+
 bool Supervisor::markComponentFailed(const char* name, const char* reason) {
     const std::string normalizedName = normalizeComponentName(name);
     if (normalizedName.empty()) {
@@ -257,6 +265,10 @@ bool Supervisor::isComponentRequired(const char* name) const {
     }
 
     return it->second.isRequired;
+}
+
+bool Supervisor::isComponentRequired(ComponentID id) const {
+    return isComponentRequired(componentName(id));
 }
 
 bool Supervisor::beginComponentTransition(const char* name, uint32_t transitionId) {

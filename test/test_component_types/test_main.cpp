@@ -4,7 +4,6 @@
 #include <cstring>
 #include <unity.h>
 
-#include "../../src/component_types.cpp"
 #include "../../src/state_machine/supervisor.h"
 
 namespace {
@@ -126,12 +125,14 @@ void test_state_machine_invalid_values_map_to_unknown() {
     const auto invalidPolicy = static_cast<EventPolicy>(255);
     const auto invalidReason = static_cast<SystemReason>(255);
     const auto invalidDecision = static_cast<TransitionRequestDecision>(255);
+    const auto invalidComponent = static_cast<ComponentID>(255);
 
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidState));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidEvent));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidPolicy));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidReason));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidDecision));
+    TEST_ASSERT_EQUAL_STRING("UNKNOWN", componentName(invalidComponent));
 }
 
 void test_to_string_handles_invalid_values() {
@@ -139,6 +140,13 @@ void test_to_string_handles_invalid_values() {
     const auto invalidLifecycle = static_cast<ComponentLifecycleStatus>(255);
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidTransition));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidLifecycle));
+}
+
+void test_component_id_names_match_expected() {
+    TEST_ASSERT_EQUAL_STRING("BoardInfo", componentName(ComponentID::BoardInfo));
+    TEST_ASSERT_EQUAL_STRING("WiFi", componentName(ComponentID::WiFi));
+    TEST_ASSERT_EQUAL_STRING("AudioRuntime", componentName(ComponentID::AudioRuntime));
+    TEST_ASSERT_EQUAL_STRING("CLI", componentName(ComponentID::CLI));
 }
 
 void test_debug_reason_alias_accepts_null_and_strings() {
@@ -168,6 +176,7 @@ int main() {
     RUN_TEST(test_state_machine_labels_round_trip_and_are_unique);
     RUN_TEST(test_state_machine_invalid_values_map_to_unknown);
     RUN_TEST(test_to_string_handles_invalid_values);
+    RUN_TEST(test_component_id_names_match_expected);
     RUN_TEST(test_debug_reason_alias_accepts_null_and_strings);
     return UNITY_END();
 }

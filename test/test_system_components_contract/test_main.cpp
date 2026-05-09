@@ -13,7 +13,7 @@ public:
                            uint32_t idleTimeout,
                            uint32_t streamingTimeout,
                            uint32_t errorTimeout)
-        : ISystemComponent("ContractProbe"),
+        : ISystemComponent(ComponentID::Count, "ContractProbe"),
           offTimeout_(offTimeout),
           idleTimeout_(idleTimeout),
           streamingTimeout_(streamingTimeout),
