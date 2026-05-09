@@ -14,12 +14,12 @@
 
 #define SYSTEM_STATE_X(V) \
     V(FATAL, 0) \
-    V(ERROR, 5) \
-    V(BOOTING, 10) \
+    V(ERROR, 10) \
     V(SLEEP, 20) \
-    V(CONNECTING, 30) \
-    V(READY, 40) \
-    V(LIVE, 50)
+    V(BOOTING, 30) \
+    V(CONNECTING, 40) \
+    V(READY, 50) \
+    V(LIVE, 60)
 
 #define SYSTEM_STATE_ENUM(name, value) name = value,
 enum class SystemState : uint8_t {
