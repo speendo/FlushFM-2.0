@@ -1,5 +1,5 @@
 # Rule: State Management
-[Status: Active | Updated: 2026-05-07]
+[Status: Active | Updated: 2026-05-09]
 **Context:** ESP32/C++, FreeRTOS | **Goal:** Define component lifecycle and system-wide state transitions via a **Supervisor Pattern** with autonomous **Components** and an **Event System**.
 
 > **Lifecycle** is the operative concept: every component and the Supervisor itself moves through a defined sequence of states. The Supervisor orchestrates; Components execute and report.
@@ -56,7 +56,7 @@
 - **Error Event flag** — single flag + payload `{ reason, source }`; set on first Error Event per transition; cleared when Supervisor takes it up. Scope: Supervisor. — TODO: verify payload structure against existing project definition.
 - **RetryPolicy** — `{ maxRetries: int, recoveryCounter: int }`; exposes `isExhausted()`. Scope: Supervisor; instantiated per recovery attempt.
 - **Component status map** — tracks `COMMITTED`, `FAILED`, or `DEGRADED` status per component; `DEGRADED` is assigned by the Supervisor when an `optional` component reports `FAILED`; `DEGRADED` components are excluded from the quorum. Scope: Supervisor; non-`DEGRADED` entries are reset on each new transition.
-- **Component config** — per-component configuration including `required: bool`. Scope: Supervisor configuration.
+- **Component config** — per-component configuration including `ComponentID id` (compile-time identity), `const char* name` (human-readable label for diagnostics), and `required: bool`. Scope: Supervisor configuration.
 - **Transition timeout config** — per-transition; separate values for forward and backward transitions. Scope: Supervisor configuration.
 - **min/max state matrix** — per-component table indexed by `systemState`. Scope: each Component individually.
 
@@ -101,10 +101,13 @@ struct ActiveTransition {
     SubState   state = SubState::PENDING;
 };
 
-using ComponentID        = std::string;
-// Supervisor maintains this map; updated on every push from a Component.
+// Component identity: compile-time enum, not runtime strings.
+// Human-readable names are kept for diagnostics only.
+// Component entries are added as the project grows; Count provides array sizing.
+enum class ComponentID : uint8_t { Count };
+// Maintained by Supervisor; updated on every push from a Component.
 // Last known status persists even if a Component stops reporting.
-using ComponentStatusMap = std::map<ComponentID, ComponentStatus>;
+using ComponentStatusMap = std::array<ComponentStatus, static_cast<size_t>(ComponentID::Count)>;
 
 struct RetryPolicy {
     int maxRetries;
@@ -119,11 +122,16 @@ struct StateRequirement {
 
 class ComponentBase {
 public:
-    bool required = true; // false = optional; FAILED triggers DEGRADED, not ERROR
-    virtual bool setup() = 0;           // called once by Supervisor during BOOTING
-    virtual void loop() {}              // optional; not called for event-driven components
+    const ComponentID id;             // compile-time identity; array index
+    const char* name = nullptr;       // human-readable label for diagnostics only
+    bool required = true;
+
+    explicit ComponentBase(ComponentID id, const char* name) : id(id), name(name) {}
+
+    virtual bool setup() = 0;
+    virtual void loop() {}
     virtual void transitionTo(TargetMode target) = 0;
     virtual void reportCommitted() = 0;
-    virtual void reportFailed()    = 0; // Supervisor checks required flag on receipt
+    virtual void reportFailed()    = 0;
 };
 ```
