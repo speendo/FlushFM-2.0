@@ -13,7 +13,8 @@
 #include "component_types.h"
 
 #define SYSTEM_STATE_X(V) \
-    V(ERROR, 0) \
+    V(FATAL, 0) \
+    V(ERROR, 5) \
     V(BOOTING, 10) \
     V(SLEEP, 20) \
     V(CONNECTING, 30) \
@@ -222,8 +223,8 @@ private:
     void transitionTo(SystemState next, SystemEvent trigger, SystemReason reason, uint32_t transitionId = 0);
     void checkTransitionTimeouts();
 
-    SystemState state_ = SystemState::BOOTING;
-    SystemState targetState_ = SystemState::SLEEP;
+    SystemState observedState_ = SystemState::BOOTING;
+    SystemState targetMode_ = SystemState::SLEEP;
     bool transientError_ = false;
     Mailbox mailbox_{};
     std::vector<StateObserver> observers_;

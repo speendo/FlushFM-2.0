@@ -31,7 +31,7 @@ Supervisor::Supervisor() {
 }
 
 SystemState Supervisor::state() const {
-    return state_;
+    return observedState_;
 }
 
 void Supervisor::subscribe(StateObserver observer) {
@@ -192,7 +192,7 @@ bool Supervisor::reportCompletion(ComponentID id,
         (void)finishTransition(transitionId);
         orchestration_.active = false;
 
-        if (state_ == SystemState::READY && targetState_ == SystemState::LIVE) {
+        if (observedState_ == SystemState::READY && targetMode_ == SystemState::LIVE) {
             handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
         }
     }
@@ -238,7 +238,7 @@ bool Supervisor::finishTransition(uint32_t transitionId) {
     if (hasQueuedStateTransition_) {
         activeStateTransition_ = queuedStateTransition_;
         hasQueuedStateTransition_ = false;
-        if (activeStateTransition_.target == state_) {
+        if (activeStateTransition_.target == observedState_) {
             hasActiveStateTransition_ = false;
         }
         return true;
@@ -252,7 +252,7 @@ bool Supervisor::beginOrchestration(SystemState target,
                                           SystemEvent trigger,
                                           SystemReason reason,
                                           uint32_t transitionId) {
-    const TransitionRequestDecision decision = requestTransition(state_, target, transitionId);
+    const TransitionRequestDecision decision = requestTransition(observedState_, target, transitionId);
     if (decision == TransitionRequestDecision::Ignored || decision == TransitionRequestDecision::Queued) {
         return false;
     }
@@ -280,7 +280,7 @@ bool Supervisor::beginOrchestration(SystemState target,
         (void)finishTransition(transitionId);
         orchestration_.active = false;
 
-        if (state_ == SystemState::READY && targetState_ == SystemState::LIVE) {
+        if (observedState_ == SystemState::READY && targetMode_ == SystemState::LIVE) {
             handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
         }
 
@@ -410,33 +410,33 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
         const bool started = beginOrchestration(target, event, reason, transitionId);
         DEBUG_LOG(kLogSource, "Transition request id=%lu %s -> %s started=%s",
                   static_cast<unsigned long>(transitionId),
-                  toString(state_),
+                  toString(observedState_),
                   toString(target),
                   started ? "true" : "false");
     };
 
     // User intents are state-independent and map directly to target states.
     if (event == SystemEvent::ENTER_SLEEP) {
-        targetState_ = SystemState::SLEEP;
+        targetMode_ = SystemState::SLEEP;
         requestStateTransition(SystemState::SLEEP);
         return;
     }
     if (event == SystemEvent::STOP_REQUESTED) {
-        targetState_ = SystemState::SLEEP;
-        if (state_ == SystemState::CONNECTING) {
+        targetMode_ = SystemState::SLEEP;
+        if (observedState_ == SystemState::CONNECTING) {
             return;
         }
         requestStateTransition(SystemState::READY);
         return;
     }
     if (event == SystemEvent::PLAY_REQUESTED) {
-        if (state_ == SystemState::CONNECTING) {
-            targetState_ = SystemState::LIVE;
+        if (observedState_ == SystemState::CONNECTING) {
+            targetMode_ = SystemState::LIVE;
             return;
         }
 
-        if (state_ == SystemState::SLEEP) {
-            targetState_ = SystemState::LIVE;
+        if (observedState_ == SystemState::SLEEP) {
+            targetMode_ = SystemState::LIVE;
             transitionTo(SystemState::CONNECTING, event, reason);
             if (getComponentStatus(ComponentID::WiFi) == ComponentLifecycleStatus::Ready &&
                 getComponentStatus(ComponentID::AudioRuntime) == ComponentLifecycleStatus::Ready) {
@@ -445,8 +445,8 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
             return;
         }
 
-        if (state_ == SystemState::LIVE) {
-            targetState_ = SystemState::LIVE;
+        if (observedState_ == SystemState::LIVE) {
+            targetMode_ = SystemState::LIVE;
             requestStateTransition(SystemState::READY);
             return;
         }
@@ -455,7 +455,7 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
         return;
     }
 
-    switch (state_) {
+    switch (observedState_) {
         case SystemState::BOOTING:
             if (event == SystemEvent::BOOT) {
                 transitionTo(SystemState::SLEEP, event, reason);
@@ -521,16 +521,16 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
 }
 
 void Supervisor::transitionTo(SystemState next, SystemEvent trigger, SystemReason reason, uint32_t transitionId) {
-    if (next == state_) {
+    if (next == observedState_) {
         return;
     }
 
-    const SystemState previous = state_;
-    state_ = next;
+    const SystemState previous = observedState_;
+    observedState_ = next;
 
     if (next == SystemState::ERROR) {
         transientError_ = true;
-        targetState_ = SystemState::SLEEP;
+        targetMode_ = SystemState::SLEEP;
     }
     if (next == SystemState::SLEEP || next == SystemState::CONNECTING || next == SystemState::READY) {
         transientError_ = false;
@@ -547,7 +547,7 @@ void Supervisor::transitionTo(SystemState next, SystemEvent trigger, SystemReaso
         observer(next);
     }
 
-    if (next == targetState_) {
-        targetState_ = SystemState::SLEEP;
+    if (next == targetMode_) {
+        targetMode_ = SystemState::SLEEP;
     }
 }
