@@ -148,6 +148,13 @@ public:
     // reason carries origin/context metadata for logging and debugging.
     bool postEvent(SystemEvent event, SystemReason reason);
 
+    // TargetMode (goal) and ObservedState (current reality):
+    // state() returns the CONFIRMED state (observedState_), not the goal.
+    // The goal (targetMode_) is set by user intents in handleEvent().
+    // The step target is stored in orchestration_.target.
+    // observedState_ advances only in transitionTo(), which is called
+    // from direct-event paths or from reportCompletion after confirmation.
+
 #if !defined(ARDUINO)
     // Native-only: writes to the Mailbox slot without dispatching.
     // Used by unit tests to verify Mailbox last-write-wins semantics.

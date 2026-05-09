@@ -453,6 +453,25 @@ void test_optional_component_failure_does_not_block_orchestration() {
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
 }
 
+void test_observed_state_lags_until_orchestration_confirms() {
+    TransitionHooksFixture fixture;
+    fixture.install();
+
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+
+    // PLAY_REQUESTED from SLEEP: direct transitionTo(CONNECTING), then quick-path orchestration to READY.
+    // observedState_ is CONNECTING — READY is the orchestration target but state() doesn't show it yet.
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
+
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
+}
+
 }  // namespace
 
 int main() {
@@ -478,5 +497,6 @@ int main() {
     RUN_TEST(test_sleep_wifi_disconnect_updates_registry);
     RUN_TEST(test_sleep_audio_failed_updates_registry);
     RUN_TEST(test_optional_component_failure_does_not_block_orchestration);
+    RUN_TEST(test_observed_state_lags_until_orchestration_confirms);
     return UNITY_END();
 }
