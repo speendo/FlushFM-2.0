@@ -154,7 +154,6 @@ bool Supervisor::setComponentTransitionHooks(ComponentID id,
                                                    TransitionInvoker transitionInvoker,
                                                    TransitionTimeoutHook timeoutHook) {
     if (id == ComponentID::Count) return false;
-    if (!transitionInvoker || !timeoutHook) return false;
     componentHooks_[static_cast<size_t>(id)] = ComponentTransitionHooks{std::move(transitionInvoker), std::move(timeoutHook)};
     return true;
 }
