@@ -1,8 +1,39 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "component_types.h"
+
+inline constexpr ComponentStateMatrix kWiFiStateMatrix[] = {
+    {static_cast<uint32_t>(SystemState::FATAL), static_cast<uint32_t>(SystemState::FATAL), 100, 100},
+    {static_cast<uint32_t>(SystemState::BOOTING), static_cast<uint32_t>(SystemState::BOOTING), 1000, 500},
+    {static_cast<uint32_t>(SystemState::SLEEP), static_cast<uint32_t>(SystemState::READY), 1000, 500},
+    {static_cast<uint32_t>(SystemState::BOOTING), static_cast<uint32_t>(SystemState::CONNECTING), 2000, 500},
+    {static_cast<uint32_t>(SystemState::CONNECTING), static_cast<uint32_t>(SystemState::READY), 8000, 1000},
+    {static_cast<uint32_t>(SystemState::READY), TARGET_MODE, 5000, 500},
+    {static_cast<uint32_t>(SystemState::READY), TARGET_MODE, 15000, 1000},
+};
+
+inline constexpr ComponentStateMatrix kAudioStateMatrix[] = {
+    {static_cast<uint32_t>(SystemState::FATAL), static_cast<uint32_t>(SystemState::FATAL), 100, 100},
+    {static_cast<uint32_t>(SystemState::BOOTING), static_cast<uint32_t>(SystemState::BOOTING), 1000, 500},
+    {static_cast<uint32_t>(SystemState::SLEEP), static_cast<uint32_t>(SystemState::READY), 2000, 500},
+    {static_cast<uint32_t>(SystemState::BOOTING), static_cast<uint32_t>(SystemState::CONNECTING), 2000, 500},
+    {static_cast<uint32_t>(SystemState::CONNECTING), static_cast<uint32_t>(SystemState::READY), 2000, 1000},
+    {static_cast<uint32_t>(SystemState::READY), TARGET_MODE, 2000, 500},
+    {static_cast<uint32_t>(SystemState::READY), TARGET_MODE, 5000, 1000},
+};
+
+inline constexpr ComponentStateMatrix kCliStateMatrix[] = {
+    {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+    {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+};
+
+inline constexpr ComponentStateMatrix kBoardInfoStateMatrix[] = {
+    {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+    {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+};
 
 class IAudioPlayer;
 class Supervisor;
@@ -26,6 +57,8 @@ public:
     virtual uint32_t setERROR(uint32_t transitionId) = 0;
     virtual void onTransitionTimeout(uint32_t transitionId) = 0;
     virtual void loop() {}
+    virtual const ComponentStateMatrix* getStateMatrix() const { return nullptr; }
+    virtual size_t getStateMatrixSize() const { return 0; }
 
 private:
     const ComponentID id_;
@@ -42,6 +75,8 @@ public:
     uint32_t setSTREAMING(uint32_t transitionId) override;
     uint32_t setERROR(uint32_t transitionId) override;
     void onTransitionTimeout(uint32_t transitionId) override;
+    const ComponentStateMatrix* getStateMatrix() const override { return kBoardInfoStateMatrix; }
+    size_t getStateMatrixSize() const override { return std::size(kBoardInfoStateMatrix); }
 };
 
 class WiFiComponent final : public ISystemComponent {
@@ -57,6 +92,8 @@ public:
     void onTransitionTimeout(uint32_t transitionId) override;
     void loop() override;
     bool bootAutoConnectSucceeded() const;
+    const ComponentStateMatrix* getStateMatrix() const override { return kWiFiStateMatrix; }
+    size_t getStateMatrixSize() const override { return std::size(kWiFiStateMatrix); }
 
 private:
     static void onConnected(void* context);
@@ -83,6 +120,8 @@ public:
     uint32_t setERROR(uint32_t transitionId) override;
     void onTransitionTimeout(uint32_t transitionId) override;
     void loop() override;
+    const ComponentStateMatrix* getStateMatrix() const override { return kAudioStateMatrix; }
+    size_t getStateMatrixSize() const override { return std::size(kAudioStateMatrix); }
 
 private:
     static void onAudioSignal(audio_runtime::Signal signal, void* context);
@@ -109,6 +148,8 @@ public:
     uint32_t setERROR(uint32_t transitionId) override;
     void onTransitionTimeout(uint32_t transitionId) override;
     void loop() override;
+    const ComponentStateMatrix* getStateMatrix() const override { return kCliStateMatrix; }
+    size_t getStateMatrixSize() const override { return std::size(kCliStateMatrix); }
 
 private:
     IAudioPlayer& audio_;
