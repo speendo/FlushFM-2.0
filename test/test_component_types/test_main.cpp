@@ -74,16 +74,11 @@ void test_state_machine_labels_round_trip_and_are_unique() {
         {SystemState::LIVE, "LIVE"},
     }};
 
-    const std::array<EnumLabelCase<SystemEvent>, 11> events = {{
+    const std::array<EnumLabelCase<SystemEvent>, 6> events = {{
         {SystemEvent::BOOT, "BOOT"},
         {SystemEvent::COMPONENT_SETUP_FAILED, "COMPONENT_SETUP_FAILED"},
-        {SystemEvent::WIFI_READY, "WIFI_READY"},
-        {SystemEvent::AUDIO_INIT_OK, "AUDIO_INIT_OK"},
-        {SystemEvent::AUDIO_INIT_FAILED, "AUDIO_INIT_FAILED"},
         {SystemEvent::PLAY_REQUESTED, "PLAY_REQUESTED"},
         {SystemEvent::STOP_REQUESTED, "STOP_REQUESTED"},
-        {SystemEvent::WIFI_DISCONNECTED, "WIFI_DISCONNECTED"},
-        {SystemEvent::STREAM_LOST, "STREAM_LOST"},
         {SystemEvent::RECOVER, "RECOVER"},
         {SystemEvent::ENTER_SLEEP, "ENTER_SLEEP"},
     }};

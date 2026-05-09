@@ -65,7 +65,7 @@ static bool postManualTransition(const char* targetState) {
     }
 
     if (strcmp(targetState, "error") == 0) {
-        (void)s_controller->postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::USER_REQUEST);
+        (void)s_controller->postEvent(SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::USER_REQUEST);
         PROD_LOG(kLogSource, "Transition request posted: error");
         return true;
     }

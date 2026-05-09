@@ -207,8 +207,6 @@ void WiFiComponent::onConnected(void* context) {
     if (self->transitionPending_ && self->pendingStreamingTarget_) {
         self->completePendingTransition(TransitionStatus::Completed, nullptr);
     }
-
-    self->system_.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED);
 }
 
 void WiFiComponent::onDisconnected(void* context) {
@@ -219,9 +217,9 @@ void WiFiComponent::onDisconnected(void* context) {
 
     if (self->transitionPending_ && self->pendingStreamingTarget_) {
         self->completePendingTransition(TransitionStatus::Failed, "wifi disconnected");
+    } else {
+        self->system_.setErrorEvent("wifi disconnected", ComponentID::WiFi);
     }
-
-    self->system_.postEvent(SystemEvent::WIFI_DISCONNECTED, SystemReason::NONE);
 }
 
 void WiFiComponent::startPendingTransition(bool streamingTarget, uint32_t transitionId) {
@@ -267,7 +265,7 @@ bool AudioRuntimeComponent::setup() {
     audio_runtime::setSignalHandler(&AudioRuntimeComponent::onAudioSignal, this);
     const bool started = audio_runtime::start(audio_);
     if (!started) {
-        system_.postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::AUDIO_TASK_INIT_FAILED);
+        system_.setErrorEvent("audio task init failed", ComponentID::AudioRuntime);
     }
     return started;
 }
@@ -351,17 +349,18 @@ void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* co
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
             self->completePendingTransition(TransitionStatus::Completed, nullptr);
         }
-        self->system_.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED);
     } else if (signal == audio_runtime::Signal::STREAM_LOST) {
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
             self->completePendingTransition(TransitionStatus::Failed, "stream lost");
+        } else {
+            self->system_.setErrorEvent("stream lost", ComponentID::AudioRuntime);
         }
-        self->system_.postEvent(SystemEvent::STREAM_LOST, SystemReason::NONE);
     } else {
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
             self->completePendingTransition(TransitionStatus::Failed, "audio init failed");
+        } else {
+            self->system_.setErrorEvent("audio init failed", ComponentID::AudioRuntime);
         }
-        self->system_.postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::AUDIO_TASK_INIT_FAILED);
     }
 }
 

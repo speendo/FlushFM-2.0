@@ -53,13 +53,8 @@ inline const char* toString(SystemState state) {
 #define SYSTEM_EVENT_X(V) \
     V(BOOT) \
     V(COMPONENT_SETUP_FAILED) \
-    V(WIFI_READY) \
-    V(AUDIO_INIT_OK) \
-    V(AUDIO_INIT_FAILED) \
     V(PLAY_REQUESTED) \
     V(STOP_REQUESTED) \
-    V(WIFI_DISCONNECTED) \
-    V(STREAM_LOST) \
     V(RECOVER) \
     V(ENTER_SLEEP)
 
