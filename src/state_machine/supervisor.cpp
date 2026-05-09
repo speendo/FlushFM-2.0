@@ -160,25 +160,6 @@ std::string Supervisor::normalizeComponentName(const char* name) {
     return normalized;
 }
 
-void Supervisor::copyFailureReason(char* destination, size_t destinationSize, const char* reason) {
-    if (!destination || destinationSize == 0) {
-        return;
-    }
-
-    destination[0] = '\0';
-    if (!reason) {
-        return;
-    }
-
-    const size_t reasonLength = std::strlen(reason);
-    if (reasonLength >= destinationSize) {
-        ERROR_LOG(kLogSource, "Failure reason truncated to %lu chars", static_cast<unsigned long>(destinationSize - 1));
-    }
-
-    std::strncpy(destination, reason, destinationSize - 1);
-    destination[destinationSize - 1] = '\0';
-}
-
 bool Supervisor::registerComponent(const char* name, bool isRequired) {
     const std::string normalizedName = normalizeComponentName(name);
     if (normalizedName.empty()) {
@@ -197,7 +178,7 @@ bool Supervisor::registerComponent(const char* name, bool isRequired) {
     entry.isRegistered = true;
     entry.lifeCycleStatus = ComponentLifecycleStatus::Unknown;
     entry.isDisabled = false;
-    copyFailureReason(entry.lastFailureReason, sizeof(entry.lastFailureReason), nullptr);
+    entry.lastFailureReason = nullptr;
 
     PROD_LOG(kLogSource, "Registered component %s (required=%s)",
              normalizedName.c_str(), isRequired ? "true" : "false");
@@ -211,7 +192,7 @@ bool Supervisor::registerComponent(ComponentID id, bool isRequired) {
     entry.isRegistered = true;
     entry.lifeCycleStatus = ComponentLifecycleStatus::Unknown;
     entry.isDisabled = false;
-    copyFailureReason(entry.lastFailureReason, sizeof(entry.lastFailureReason), nullptr);
+    entry.lastFailureReason = nullptr;
     PROD_LOG(kLogSource, "Registered component %s (required=%s)",
              componentName(id), isRequired ? "true" : "false");
     return true;
@@ -285,7 +266,7 @@ bool Supervisor::markComponentFailed(const char* name, const char* reason) {
     ComponentRegistryEntry& entry = componentRegistry_[static_cast<size_t>(id)];
     entry.lifeCycleStatus = ComponentLifecycleStatus::Failed;
     entry.isDisabled = true;
-    copyFailureReason(entry.lastFailureReason, sizeof(entry.lastFailureReason), reason);
+    entry.lastFailureReason = reason;
 
     ERROR_LOG(kLogSource, "Component %s marked failed: %s",
               normalizedName.c_str(), reason ? reason : "<none>");
@@ -386,14 +367,14 @@ bool Supervisor::reportCompletion(ComponentID id,
     if (status == TransitionStatus::Completed) {
         entry.lifeCycleStatus = ComponentLifecycleStatus::Ready;
         entry.isDisabled = false;
-        copyFailureReason(entry.lastFailureReason, sizeof(entry.lastFailureReason), nullptr);
+        entry.lastFailureReason = nullptr;
         PROD_LOG(kLogSource, "Component %s reported completion for transition id=%lu",
                  componentName(id),
                  static_cast<unsigned long>(transitionId));
     } else {
         entry.lifeCycleStatus = ComponentLifecycleStatus::Failed;
         entry.isDisabled = true;
-        copyFailureReason(entry.lastFailureReason, sizeof(entry.lastFailureReason), reason);
+        entry.lastFailureReason = reason;
         if (orchestration_.active && orchestration_.transitionId == transitionId && entry.isRequired) {
             orchestration_.requiredFailure = true;
         }

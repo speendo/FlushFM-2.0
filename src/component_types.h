@@ -74,12 +74,11 @@ inline const char* componentName(ComponentID id) {
 using DebugReason = const char*;
 
 constexpr size_t kMaxComponentNameLen = 256;
-constexpr size_t kMaxFailureReasonLen = 512;
 
 struct ComponentRegistryEntry {
     ComponentLifecycleStatus lifeCycleStatus = ComponentLifecycleStatus::Unknown;
     bool isRequired = false;
     bool isDisabled = false;
     bool isRegistered = false;
-    char lastFailureReason[kMaxFailureReasonLen + 1] = {};
+    const char* lastFailureReason = nullptr;
 };

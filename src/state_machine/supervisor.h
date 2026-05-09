@@ -232,7 +232,6 @@ private:
     };
 
     static std::string normalizeComponentName(const char* name);
-    static void copyFailureReason(char* destination, size_t destinationSize, const char* reason);
 
     struct PendingComponentTransition {
         uint32_t transitionId = 0;
