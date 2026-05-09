@@ -1,6 +1,5 @@
 #include "state_machine/supervisor.h"
 
-#include <cstring>
 #include <utility>
 
 #if !defined(ARDUINO)
@@ -30,15 +29,6 @@ bool isIntentEvent(SystemEvent event) {
     return event == SystemEvent::PLAY_REQUESTED ||
            event == SystemEvent::STOP_REQUESTED ||
            event == SystemEvent::ENTER_SLEEP;
-}
-
-ComponentID componentIdFromName(const char* name) {
-    if (!name) return ComponentID::Count;
-    for (size_t i = 0; i < static_cast<size_t>(ComponentID::Count); i++) {
-        const ComponentID id = static_cast<ComponentID>(i);
-        if (std::strcmp(componentName(id), name) == 0) return id;
-    }
-    return ComponentID::Count;
 }
 
 }  // namespace
@@ -147,44 +137,6 @@ void Supervisor::processEventQueue() {
 #endif
 }
 
-std::string Supervisor::normalizeComponentName(const char* name) {
-    if (!name || name[0] == '\0') {
-        return {};
-    }
-
-    std::string normalized{name};
-    if (normalized.size() > kMaxComponentNameLen) {
-        ERROR_LOG(kLogSource, "Component name truncated to %lu chars", static_cast<unsigned long>(kMaxComponentNameLen));
-        normalized.resize(kMaxComponentNameLen);
-    }
-    return normalized;
-}
-
-bool Supervisor::registerComponent(const char* name, bool isRequired) {
-    const std::string normalizedName = normalizeComponentName(name);
-    if (normalizedName.empty()) {
-        ERROR_LOG(kLogSource, "Rejected component registration with empty or null name");
-        return false;
-    }
-
-    const ComponentID id = componentIdFromName(normalizedName.c_str());
-    if (id == ComponentID::Count) {
-        ERROR_LOG(kLogSource, "Rejected component registration for unknown name: %s", normalizedName.c_str());
-        return false;
-    }
-
-    ComponentRegistryEntry& entry = componentRegistry_[static_cast<size_t>(id)];
-    entry.isRequired = isRequired;
-    entry.isRegistered = true;
-    entry.lifeCycleStatus = ComponentLifecycleStatus::Unknown;
-    entry.isDisabled = false;
-    entry.lastFailureReason = nullptr;
-
-    PROD_LOG(kLogSource, "Registered component %s (required=%s)",
-             normalizedName.c_str(), isRequired ? "true" : "false");
-    return true;
-}
-
 bool Supervisor::registerComponent(ComponentID id, bool isRequired) {
     if (id == ComponentID::Count) return false;
     ComponentRegistryEntry& entry = componentRegistry_[static_cast<size_t>(id)];
@@ -198,30 +150,6 @@ bool Supervisor::registerComponent(ComponentID id, bool isRequired) {
     return true;
 }
 
-bool Supervisor::setComponentTransitionHooks(const char* name,
-                                                   TransitionInvoker transitionInvoker,
-                                                   TransitionTimeoutHook timeoutHook) {
-    const std::string normalizedName = normalizeComponentName(name);
-    if (normalizedName.empty()) {
-        ERROR_LOG(kLogSource, "Rejected transition hooks for empty or null component name");
-        return false;
-    }
-
-    if (!transitionInvoker || !timeoutHook) {
-        ERROR_LOG(kLogSource, "Rejected transition hooks for %s due to missing callbacks", normalizedName.c_str());
-        return false;
-    }
-
-    const ComponentID id = componentIdFromName(normalizedName.c_str());
-    if (id == ComponentID::Count) {
-        ERROR_LOG(kLogSource, "Rejected transition hooks for unknown component %s", normalizedName.c_str());
-        return false;
-    }
-
-    componentHooks_[static_cast<size_t>(id)] = ComponentTransitionHooks{std::move(transitionInvoker), std::move(timeoutHook)};
-    return true;
-}
-
 bool Supervisor::setComponentTransitionHooks(ComponentID id,
                                                    TransitionInvoker transitionInvoker,
                                                    TransitionTimeoutHook timeoutHook) {
@@ -231,81 +159,14 @@ bool Supervisor::setComponentTransitionHooks(ComponentID id,
     return true;
 }
 
-ComponentLifecycleStatus Supervisor::getComponentStatus(const char* name) const {
-    const std::string normalizedName = normalizeComponentName(name);
-    if (normalizedName.empty()) {
-        return ComponentLifecycleStatus::Unknown;
-    }
-
-    const ComponentID id = componentIdFromName(normalizedName.c_str());
-    if (id == ComponentID::Count) {
-        return ComponentLifecycleStatus::Unknown;
-    }
-
-    return componentRegistry_[static_cast<size_t>(id)].lifeCycleStatus;
-}
-
 ComponentLifecycleStatus Supervisor::getComponentStatus(ComponentID id) const {
     if (id == ComponentID::Count) return ComponentLifecycleStatus::Unknown;
     return componentRegistry_[static_cast<size_t>(id)].lifeCycleStatus;
 }
 
-bool Supervisor::markComponentFailed(const char* name, const char* reason) {
-    const std::string normalizedName = normalizeComponentName(name);
-    if (normalizedName.empty()) {
-        ERROR_LOG(kLogSource, "Rejected component failure for empty or null name");
-        return false;
-    }
-
-    const ComponentID id = componentIdFromName(normalizedName.c_str());
-    if (id == ComponentID::Count) {
-        ERROR_LOG(kLogSource, "Rejected component failure for unknown name: %s", normalizedName.c_str());
-        return false;
-    }
-
-    ComponentRegistryEntry& entry = componentRegistry_[static_cast<size_t>(id)];
-    entry.lifeCycleStatus = ComponentLifecycleStatus::Failed;
-    entry.isDisabled = true;
-    entry.lastFailureReason = reason;
-
-    ERROR_LOG(kLogSource, "Component %s marked failed: %s",
-              normalizedName.c_str(), reason ? reason : "<none>");
-    return true;
-}
-
-bool Supervisor::isComponentRequired(const char* name) const {
-    const std::string normalizedName = normalizeComponentName(name);
-    if (normalizedName.empty()) {
-        return false;
-    }
-
-    const ComponentID id = componentIdFromName(normalizedName.c_str());
-    if (id == ComponentID::Count) {
-        return false;
-    }
-
-    return componentRegistry_[static_cast<size_t>(id)].isRequired;
-}
-
 bool Supervisor::isComponentRequired(ComponentID id) const {
     if (id == ComponentID::Count) return false;
     return componentRegistry_[static_cast<size_t>(id)].isRequired;
-}
-
-bool Supervisor::beginComponentTransition(const char* name, uint32_t transitionId) {
-    const std::string normalizedName = normalizeComponentName(name);
-    if (normalizedName.empty()) {
-        ERROR_LOG(kLogSource, "Rejected transition begin for empty or null component name");
-        return false;
-    }
-
-    const ComponentID id = componentIdFromName(normalizedName.c_str());
-    if (id == ComponentID::Count) {
-        ERROR_LOG(kLogSource, "Rejected transition begin for unknown component %s", normalizedName.c_str());
-        return false;
-    }
-
-    return beginComponentTransition(id, transitionId);
 }
 
 bool Supervisor::beginComponentTransition(ComponentID id, uint32_t transitionId) {
@@ -321,25 +182,6 @@ bool Supervisor::beginComponentTransition(ComponentID id, uint32_t transitionId)
               componentName(id),
               static_cast<unsigned long>(transitionId));
     return true;
-}
-
-bool Supervisor::reportCompletion(const char* componentName,
-                                        uint32_t transitionId,
-                                        TransitionStatus status,
-                                        DebugReason reason) {
-    const std::string normalizedName = normalizeComponentName(componentName);
-    if (normalizedName.empty()) {
-        ERROR_LOG(kLogSource, "Rejected completion report for empty or null component name");
-        return false;
-    }
-
-    const ComponentID id = componentIdFromName(normalizedName.c_str());
-    if (id == ComponentID::Count) {
-        ERROR_LOG(kLogSource, "Rejected completion report for unknown component name: %s", normalizedName.c_str());
-        return false;
-    }
-
-    return reportCompletion(id, transitionId, status, reason);
 }
 
 bool Supervisor::reportCompletion(ComponentID id,

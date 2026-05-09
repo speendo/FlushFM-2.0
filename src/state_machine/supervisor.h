@@ -1,7 +1,6 @@
 #pragma once
 
 #include <functional>
-#include <string>
 #include <vector>
 #include <array>
 #include <cstdint>
@@ -185,28 +184,16 @@ public:
     // Core 0 only: drain the event queue and run transition logic.
     void processEventQueue();
 
-    bool registerComponent(const char* name, bool isRequired);
     bool registerComponent(ComponentID id, bool isRequired);
-    bool setComponentTransitionHooks(const char* name,
-                                     TransitionInvoker transitionInvoker,
-                                     TransitionTimeoutHook timeoutHook);
     bool setComponentTransitionHooks(ComponentID id,
                                      TransitionInvoker transitionInvoker,
                                      TransitionTimeoutHook timeoutHook);
-    ComponentLifecycleStatus getComponentStatus(const char* name) const;
     ComponentLifecycleStatus getComponentStatus(ComponentID id) const;
-    bool markComponentFailed(const char* name, const char* reason);
-    bool isComponentRequired(const char* name) const;
     bool isComponentRequired(ComponentID id) const;
-    bool reportCompletion(const char* componentName,
-                          uint32_t transitionId,
-                          TransitionStatus status,
-                          DebugReason reason);
     bool reportCompletion(ComponentID id,
                           uint32_t transitionId,
                           TransitionStatus status,
                           DebugReason reason);
-    bool beginComponentTransition(const char* name, uint32_t transitionId);
     bool beginComponentTransition(ComponentID id, uint32_t transitionId);
     TransitionRequestDecision requestTransition(SystemState from, SystemState target, uint32_t transitionId);
     bool finishTransition(uint32_t transitionId);
@@ -230,8 +217,6 @@ private:
         SystemEvent event;
         SystemReason reason;
     };
-
-    static std::string normalizeComponentName(const char* name);
 
     struct PendingComponentTransition {
         uint32_t transitionId = 0;

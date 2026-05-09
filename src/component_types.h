@@ -73,8 +73,6 @@ inline const char* componentName(ComponentID id) {
 
 using DebugReason = const char*;
 
-constexpr size_t kMaxComponentNameLen = 256;
-
 struct ComponentRegistryEntry {
     ComponentLifecycleStatus lifeCycleStatus = ComponentLifecycleStatus::Unknown;
     bool isRequired = false;

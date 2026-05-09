@@ -189,13 +189,13 @@ static void printTransitionStatus() {
         Serial.println("Queued trans:    none");
     }
 
-    const char* names[] = {"WiFi", "AudioRuntime", "CLI", "BoardInfo"};
+    const ComponentID ids[] = {ComponentID::WiFi, ComponentID::AudioRuntime, ComponentID::CLI, ComponentID::BoardInfo};
     Serial.println("Components:");
-    for (const char* name : names) {
-        const ComponentLifecycleStatus status = s_controller->getComponentStatus(name);
-        const bool required = s_controller->isComponentRequired(name);
+    for (const ComponentID id : ids) {
+        const ComponentLifecycleStatus status = s_controller->getComponentStatus(id);
+        const bool required = s_controller->isComponentRequired(id);
         Serial.printf("  %-12s required=%s status=%s\r\n",
-                      name,
+                      componentName(id),
                       required ? "true" : "false",
                       toString(status));
     }

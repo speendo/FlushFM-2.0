@@ -166,15 +166,15 @@ const char* componentModeLabel(const char* name) {
 }
 
 void printComponentStatusSummary(const Supervisor& controller) {
-    const char* names[] = {"WiFi", "AudioRuntime", "CLI", "BoardInfo"};
+    const ComponentID ids[] = {ComponentID::WiFi, ComponentID::AudioRuntime, ComponentID::CLI, ComponentID::BoardInfo};
 
     Serial.printf("System:     %s\r\n", toString(controller.state()));
     Serial.println("Components:");
-    for (const char* name : names) {
-        const ComponentLifecycleStatus status = controller.getComponentStatus(name);
-        const bool required = controller.isComponentRequired(name);
+    for (const ComponentID id : ids) {
+        const ComponentLifecycleStatus status = controller.getComponentStatus(id);
+        const bool required = controller.isComponentRequired(id);
         Serial.printf("  %-12s %-8s mode=%-12s (%s)\r\n",
-                      name,
+                      componentName(id),
                       lifecycleLabel(status),
                       componentModeLabel(name),
                       required ? "required" : "optional");

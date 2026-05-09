@@ -64,17 +64,17 @@ uint32_t invokeComponentTransition(ISystemComponent& component,
 BoardInfoComponent::BoardInfoComponent() : ISystemComponent(ComponentID::BoardInfo, kBoardInfoName) {}
 
 void BoardInfoComponent::registerWithController(Supervisor& controller) const {
-    controller.registerComponent(name(), false);
+    controller.registerComponent(id(), false);
     controller.setComponentTransitionHooks(
-        name(),
+        id(),
         [component = const_cast<BoardInfoComponent*>(this), &controller](SystemState target, uint32_t transitionId) {
             const uint32_t timeoutMs = invokeComponentTransition(*component, target, transitionId);
-            (void)controller.reportCompletion(component->name(), transitionId, TransitionStatus::Completed, nullptr);
+            (void)controller.reportCompletion(component->id(), transitionId, TransitionStatus::Completed, nullptr);
             return timeoutMs;
         },
         [component = const_cast<BoardInfoComponent*>(this), &controller](uint32_t transitionId) {
             component->onTransitionTimeout(transitionId);
-            (void)controller.reportCompletion(component->name(), transitionId, TransitionStatus::Failed, "timeout");
+            (void)controller.reportCompletion(component->id(), transitionId, TransitionStatus::Failed, "timeout");
         });
 }
 
@@ -111,9 +111,9 @@ WiFiComponent::WiFiComponent(Supervisor& system)
     : ISystemComponent(ComponentID::WiFi, kWiFiName), system_(system) {}
 
 void WiFiComponent::registerWithController(Supervisor& controller) const {
-    controller.registerComponent(name(), true);
+    controller.registerComponent(id(), true);
     controller.setComponentTransitionHooks(
-        name(),
+        id(),
         [component = const_cast<WiFiComponent*>(this)](SystemState target, uint32_t transitionId) {
             return invokeComponentTransition(*component, target, transitionId);
         },
@@ -230,6 +230,9 @@ void WiFiComponent::completePendingTransition(TransitionStatus status, const cha
     if (!transitionPending_) {
         return;
     }
+    transitionPending_ = false;
+    (void)system_.reportCompletion(id(), pendingTransitionId_, status, reason);
+}
 
     const uint32_t transitionId = pendingTransitionId_;
     transitionPending_ = false;
@@ -243,9 +246,9 @@ AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer& audio, Supervisor& sy
     : ISystemComponent(ComponentID::AudioRuntime, kAudioRuntimeName), audio_(audio), system_(system) {}
 
 void AudioRuntimeComponent::registerWithController(Supervisor& controller) const {
-    controller.registerComponent(name(), true);
+    controller.registerComponent(id(), true);
     controller.setComponentTransitionHooks(
-        name(),
+        id(),
         [component = const_cast<AudioRuntimeComponent*>(this)](SystemState target, uint32_t transitionId) {
             return invokeComponentTransition(*component, target, transitionId);
         },
@@ -366,6 +369,9 @@ void AudioRuntimeComponent::completePendingTransition(TransitionStatus status, c
     if (!transitionPending_) {
         return;
     }
+    transitionPending_ = false;
+    (void)system_.reportCompletion(id(), pendingTransitionId_, status, reason);
+}
 
     const uint32_t transitionId = pendingTransitionId_;
     transitionPending_ = false;
@@ -380,17 +386,17 @@ CliComponent::CliComponent(IAudioPlayer& audio, Supervisor& system)
     : ISystemComponent(ComponentID::CLI, kCliName), audio_(audio), system_(system) {}
 
 void CliComponent::registerWithController(Supervisor& controller) const {
-    controller.registerComponent(name(), false);
+    controller.registerComponent(id(), false);
     controller.setComponentTransitionHooks(
-        name(),
+        id(),
         [component = const_cast<CliComponent*>(this), &controller](SystemState target, uint32_t transitionId) {
             const uint32_t timeoutMs = invokeComponentTransition(*component, target, transitionId);
-            (void)controller.reportCompletion(component->name(), transitionId, TransitionStatus::Completed, nullptr);
+            (void)controller.reportCompletion(component->id(), transitionId, TransitionStatus::Completed, nullptr);
             return timeoutMs;
         },
         [component = const_cast<CliComponent*>(this), &controller](uint32_t transitionId) {
             component->onTransitionTimeout(transitionId);
-            (void)controller.reportCompletion(component->name(), transitionId, TransitionStatus::Failed, "timeout");
+            (void)controller.reportCompletion(component->id(), transitionId, TransitionStatus::Failed, "timeout");
         });
 }
 

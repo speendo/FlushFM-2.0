@@ -1,5 +1,4 @@
 #include <array>
-#include <string>
 
 #include <unity.h>
 
@@ -9,22 +8,22 @@ namespace {
 
 struct TransitionHooksFixture {
     Supervisor controller;
-    std::array<const char*, 4> components{"WiFi", "AudioRuntime", "CLI", "BoardInfo"};
+    std::array<ComponentID, 4> components{ComponentID::WiFi, ComponentID::AudioRuntime, ComponentID::CLI, ComponentID::BoardInfo};
 
     void install() {
-        TEST_ASSERT_TRUE(controller.registerComponent("WiFi", true));
-        TEST_ASSERT_TRUE(controller.registerComponent("AudioRuntime", true));
-        TEST_ASSERT_TRUE(controller.registerComponent("CLI", false));
-        TEST_ASSERT_TRUE(controller.registerComponent("BoardInfo", false));
+        TEST_ASSERT_TRUE(controller.registerComponent(ComponentID::WiFi, true));
+        TEST_ASSERT_TRUE(controller.registerComponent(ComponentID::AudioRuntime, true));
+        TEST_ASSERT_TRUE(controller.registerComponent(ComponentID::CLI, false));
+        TEST_ASSERT_TRUE(controller.registerComponent(ComponentID::BoardInfo, false));
 
-        for (const char* name : components) {
+        for (const ComponentID id : components) {
             TEST_ASSERT_TRUE(controller.setComponentTransitionHooks(
-                name,
+                id,
                 [](SystemState, uint32_t) {
                     return 1000;
                 },
-                [&controller = controller, name](uint32_t transitionId) {
-                    (void)controller.reportCompletion(name, transitionId, TransitionStatus::Failed, "timeout");
+                [&controller = controller, id](uint32_t transitionId) {
+                    (void)controller.reportCompletion(id, transitionId, TransitionStatus::Failed, "timeout");
                 }));
         }
     }
@@ -32,8 +31,8 @@ struct TransitionHooksFixture {
     void completeAllActive(TransitionStatus status = TransitionStatus::Completed) {
         TEST_ASSERT_TRUE(controller.hasActiveTransition());
         const uint32_t transitionId = controller.activeTransitionId();
-        for (const char* name : components) {
-            TEST_ASSERT_TRUE(controller.reportCompletion(name, transitionId, status, status == TransitionStatus::Completed ? nullptr : "failed"));
+        for (const ComponentID id : components) {
+            TEST_ASSERT_TRUE(controller.reportCompletion(id, transitionId, status, status == TransitionStatus::Completed ? nullptr : "failed"));
         }
     }
 };
