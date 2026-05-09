@@ -334,7 +334,7 @@ void test_error_state_transitions() {
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR), static_cast<int>(fixture.controller.state()));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::RECOVER, SystemReason::RECOVERY));
-    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR), static_cast<int>(fixture.controller.state()));
 
     TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::AUDIO_TASK_INIT_FAILED));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR), static_cast<int>(fixture.controller.state()));

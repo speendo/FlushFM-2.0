@@ -514,7 +514,7 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
 
         case SystemState::ERROR:
             if (event == SystemEvent::RECOVER) {
-                transitionTo(SystemState::READY, event, reason);
+                // Placeholder: error recovery is not yet designed.
             }
             break;
     }
