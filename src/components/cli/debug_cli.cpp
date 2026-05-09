@@ -35,7 +35,7 @@ namespace debug_cli {
 
 static bool postManualTransition(const char* targetState) {
     if (!s_controller) {
-        ERROR_LOG(kLogSource, "SystemController not available for transition command");
+        ERROR_LOG(kLogSource, "Supervisor not available for transition command");
         return true;
     }
 
@@ -162,7 +162,7 @@ static void printTaskList() {
 
 static void printTransitionStatus() {
     if (!s_controller) {
-        ERROR_LOG(kLogSource, "SystemController not available");
+        ERROR_LOG(kLogSource, "Supervisor not available");
         return;
     }
 
