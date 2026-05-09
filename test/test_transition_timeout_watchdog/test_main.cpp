@@ -3,7 +3,7 @@
 
 #include <unity.h>
 
-#include "../../src/state_machine/system_controller.cpp"
+#include "../../src/state_machine/supervisor.cpp"
 
 namespace {
 

@@ -5,7 +5,7 @@
 #include "component_types.h"
 
 class IAudioPlayer;
-class SystemController;
+class Supervisor;
 
 namespace audio_runtime {
 enum class Signal;
@@ -16,7 +16,7 @@ public:
     explicit ISystemComponent(const char* componentName) : name_(componentName) {}
     virtual ~ISystemComponent() = default;
     const char* name() const { return name_; }
-    virtual void registerWithController(SystemController& controller) const = 0;
+    virtual void registerWithController(Supervisor& controller) const = 0;
     virtual bool setup() = 0;
     virtual uint32_t setOFF(uint32_t transitionId) = 0;
     virtual uint32_t setIDLE(uint32_t transitionId) = 0;
@@ -32,7 +32,7 @@ private:
 class BoardInfoComponent final : public ISystemComponent {
 public:
     BoardInfoComponent();
-    void registerWithController(SystemController& controller) const override;
+    void registerWithController(Supervisor& controller) const override;
     bool setup() override;
     uint32_t setOFF(uint32_t transitionId) override;
     uint32_t setIDLE(uint32_t transitionId) override;
@@ -43,9 +43,9 @@ public:
 
 class WiFiComponent final : public ISystemComponent {
 public:
-    explicit WiFiComponent(SystemController& system);
+    explicit WiFiComponent(Supervisor& system);
 
-    void registerWithController(SystemController& controller) const override;
+    void registerWithController(Supervisor& controller) const override;
     bool setup() override;
     uint32_t setOFF(uint32_t transitionId) override;
     uint32_t setIDLE(uint32_t transitionId) override;
@@ -61,7 +61,7 @@ private:
     void startPendingTransition(bool streamingTarget, uint32_t transitionId);
     void completePendingTransition(TransitionStatus status, const char* reason);
 
-    SystemController& system_;
+    Supervisor& system_;
     bool bootAutoConnectSucceeded_ = false;
     bool transitionPending_ = false;
     bool pendingStreamingTarget_ = false;
@@ -70,9 +70,9 @@ private:
 
 class AudioRuntimeComponent final : public ISystemComponent {
 public:
-    AudioRuntimeComponent(IAudioPlayer& audio, SystemController& system);
+    AudioRuntimeComponent(IAudioPlayer& audio, Supervisor& system);
 
-    void registerWithController(SystemController& controller) const override;
+    void registerWithController(Supervisor& controller) const override;
     bool setup() override;
     uint32_t setOFF(uint32_t transitionId) override;
     uint32_t setIDLE(uint32_t transitionId) override;
@@ -87,7 +87,7 @@ private:
     void completePendingTransition(TransitionStatus status, const char* reason);
 
     IAudioPlayer& audio_;
-    SystemController& system_;
+    Supervisor& system_;
     bool transitionPending_ = false;
     bool pendingStreamingTarget_ = false;
     uint32_t pendingTransitionId_ = 0;
@@ -96,9 +96,9 @@ private:
 
 class CliComponent final : public ISystemComponent {
 public:
-    CliComponent(IAudioPlayer& audio, SystemController& system);
+    CliComponent(IAudioPlayer& audio, Supervisor& system);
 
-    void registerWithController(SystemController& controller) const override;
+    void registerWithController(Supervisor& controller) const override;
     bool setup() override;
     uint32_t setOFF(uint32_t transitionId) override;
     uint32_t setIDLE(uint32_t transitionId) override;
@@ -109,5 +109,5 @@ public:
 
 private:
     IAudioPlayer& audio_;
-    SystemController& system_;
+    Supervisor& system_;
 };

@@ -7,13 +7,13 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-class SystemController;
+class Supervisor;
 
 namespace debug_cli {
 
 // Store the audio task handle used by suspend/resume commands.
 // Pass a pointer so the value is picked up after the task is created.
-void init(TaskHandle_t* audioTaskHandle, SystemController* controller);
+void init(TaskHandle_t* audioTaskHandle, Supervisor* controller);
 
 // Attempt to handle cmd+arg as a debug command.
 // Returns true if the command was handled; false if unknown (caller should continue).

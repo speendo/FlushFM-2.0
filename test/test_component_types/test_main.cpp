@@ -5,7 +5,7 @@
 #include <unity.h>
 
 #include "../../src/component_types.cpp"
-#include "../../src/state_machine/system_controller.h"
+#include "../../src/state_machine/supervisor.h"
 
 namespace {
 
@@ -90,8 +90,8 @@ void test_state_machine_labels_round_trip_and_are_unique() {
     }};
 
     const std::array<EnumLabelCase<EventPolicy>, 2> policies = {{
-        {EventPolicy::FIRE_AND_FORGET, "FIRE_AND_FORGET"},
-        {EventPolicy::BOUNDED_BLOCKING, "BOUNDED_BLOCKING"},
+        {EventPolicy::BestEffort, "BestEffort"},
+        {EventPolicy::Critical, "Critical"},
     }};
 
     const std::array<EnumLabelCase<SystemReason>, 9> reasons = {{

@@ -9,7 +9,7 @@
 #include "component_types.h"
 #include "core/config.h"
 #include "settings.h"
-#include "state_machine/system_controller.h"
+#include "state_machine/supervisor.h"
 #include "components/network/wifi_manager.h"
 
 // ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@
 // Module-private state
 // ---------------------------------------------------------------------------
 static IAudioPlayer* s_audio = nullptr;
-static SystemController* s_controller = nullptr;
+static Supervisor* s_controller = nullptr;
 
 namespace {
 
@@ -165,7 +165,7 @@ const char* componentModeLabel(const char* name) {
     return "n/a";
 }
 
-void printComponentStatusSummary(const SystemController& controller) {
+void printComponentStatusSummary(const Supervisor& controller) {
     const char* names[] = {"WiFi", "AudioRuntime", "CLI", "BoardInfo"};
 
     Serial.printf("System:     %s\r\n", toString(controller.state()));
@@ -193,7 +193,7 @@ static void printDebugHelp() {
 // ---------------------------------------------------------------------------
 namespace cli {
 
-void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, SystemController* controller) {
+void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, Supervisor* controller) {
     s_audio = &audio;
     s_controller = controller;
 #ifdef DEBUG_ENABLED
@@ -247,15 +247,15 @@ void process(const char* line) {
         if (strcmp(cmd, "play") == 0 && result.key == cli_output::MessageKey::CONNECTING_STREAM) {
             (void)s_controller->postEvent(SystemEvent::PLAY_REQUESTED,
                                           SystemReason::USER_REQUEST,
-                                          EventPolicy::BOUNDED_BLOCKING);
+                                          EventPolicy::Critical);
         } else if (strcmp(cmd, "stop") == 0 && result.key == cli_output::MessageKey::STREAM_STOPPED) {
             (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED,
                                           SystemReason::USER_REQUEST,
-                                          EventPolicy::BOUNDED_BLOCKING);
+                                          EventPolicy::Critical);
         } else if (strcmp(cmd, "reset") == 0 && result.key == cli_output::MessageKey::SESSION_RESET) {
             (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED,
                                           SystemReason::USER_REQUEST,
-                                          EventPolicy::BOUNDED_BLOCKING);
+                                          EventPolicy::Critical);
         }
     }
 

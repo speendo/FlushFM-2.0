@@ -88,9 +88,11 @@ inline const char* toString(SystemEvent event) {
 #undef SYSTEM_EVENT_X
 
 // Event posting policy: controls how postEvent handles queue backpressure.
+// BestEffort — may be dropped if the queue is full (non-blocking).
+// Critical  — waits briefly if needed (bounded-blocking).
 #define EVENT_POLICY_X(V) \
-    V(FIRE_AND_FORGET) \
-    V(BOUNDED_BLOCKING)
+    V(BestEffort) \
+    V(Critical)
 
 #define EVENT_POLICY_ENUM(name) name,
 enum class EventPolicy {
@@ -162,22 +164,23 @@ inline const char* toString(TransitionRequestDecision decision) {
 #undef TRANSITION_REQUEST_DECISION_ENUM
 #undef TRANSITION_REQUEST_DECISION_X
 
-class SystemController {
+class Supervisor {
 public:
     using StateObserver = std::function<void(SystemState)>;
     using TransitionInvoker = std::function<uint32_t(SystemState, uint32_t)>;
     using TransitionTimeoutHook = std::function<void(uint32_t)>;
 
-    SystemController();
+    Supervisor();
 
     SystemState state() const;
     void subscribe(StateObserver observer);
 
     // Thread-safe event enqueue for any core/task.
     // reason carries origin/context metadata for logging and debugging.
-    // policy controls queue backpressure strategy; the non-blocking mode may lose events while the
-    // bounded mode waits briefly and falls back to sticky pending flags.
-    bool postEvent(SystemEvent event, SystemReason reason, EventPolicy policy = EventPolicy::FIRE_AND_FORGET);
+    // policy controls queue backpressure behaviour:
+    //   BestEffort — non-blocking; may lose events if the queue is full.
+    //   Critical  — waits briefly; will not overwrite or drop.
+    bool postEvent(SystemEvent event, SystemReason reason, EventPolicy policy = EventPolicy::BestEffort);
 
     // Core 0 only: drain the event queue and run transition logic.
     void processEventQueue();

@@ -12,14 +12,14 @@
 #include "component_types.h"
 #include "core/config.h"
 #include "core/debug.h"
-#include "state_machine/system_controller.h"
+#include "state_machine/supervisor.h"
 
 // ---------------------------------------------------------------------------
 // Module-private state
 // ---------------------------------------------------------------------------
 static constexpr const char* kLogSource = "DebugCLI";
 static TaskHandle_t* s_audioTaskHandle = nullptr;
-static SystemController* s_controller = nullptr;
+static Supervisor* s_controller = nullptr;
 
 // ---------------------------------------------------------------------------
 // Forward declarations
@@ -45,7 +45,7 @@ static bool postManualTransition(const char* targetState) {
     }
 
     if (strcmp(targetState, "idle") == 0 || strcmp(targetState, "ready") == 0) {
-        (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
+        (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::Critical);
         PROD_LOG(kLogSource, "Transition request posted: ready");
         return true;
     }
@@ -59,13 +59,13 @@ static bool postManualTransition(const char* targetState) {
     }
 
     if (strcmp(targetState, "sleep") == 0) {
-        (void)s_controller->postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
+        (void)s_controller->postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST, EventPolicy::Critical);
         PROD_LOG(kLogSource, "Transition request posted: sleep");
         return true;
     }
 
     if (strcmp(targetState, "error") == 0) {
-        (void)s_controller->postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::USER_REQUEST, EventPolicy::BOUNDED_BLOCKING);
+        (void)s_controller->postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::USER_REQUEST, EventPolicy::Critical);
         PROD_LOG(kLogSource, "Transition request posted: error");
         return true;
     }
@@ -75,7 +75,7 @@ static bool postManualTransition(const char* targetState) {
     return true;
 }
 
-void init(TaskHandle_t* audioTaskHandle, SystemController* controller) {
+void init(TaskHandle_t* audioTaskHandle, Supervisor* controller) {
     s_audioTaskHandle = audioTaskHandle;
     s_controller = controller;
 }

@@ -3,12 +3,12 @@
 
 #include <unity.h>
 
-#include "../../src/state_machine/system_controller.cpp"
+#include "../../src/state_machine/supervisor.cpp"
 
 namespace {
 
 struct TransitionHooksFixture {
-    SystemController controller;
+    Supervisor controller;
     std::array<const char*, 4> components{"WiFi", "AudioRuntime", "CLI", "BoardInfo"};
 
     void install() {

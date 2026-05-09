@@ -1,4 +1,4 @@
-#include "state_machine/system_controller.h"
+#include "state_machine/supervisor.h"
 
 #include <cstring>
 #include <utility>
@@ -13,7 +13,7 @@
 
 namespace {
 
-constexpr const char* kLogSource = "SystemController";
+constexpr const char* kLogSource = "Supervisor";
 
 uint32_t nowMs() {
 #if defined(ARDUINO)
@@ -34,7 +34,7 @@ bool isIntentEvent(SystemEvent event) {
 
 }  // namespace
 
-SystemController::SystemController() {
+Supervisor::Supervisor() {
 #if defined(ARDUINO)
     queue_ = xQueueCreate(16, sizeof(QueuedEvent));
     if (!queue_) {
@@ -46,15 +46,15 @@ SystemController::SystemController() {
 #endif
 }
 
-SystemState SystemController::state() const {
+SystemState Supervisor::state() const {
     return state_;
 }
 
-void SystemController::subscribe(StateObserver observer) {
+void Supervisor::subscribe(StateObserver observer) {
     observers_.push_back(observer);
 }
 
-bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPolicy policy) {
+bool Supervisor::postEvent(SystemEvent event, SystemReason reason, EventPolicy policy) {
 #if !defined(ARDUINO)
     (void)policy;
     handleEvent(event, reason);
@@ -68,10 +68,10 @@ bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPo
     }
     const QueuedEvent queued{event, reason};
     
-    const TickType_t timeout = (policy == EventPolicy::BOUNDED_BLOCKING) ? pdMS_TO_TICKS(10) : 0;
+    const TickType_t timeout = (policy == EventPolicy::Critical) ? pdMS_TO_TICKS(10) : 0;
     const bool success = xQueueSend(queue_, &queued, timeout) == pdTRUE;
     
-    if (!success && policy == EventPolicy::BOUNDED_BLOCKING) {
+    if (!success && policy == EventPolicy::Critical) {
         // Critical event lost: set sticky flag and log for recovery in processEventQueue().
         ERROR_LOG(kLogSource, "Event queue full; critical event %s will retry on next dispatch", toString(event));
         pendingCriticalEvent_ = true;
@@ -83,7 +83,7 @@ bool SystemController::postEvent(SystemEvent event, SystemReason reason, EventPo
 #endif
 }
 
-void SystemController::processEventQueue() {
+void Supervisor::processEventQueue() {
 #if !defined(ARDUINO)
     const bool transitionBusy = orchestration_.active || hasActiveStateTransition_ || state_ == SystemState::BOOTING || state_ == SystemState::CONNECTING;
     if (!transitionBusy && !deferredIntentEvents_.empty()) {
@@ -138,7 +138,7 @@ void SystemController::processEventQueue() {
 #endif
 }
 
-std::string SystemController::normalizeComponentName(const char* name) {
+std::string Supervisor::normalizeComponentName(const char* name) {
     if (!name || name[0] == '\0') {
         return {};
     }
@@ -151,7 +151,7 @@ std::string SystemController::normalizeComponentName(const char* name) {
     return normalized;
 }
 
-void SystemController::copyFailureReason(char* destination, size_t destinationSize, const char* reason) {
+void Supervisor::copyFailureReason(char* destination, size_t destinationSize, const char* reason) {
     if (!destination || destinationSize == 0) {
         return;
     }
@@ -170,7 +170,7 @@ void SystemController::copyFailureReason(char* destination, size_t destinationSi
     destination[destinationSize - 1] = '\0';
 }
 
-bool SystemController::registerComponent(const char* name, bool isRequired) {
+bool Supervisor::registerComponent(const char* name, bool isRequired) {
     const std::string normalizedName = normalizeComponentName(name);
     if (normalizedName.empty()) {
         ERROR_LOG(kLogSource, "Rejected component registration with empty or null name");
@@ -190,7 +190,7 @@ bool SystemController::registerComponent(const char* name, bool isRequired) {
     return true;
 }
 
-bool SystemController::setComponentTransitionHooks(const char* name,
+bool Supervisor::setComponentTransitionHooks(const char* name,
                                                    TransitionInvoker transitionInvoker,
                                                    TransitionTimeoutHook timeoutHook) {
     const std::string normalizedName = normalizeComponentName(name);
@@ -213,7 +213,7 @@ bool SystemController::setComponentTransitionHooks(const char* name,
     return true;
 }
 
-ComponentLifecycleStatus SystemController::getComponentStatus(const char* name) const {
+ComponentLifecycleStatus Supervisor::getComponentStatus(const char* name) const {
     const std::string normalizedName = normalizeComponentName(name);
     if (normalizedName.empty()) {
         return ComponentLifecycleStatus::Unknown;
@@ -227,7 +227,7 @@ ComponentLifecycleStatus SystemController::getComponentStatus(const char* name) 
     return it->second.lifeCycleStatus;
 }
 
-bool SystemController::markComponentFailed(const char* name, const char* reason) {
+bool Supervisor::markComponentFailed(const char* name, const char* reason) {
     const std::string normalizedName = normalizeComponentName(name);
     if (normalizedName.empty()) {
         ERROR_LOG(kLogSource, "Rejected component failure for empty or null name");
@@ -245,7 +245,7 @@ bool SystemController::markComponentFailed(const char* name, const char* reason)
     return true;
 }
 
-bool SystemController::isComponentRequired(const char* name) const {
+bool Supervisor::isComponentRequired(const char* name) const {
     const std::string normalizedName = normalizeComponentName(name);
     if (normalizedName.empty()) {
         return false;
@@ -259,7 +259,7 @@ bool SystemController::isComponentRequired(const char* name) const {
     return it->second.isRequired;
 }
 
-bool SystemController::beginComponentTransition(const char* name, uint32_t transitionId) {
+bool Supervisor::beginComponentTransition(const char* name, uint32_t transitionId) {
     const std::string normalizedName = normalizeComponentName(name);
     if (normalizedName.empty()) {
         ERROR_LOG(kLogSource, "Rejected transition begin for empty or null component name");
@@ -284,7 +284,7 @@ bool SystemController::beginComponentTransition(const char* name, uint32_t trans
     return true;
 }
 
-bool SystemController::reportCompletion(const char* componentName,
+bool Supervisor::reportCompletion(const char* componentName,
                                         uint32_t transitionId,
                                         TransitionStatus status,
                                         DebugReason reason) {
@@ -365,7 +365,7 @@ bool SystemController::reportCompletion(const char* componentName,
     return true;
 }
 
-TransitionRequestDecision SystemController::requestTransition(SystemState from,
+TransitionRequestDecision Supervisor::requestTransition(SystemState from,
                                                               SystemState target,
                                                               uint32_t transitionId) {
     if (from == target) {
@@ -392,7 +392,7 @@ TransitionRequestDecision SystemController::requestTransition(SystemState from,
     return TransitionRequestDecision::Queued;
 }
 
-bool SystemController::finishTransition(uint32_t transitionId) {
+bool Supervisor::finishTransition(uint32_t transitionId) {
     if (!hasActiveStateTransition_) {
         return false;
     }
@@ -414,7 +414,7 @@ bool SystemController::finishTransition(uint32_t transitionId) {
     return true;
 }
 
-bool SystemController::beginOrchestration(SystemState target,
+bool Supervisor::beginOrchestration(SystemState target,
                                           SystemEvent trigger,
                                           SystemReason reason,
                                           uint32_t transitionId) {
@@ -481,46 +481,46 @@ bool SystemController::beginOrchestration(SystemState target,
     return true;
 }
 
-bool SystemController::isOrchestrationActive() const {
+bool Supervisor::isOrchestrationActive() const {
     return orchestration_.active;
 }
 
-size_t SystemController::componentsWaitingForCompletion() const {
+size_t Supervisor::componentsWaitingForCompletion() const {
     return pendingTransitions_.size();
 }
 
-bool SystemController::hasActiveTransition() const {
+bool Supervisor::hasActiveTransition() const {
     return hasActiveStateTransition_;
 }
 
-bool SystemController::hasQueuedTransition() const {
+bool Supervisor::hasQueuedTransition() const {
     return hasQueuedStateTransition_;
 }
 
-uint32_t SystemController::activeTransitionId() const {
+uint32_t Supervisor::activeTransitionId() const {
     return activeStateTransition_.transitionId;
 }
 
-SystemState SystemController::activeTransitionFrom() const {
+SystemState Supervisor::activeTransitionFrom() const {
     return activeStateTransition_.from;
 }
 
-SystemState SystemController::activeTransitionTarget() const {
+SystemState Supervisor::activeTransitionTarget() const {
     return activeStateTransition_.target;
 }
 
-uint32_t SystemController::queuedTransitionId() const {
+uint32_t Supervisor::queuedTransitionId() const {
     return queuedStateTransition_.transitionId;
 }
 
-SystemState SystemController::queuedTransitionFrom() const {
+SystemState Supervisor::queuedTransitionFrom() const {
     return queuedStateTransition_.from;
 }
 
-SystemState SystemController::queuedTransitionTarget() const {
+SystemState Supervisor::queuedTransitionTarget() const {
     return queuedStateTransition_.target;
 }
-void SystemController::checkTransitionTimeouts() {
+void Supervisor::checkTransitionTimeouts() {
     if (!orchestration_.active) {
         return;
     }
@@ -571,7 +571,7 @@ void SystemController::checkTransitionTimeouts() {
     }
 }
 
-void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
+void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
     auto requestStateTransition = [this, event, reason](SystemState target) {
         uint32_t transitionId = nextTransitionId_;
         ++nextTransitionId_;
@@ -697,7 +697,7 @@ void SystemController::handleEvent(SystemEvent event, SystemReason reason) {
     }
 }
 
-void SystemController::transitionTo(SystemState next, SystemEvent trigger, SystemReason reason, uint32_t transitionId) {
+void Supervisor::transitionTo(SystemState next, SystemEvent trigger, SystemReason reason, uint32_t transitionId) {
     if (next == state_) {
         return;
     }

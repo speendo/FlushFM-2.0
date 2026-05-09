@@ -9,7 +9,7 @@
 #include "core/debug.h"
 #include "settings.h"
 #include "components/network/wifi_manager.h"
-#include "state_machine/system_controller.h"
+#include "state_machine/supervisor.h"
 
 namespace {
 
@@ -63,7 +63,7 @@ uint32_t invokeComponentTransition(ISystemComponent& component,
 
 BoardInfoComponent::BoardInfoComponent() : ISystemComponent(kBoardInfoName) {}
 
-void BoardInfoComponent::registerWithController(SystemController& controller) const {
+void BoardInfoComponent::registerWithController(Supervisor& controller) const {
     controller.registerComponent(name(), false);
     controller.setComponentTransitionHooks(
         name(),
@@ -107,10 +107,10 @@ void BoardInfoComponent::onTransitionTimeout(uint32_t transitionId) {
     DEBUG_LOG(kBoardInfoName, "Transition timeout for id=%lu", static_cast<unsigned long>(transitionId));
 }
 
-WiFiComponent::WiFiComponent(SystemController& system)
+WiFiComponent::WiFiComponent(Supervisor& system)
     : ISystemComponent(kWiFiName), system_(system) {}
 
-void WiFiComponent::registerWithController(SystemController& controller) const {
+void WiFiComponent::registerWithController(Supervisor& controller) const {
     controller.registerComponent(name(), true);
     controller.setComponentTransitionHooks(
         name(),
@@ -217,7 +217,7 @@ void WiFiComponent::onDisconnected(void* context) {
         self->completePendingTransition(TransitionStatus::Failed, "wifi disconnected");
     }
 
-    self->system_.postEvent(SystemEvent::WIFI_DISCONNECTED, SystemReason::NONE, EventPolicy::BOUNDED_BLOCKING);
+    self->system_.postEvent(SystemEvent::WIFI_DISCONNECTED, SystemReason::NONE, EventPolicy::Critical);
 }
 
 void WiFiComponent::startPendingTransition(bool streamingTarget, uint32_t transitionId) {
@@ -239,10 +239,10 @@ void WiFiComponent::completePendingTransition(TransitionStatus status, const cha
     (void)system_.reportCompletion(name(), transitionId, status, reason);
 }
 
-AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer& audio, SystemController& system)
+AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer& audio, Supervisor& system)
     : ISystemComponent(kAudioRuntimeName), audio_(audio), system_(system) {}
 
-void AudioRuntimeComponent::registerWithController(SystemController& controller) const {
+void AudioRuntimeComponent::registerWithController(Supervisor& controller) const {
     controller.registerComponent(name(), true);
     controller.setComponentTransitionHooks(
         name(),
@@ -347,7 +347,7 @@ void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* co
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
             self->completePendingTransition(TransitionStatus::Failed, "stream lost");
         }
-        self->system_.postEvent(SystemEvent::STREAM_LOST, SystemReason::NONE, EventPolicy::BOUNDED_BLOCKING);
+        self->system_.postEvent(SystemEvent::STREAM_LOST, SystemReason::NONE, EventPolicy::Critical);
     } else {
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
             self->completePendingTransition(TransitionStatus::Failed, "audio init failed");
@@ -376,10 +376,10 @@ void AudioRuntimeComponent::completePendingTransition(TransitionStatus status, c
     (void)system_.reportCompletion(name(), transitionId, status, reason);
 }
 
-CliComponent::CliComponent(IAudioPlayer& audio, SystemController& system)
+CliComponent::CliComponent(IAudioPlayer& audio, Supervisor& system)
     : ISystemComponent(kCliName), audio_(audio), system_(system) {}
 
-void CliComponent::registerWithController(SystemController& controller) const {
+void CliComponent::registerWithController(Supervisor& controller) const {
     controller.registerComponent(name(), false);
     controller.setComponentTransitionHooks(
         name(),

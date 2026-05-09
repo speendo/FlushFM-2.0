@@ -6,7 +6,7 @@
 #include "core/config.h"
 #include "core/debug.h"
 #include "settings.h"
-#include "state_machine/system_controller.h"
+#include "state_machine/supervisor.h"
 #include "components/composition/system_components.h"
 
 namespace {
@@ -20,7 +20,7 @@ constexpr const char* kLogSource = "Main";
 // ---------------------------------------------------------------------------
 static AudioPlayerESP32 s_playerImpl(I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
 static IAudioPlayer& s_audio = s_playerImpl;
-static SystemController s_system;
+static Supervisor s_system;
 static BoardInfoComponent s_boardInfo;
 static WiFiComponent s_wifi(s_system);
 static AudioRuntimeComponent s_audioRuntime(s_audio, s_system);
@@ -64,7 +64,7 @@ void setup() {
     PROD_LOG(kLogSource, "Boot auto-play: queue PLAY request");
     (void)s_system.postEvent(SystemEvent::PLAY_REQUESTED,
                              SystemReason::USER_REQUEST,
-                             EventPolicy::BOUNDED_BLOCKING);
+                             EventPolicy::Critical);
 }
 
 void loop() {

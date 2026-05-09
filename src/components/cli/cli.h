@@ -8,13 +8,13 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-class SystemController;
+class Supervisor;
 
 namespace cli {
 
-// Wire the CLI to the audio player, the audio task handle pointer, and the SystemController
+// Wire the CLI to the audio player, the audio task handle pointer, and the Supervisor
 // for state-machine event posting. controllerMay be nullptr to disable event-routed commands.
-void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, SystemController* controller = nullptr);
+void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, Supervisor* controller = nullptr);
 
 // Non-blocking single-line reader over Serial.
 // Returns true when a complete newline-terminated line is available in buf.
