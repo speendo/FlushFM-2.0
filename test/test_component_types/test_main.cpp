@@ -157,6 +157,18 @@ void test_debug_reason_alias_accepts_null_and_strings() {
     TEST_ASSERT_EQUAL_UINT32(256, static_cast<uint32_t>(strlen(longReason)));
 }
 
+void test_state_matrix_sentinel_exists() {
+    TEST_ASSERT_EQUAL(0xFF, static_cast<int>(TARGET_MODE));
+}
+
+void test_state_matrix_struct_has_expected_fields() {
+    ComponentStateMatrix m;
+    m.forwardTimeoutMs = 100;
+    m.backwardTimeoutMs = 200;
+    TEST_ASSERT_EQUAL(100, static_cast<int>(m.forwardTimeoutMs));
+    TEST_ASSERT_EQUAL(200, static_cast<int>(m.backwardTimeoutMs));
+}
+
 }  // namespace
 
 int main() {
@@ -170,5 +182,7 @@ int main() {
     RUN_TEST(test_to_string_handles_invalid_values);
     RUN_TEST(test_component_id_names_match_expected);
     RUN_TEST(test_debug_reason_alias_accepts_null_and_strings);
+    RUN_TEST(test_state_matrix_sentinel_exists);
+    RUN_TEST(test_state_matrix_struct_has_expected_fields);
     return UNITY_END();
 }

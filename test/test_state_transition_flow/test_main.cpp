@@ -6,6 +6,17 @@
 
 namespace {
 
+// Test matrix with known timeout values for verification
+constexpr ComponentStateMatrix kTestMatrix[] = {
+    {0, 0, 100, 100},
+    {10, 10, 500, 500},
+    {20, 50, 1000, 500},
+    {30, 40, 2000, 500},
+    {40, 50, 5000, 1000},
+    {50, 0xFF, 3000, 500},
+    {50, 0xFF, 4000, 1000},
+};
+
 struct TransitionHooksFixture {
     Supervisor controller;
     std::array<ComponentID, 4> components{ComponentID::WiFi, ComponentID::AudioRuntime, ComponentID::CLI, ComponentID::BoardInfo};
@@ -24,7 +35,9 @@ struct TransitionHooksFixture {
                 },
                 [&controller = controller, id](uint32_t transitionId) {
                     (void)controller.reportCompletion(id, transitionId, TransitionStatus::Failed, "timeout");
-                }));
+                },
+                kTestMatrix,
+                sizeof(kTestMatrix) / sizeof(kTestMatrix[0])));
         }
     }
 
@@ -490,6 +503,23 @@ void test_fatal_rejects_all_events_except_boot() {
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(controller.state()));
 }
 
+void test_matrix_forward_timeout_from_sleep_to_ready() {
+    TransitionHooksFixture fixture;
+    fixture.install();
+
+    // PLAY_REQUESTED from SLEEP → direct transitionTo(CONNECTING) → quick-path orchestration to READY
+    // The orchestration to READY is forward (CONNECTING→READY is stateRank 30→50)
+    // WiFi matrix index for READY is 5, forwardTimeoutMs = 3000
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::WIFI_READY, SystemReason::WIFI_INITIALIZED));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::AUDIO_INIT_OK, SystemReason::AUDIO_TASK_STARTED));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
+    uint32_t wifiTimeout = fixture.controller.getPendingTimeout(ComponentID::WiFi);
+    TEST_ASSERT_GREATER_THAN(0, wifiTimeout);
+}
+
 }  // namespace
 
 int main() {
@@ -517,5 +547,6 @@ int main() {
     RUN_TEST(test_optional_component_failure_does_not_block_orchestration);
     RUN_TEST(test_observed_state_lags_until_orchestration_confirms);
     RUN_TEST(test_fatal_rejects_all_events_except_boot);
+    RUN_TEST(test_matrix_forward_timeout_from_sleep_to_ready);
     return UNITY_END();
 }
