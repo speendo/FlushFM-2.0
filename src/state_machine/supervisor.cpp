@@ -66,7 +66,7 @@ void Supervisor::setErrorEvent(DebugReason reason, ComponentID source) {
 }
 
 void Supervisor::triggerFatal() {
-    transitionTo(SystemState::FATAL, SystemEvent::BOOT, SystemReason::NONE);
+    transitionTo(SystemState::FATAL, static_cast<SystemEvent>(0), SystemReason::NONE);
 }
 
 uint32_t Supervisor::getPendingTimeout(ComponentID id) const {
@@ -451,11 +451,7 @@ void Supervisor::checkTransitionTimeouts() {
 
 void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
     if (observedState_ == SystemState::FATAL) {
-        if (event == SystemEvent::BOOT) {
-            transitionTo(SystemState::BOOTING, event, reason);
-        } else {
-            return;
-        }
+        return;
     }
     auto requestStateTransition = [this, event, reason](SystemState target) {
         uint32_t transitionId = nextTransitionId_;
@@ -510,7 +506,7 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
     }
 
     if (event == SystemEvent::COMPONENT_SETUP_FAILED) {
-        transitionTo(SystemState::ERROR, event, reason);
+        transitionTo(observedState_ == SystemState::ERROR ? SystemState::FATAL : SystemState::ERROR, event, reason);
         return;
     }
 
@@ -518,10 +514,6 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
         case SystemState::FATAL:
             break;
         case SystemState::BOOTING:
-            if (event == SystemEvent::BOOT) {
-                transitionTo(SystemState::SLEEP, event, reason);
-            }
-            break;
 
         case SystemState::SLEEP:
             break;

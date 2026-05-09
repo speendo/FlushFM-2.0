@@ -74,8 +74,7 @@ void test_state_machine_labels_round_trip_and_are_unique() {
         {SystemState::LIVE, "LIVE"},
     }};
 
-    const std::array<EnumLabelCase<SystemEvent>, 6> events = {{
-        {SystemEvent::BOOT, "BOOT"},
+    const std::array<EnumLabelCase<SystemEvent>, 5> events = {{
         {SystemEvent::COMPONENT_SETUP_FAILED, "COMPONENT_SETUP_FAILED"},
         {SystemEvent::PLAY_REQUESTED, "PLAY_REQUESTED"},
         {SystemEvent::STOP_REQUESTED, "STOP_REQUESTED"},

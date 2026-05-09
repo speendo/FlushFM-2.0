@@ -51,7 +51,6 @@ inline const char* toString(SystemState state) {
 #undef SYSTEM_STATE_X
 
 #define SYSTEM_EVENT_X(V) \
-    V(BOOT) \
     V(COMPONENT_SETUP_FAILED) \
     V(PLAY_REQUESTED) \
     V(STOP_REQUESTED) \
@@ -199,7 +198,7 @@ public:
 
 private:
     struct Mailbox {
-        SystemEvent event = SystemEvent::BOOT;
+        SystemEvent event = static_cast<SystemEvent>(0);
         SystemReason reason = SystemReason::NONE;
         bool pending = false;
     };
@@ -234,7 +233,7 @@ private:
         bool active = false;
         uint32_t transitionId = 0;
         SystemState target = SystemState::BOOTING;
-        SystemEvent trigger = SystemEvent::BOOT;
+        SystemEvent trigger = static_cast<SystemEvent>(0);
         SystemReason reason = SystemReason::NONE;
         bool requiredFailure = false;
     };
