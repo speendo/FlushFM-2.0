@@ -1,6 +1,5 @@
 #pragma once
 
-#include <map>
 #include <functional>
 #include <string>
 #include <vector>
@@ -191,16 +190,24 @@ public:
     bool setComponentTransitionHooks(const char* name,
                                      TransitionInvoker transitionInvoker,
                                      TransitionTimeoutHook timeoutHook);
+    bool setComponentTransitionHooks(ComponentID id,
+                                     TransitionInvoker transitionInvoker,
+                                     TransitionTimeoutHook timeoutHook);
     ComponentLifecycleStatus getComponentStatus(const char* name) const;
     ComponentLifecycleStatus getComponentStatus(ComponentID id) const;
     bool markComponentFailed(const char* name, const char* reason);
     bool isComponentRequired(const char* name) const;
     bool isComponentRequired(ComponentID id) const;
-    bool beginComponentTransition(const char* name, uint32_t transitionId);
     bool reportCompletion(const char* componentName,
                           uint32_t transitionId,
                           TransitionStatus status,
                           DebugReason reason);
+    bool reportCompletion(ComponentID id,
+                          uint32_t transitionId,
+                          TransitionStatus status,
+                          DebugReason reason);
+    bool beginComponentTransition(const char* name, uint32_t transitionId);
+    bool beginComponentTransition(ComponentID id, uint32_t transitionId);
     TransitionRequestDecision requestTransition(SystemState from, SystemState target, uint32_t transitionId);
     bool finishTransition(uint32_t transitionId);
     bool beginOrchestration(SystemState target,
@@ -269,8 +276,8 @@ private:
     SystemReason pendingReason_ = SystemReason::NONE;
     uint32_t nextTransitionId_ = 1;
     std::array<ComponentRegistryEntry, static_cast<size_t>(ComponentID::Count)> componentRegistry_{};
-    std::map<std::string, PendingComponentTransition> pendingTransitions_;
-    std::map<std::string, ComponentTransitionHooks> componentHooks_;
+    std::array<PendingComponentTransition, static_cast<size_t>(ComponentID::Count)> pendingTransitions_{};
+    std::array<ComponentTransitionHooks, static_cast<size_t>(ComponentID::Count)> componentHooks_{};
     bool hasActiveStateTransition_ = false;
     StateTransitionInfo activeStateTransition_{};
     bool hasQueuedStateTransition_ = false;

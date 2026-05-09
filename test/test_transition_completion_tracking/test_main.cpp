@@ -1,65 +1,58 @@
-#include <type_traits>
-
 #include <unity.h>
 
 #include "../../src/state_machine/supervisor.cpp"
 
 namespace {
 
-static_assert(std::is_same<decltype(&SystemController::beginComponentTransition), bool (SystemController::*)(const char*, uint32_t)>::value,
-              "SystemController::beginComponentTransition signature mismatch");
-static_assert(std::is_same<decltype(&SystemController::reportCompletion), bool (SystemController::*)(const char*, uint32_t, TransitionStatus, DebugReason)>::value,
-              "SystemController::reportCompletion signature mismatch");
-
 void test_completed_report_marks_component_ready() {
-    SystemController controller;
+    Supervisor controller;
 
     TEST_ASSERT_TRUE(controller.registerComponent("WiFi", true));
-    TEST_ASSERT_TRUE(controller.beginComponentTransition("WiFi", 100));
-    TEST_ASSERT_TRUE(controller.reportCompletion("WiFi", 100, TransitionStatus::Completed, nullptr));
-    TEST_ASSERT_EQUAL(static_cast<int>(ComponentLifecycleStatus::Ready), static_cast<int>(controller.getComponentStatus("WiFi")));
+    TEST_ASSERT_TRUE(controller.beginComponentTransition(ComponentID::WiFi, 100));
+    TEST_ASSERT_TRUE(controller.reportCompletion(ComponentID::WiFi, 100, TransitionStatus::Completed, nullptr));
+    TEST_ASSERT_EQUAL(static_cast<int>(ComponentLifecycleStatus::Ready), static_cast<int>(controller.getComponentStatus(ComponentID::WiFi)));
 }
 
 void test_failed_report_marks_component_failed() {
-    SystemController controller;
+    Supervisor controller;
 
     TEST_ASSERT_TRUE(controller.registerComponent("AudioRuntime", true));
-    TEST_ASSERT_TRUE(controller.beginComponentTransition("AudioRuntime", 9));
-    TEST_ASSERT_TRUE(controller.reportCompletion("AudioRuntime", 9, TransitionStatus::Failed, "timeout"));
-    TEST_ASSERT_EQUAL(static_cast<int>(ComponentLifecycleStatus::Failed), static_cast<int>(controller.getComponentStatus("AudioRuntime")));
+    TEST_ASSERT_TRUE(controller.beginComponentTransition(ComponentID::AudioRuntime, 9));
+    TEST_ASSERT_TRUE(controller.reportCompletion(ComponentID::AudioRuntime, 9, TransitionStatus::Failed, "timeout"));
+    TEST_ASSERT_EQUAL(static_cast<int>(ComponentLifecycleStatus::Failed), static_cast<int>(controller.getComponentStatus(ComponentID::AudioRuntime)));
 }
 
 void test_stale_transition_report_is_ignored() {
-    SystemController controller;
+    Supervisor controller;
 
     TEST_ASSERT_TRUE(controller.registerComponent("CLI", false));
-    TEST_ASSERT_TRUE(controller.beginComponentTransition("CLI", 42));
-    TEST_ASSERT_FALSE(controller.reportCompletion("CLI", 41, TransitionStatus::Completed, nullptr));
-    TEST_ASSERT_EQUAL(static_cast<int>(ComponentLifecycleStatus::Unknown), static_cast<int>(controller.getComponentStatus("CLI")));
-    TEST_ASSERT_TRUE(controller.reportCompletion("CLI", 42, TransitionStatus::Completed, nullptr));
+    TEST_ASSERT_TRUE(controller.beginComponentTransition(ComponentID::CLI, 42));
+    TEST_ASSERT_FALSE(controller.reportCompletion(ComponentID::CLI, 41, TransitionStatus::Completed, nullptr));
+    TEST_ASSERT_EQUAL(static_cast<int>(ComponentLifecycleStatus::Unknown), static_cast<int>(controller.getComponentStatus(ComponentID::CLI)));
+    TEST_ASSERT_TRUE(controller.reportCompletion(ComponentID::CLI, 42, TransitionStatus::Completed, nullptr));
 }
 
 void test_double_report_is_ignored_after_completion() {
-    SystemController controller;
+    Supervisor controller;
 
     TEST_ASSERT_TRUE(controller.registerComponent("BoardInfo", false));
-    TEST_ASSERT_TRUE(controller.beginComponentTransition("BoardInfo", 7));
-    TEST_ASSERT_TRUE(controller.reportCompletion("BoardInfo", 7, TransitionStatus::Completed, nullptr));
-    TEST_ASSERT_FALSE(controller.reportCompletion("BoardInfo", 7, TransitionStatus::Completed, nullptr));
+    TEST_ASSERT_TRUE(controller.beginComponentTransition(ComponentID::BoardInfo, 7));
+    TEST_ASSERT_TRUE(controller.reportCompletion(ComponentID::BoardInfo, 7, TransitionStatus::Completed, nullptr));
+    TEST_ASSERT_FALSE(controller.reportCompletion(ComponentID::BoardInfo, 7, TransitionStatus::Completed, nullptr));
 }
 
 void test_second_begin_is_rejected_while_transition_pending() {
-    SystemController controller;
+    Supervisor controller;
 
-    TEST_ASSERT_TRUE(controller.registerComponent("Sensor", false));
-    TEST_ASSERT_TRUE(controller.beginComponentTransition("Sensor", 1));
-    TEST_ASSERT_FALSE(controller.beginComponentTransition("Sensor", 2));
-    TEST_ASSERT_TRUE(controller.reportCompletion("Sensor", 1, TransitionStatus::Completed, nullptr));
-    TEST_ASSERT_TRUE(controller.beginComponentTransition("Sensor", 2));
+    TEST_ASSERT_TRUE(controller.registerComponent("CLI", false));
+    TEST_ASSERT_TRUE(controller.beginComponentTransition(ComponentID::CLI, 1));
+    TEST_ASSERT_FALSE(controller.beginComponentTransition(ComponentID::CLI, 2));
+    TEST_ASSERT_TRUE(controller.reportCompletion(ComponentID::CLI, 1, TransitionStatus::Completed, nullptr));
+    TEST_ASSERT_TRUE(controller.beginComponentTransition(ComponentID::CLI, 2));
 }
 
 void test_transition_begin_for_unknown_component_is_rejected() {
-    SystemController controller;
+    Supervisor controller;
 
     TEST_ASSERT_FALSE(controller.beginComponentTransition("Missing", 3));
     TEST_ASSERT_FALSE(controller.reportCompletion("Missing", 3, TransitionStatus::Completed, nullptr));

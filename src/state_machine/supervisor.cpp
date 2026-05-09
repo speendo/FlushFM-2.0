@@ -231,12 +231,22 @@ bool Supervisor::setComponentTransitionHooks(const char* name,
         return false;
     }
 
-    if (componentIdFromName(normalizedName.c_str()) == ComponentID::Count) {
+    const ComponentID id = componentIdFromName(normalizedName.c_str());
+    if (id == ComponentID::Count) {
         ERROR_LOG(kLogSource, "Rejected transition hooks for unknown component %s", normalizedName.c_str());
         return false;
     }
 
-    componentHooks_[normalizedName] = ComponentTransitionHooks{std::move(transitionInvoker), std::move(timeoutHook)};
+    componentHooks_[static_cast<size_t>(id)] = ComponentTransitionHooks{std::move(transitionInvoker), std::move(timeoutHook)};
+    return true;
+}
+
+bool Supervisor::setComponentTransitionHooks(ComponentID id,
+                                                   TransitionInvoker transitionInvoker,
+                                                   TransitionTimeoutHook timeoutHook) {
+    if (id == ComponentID::Count) return false;
+    if (!transitionInvoker || !timeoutHook) return false;
+    componentHooks_[static_cast<size_t>(id)] = ComponentTransitionHooks{std::move(transitionInvoker), std::move(timeoutHook)};
     return true;
 }
 
@@ -314,14 +324,20 @@ bool Supervisor::beginComponentTransition(const char* name, uint32_t transitionI
         return false;
     }
 
-    if (pendingTransitions_.find(normalizedName) != pendingTransitions_.end()) {
-        DEBUG_LOG(kLogSource, "Rejected transition begin for %s: component already has in-flight transition", normalizedName.c_str());
+    return beginComponentTransition(id, transitionId);
+}
+
+bool Supervisor::beginComponentTransition(ComponentID id, uint32_t transitionId) {
+    if (id == ComponentID::Count) return false;
+    PendingComponentTransition& pending = pendingTransitions_[static_cast<size_t>(id)];
+    if (pending.transitionId != 0) {
+        DEBUG_LOG(kLogSource, "Rejected transition begin for %s: already has in-flight transition",
+                  componentName(id));
         return false;
     }
-
-    pendingTransitions_.emplace(normalizedName, PendingComponentTransition{transitionId});
+    pending = PendingComponentTransition{transitionId};
     DEBUG_LOG(kLogSource, "Transition armed for %s with id=%lu",
-              normalizedName.c_str(),
+              componentName(id),
               static_cast<unsigned long>(transitionId));
     return true;
 }
@@ -336,34 +352,43 @@ bool Supervisor::reportCompletion(const char* componentName,
         return false;
     }
 
-    auto pendingIt = pendingTransitions_.find(normalizedName);
-    if (pendingIt == pendingTransitions_.end()) {
-        DEBUG_LOG(kLogSource, "Ignoring completion for %s: no in-flight transition", normalizedName.c_str());
+    const ComponentID id = componentIdFromName(normalizedName.c_str());
+    if (id == ComponentID::Count) {
+        ERROR_LOG(kLogSource, "Rejected completion report for unknown component name: %s", normalizedName.c_str());
         return false;
     }
 
-    if (pendingIt->second.transitionId != transitionId) {
+    return reportCompletion(id, transitionId, status, reason);
+}
+
+bool Supervisor::reportCompletion(ComponentID id,
+                                        uint32_t transitionId,
+                                        TransitionStatus status,
+                                        DebugReason reason) {
+    if (id == ComponentID::Count) return false;
+
+    PendingComponentTransition& pending = pendingTransitions_[static_cast<size_t>(id)];
+    if (pending.transitionId == 0) {
+        DEBUG_LOG(kLogSource, "Ignoring completion for %s: no in-flight transition",
+                  componentName(id));
+        return false;
+    }
+
+    if (pending.transitionId != transitionId) {
         DEBUG_LOG(kLogSource, "Ignoring stale completion for %s: expected id=%lu got id=%lu",
-                  normalizedName.c_str(),
-                  static_cast<unsigned long>(pendingIt->second.transitionId),
+                  componentName(id),
+                  static_cast<unsigned long>(pending.transitionId),
                   static_cast<unsigned long>(transitionId));
         return false;
     }
 
-    const ComponentID regId = componentIdFromName(normalizedName.c_str());
-    if (regId == ComponentID::Count) {
-        ERROR_LOG(kLogSource, "Ignoring completion for unknown component %s", normalizedName.c_str());
-        pendingTransitions_.erase(pendingIt);
-        return false;
-    }
-
-    ComponentRegistryEntry& entry = componentRegistry_[static_cast<size_t>(regId)];
+    ComponentRegistryEntry& entry = componentRegistry_[static_cast<size_t>(id)];
     if (status == TransitionStatus::Completed) {
         entry.lifeCycleStatus = ComponentLifecycleStatus::Ready;
         entry.isDisabled = false;
         copyFailureReason(entry.lastFailureReason, sizeof(entry.lastFailureReason), nullptr);
         PROD_LOG(kLogSource, "Component %s reported completion for transition id=%lu",
-                 normalizedName.c_str(),
+                 componentName(id),
                  static_cast<unsigned long>(transitionId));
     } else {
         entry.lifeCycleStatus = ComponentLifecycleStatus::Failed;
@@ -373,14 +398,21 @@ bool Supervisor::reportCompletion(const char* componentName,
             orchestration_.requiredFailure = true;
         }
         ERROR_LOG(kLogSource, "Component %s reported failure for transition id=%lu: %s",
-                  normalizedName.c_str(),
+                  componentName(id),
                   static_cast<unsigned long>(transitionId),
                   reason ? reason : "<none>");
     }
 
-    pendingTransitions_.erase(pendingIt);
+    pending = {};
 
-    if (orchestration_.active && orchestration_.transitionId == transitionId && pendingTransitions_.empty()) {
+    auto hasPendingTransitions = [this]() -> bool {
+        for (const auto& p : pendingTransitions_) {
+            if (p.transitionId != 0) return true;
+        }
+        return false;
+    };
+
+    if (orchestration_.active && orchestration_.transitionId == transitionId && !hasPendingTransitions()) {
         if (orchestration_.requiredFailure) {
             transitionTo(SystemState::ERROR,
                          SystemEvent::COMPONENT_SETUP_FAILED,
@@ -473,17 +505,18 @@ bool Supervisor::beginOrchestration(SystemState target,
     orchestration_.reason = reason;
     orchestration_.requiredFailure = false;
 
-    pendingTransitions_.clear();
+    for (auto& p : pendingTransitions_) p = {};
+    size_t registeredCount = 0;
     for (size_t i = 0; i < static_cast<size_t>(ComponentID::Count); i++) {
         const ComponentRegistryEntry& entry = componentRegistry_[i];
         if (!entry.isRegistered || entry.isDisabled) {
             continue;
         }
-        const char* compName = componentName(static_cast<ComponentID>(i));
-        pendingTransitions_.emplace(compName, PendingComponentTransition{transitionId});
+        pendingTransitions_[i].transitionId = transitionId;
+        registeredCount++;
     }
 
-    if (pendingTransitions_.empty()) {
+    if (registeredCount == 0) {
         transitionTo(target, trigger, reason, transitionId);
         (void)finishTransition(transitionId);
         orchestration_.active = false;
@@ -499,28 +532,22 @@ bool Supervisor::beginOrchestration(SystemState target,
         return true;
     }
 
-    std::vector<std::string> componentNames;
-    componentNames.reserve(pendingTransitions_.size());
-    for (const auto& [componentName, pending] : pendingTransitions_) {
-        (void)pending;
-        componentNames.push_back(componentName);
-    }
-
-    for (const std::string& componentName : componentNames) {
-        auto pendingIt = pendingTransitions_.find(componentName);
-        if (pendingIt == pendingTransitions_.end()) {
+    for (size_t i = 0; i < static_cast<size_t>(ComponentID::Count); i++) {
+        PendingComponentTransition& pending = pendingTransitions_[i];
+        if (pending.transitionId != transitionId) {
             continue;
         }
 
-        const auto hooksIt = componentHooks_.find(componentName);
-        if (hooksIt == componentHooks_.end()) {
-            DEBUG_LOG(kLogSource, "No transition hooks registered for component %s", componentName.c_str());
+        const ComponentTransitionHooks& hooks = componentHooks_[i];
+        if (!hooks.transitionInvoker) {
+            DEBUG_LOG(kLogSource, "No transition hooks registered for component %s",
+                      componentName(static_cast<ComponentID>(i)));
             continue;
         }
 
-        pendingIt->second.startedAtMs = nowMs();
-        pendingIt->second.timeoutHandled = false;
-        pendingIt->second.timeoutMs = hooksIt->second.transitionInvoker(target, transitionId);
+        pending.startedAtMs = nowMs();
+        pending.timeoutHandled = false;
+        pending.timeoutMs = hooks.transitionInvoker(target, transitionId);
     }
 
     return true;
@@ -531,7 +558,11 @@ bool Supervisor::isOrchestrationActive() const {
 }
 
 size_t Supervisor::componentsWaitingForCompletion() const {
-    return pendingTransitions_.size();
+    size_t count = 0;
+    for (const auto& p : pendingTransitions_) {
+        if (p.transitionId != 0) count++;
+    }
+    return count;
 }
 
 bool Supervisor::hasActiveTransition() const {
@@ -570,10 +601,11 @@ void Supervisor::checkTransitionTimeouts() {
         return;
     }
     
-    std::vector<std::string> timedOutComponents;
+    std::vector<size_t> timedOutIndices;
     const uint32_t currentMs = nowMs();
     
-    for (const auto& [componentName, pending] : pendingTransitions_) {
+    for (size_t i = 0; i < static_cast<size_t>(ComponentID::Count); i++) {
+        const PendingComponentTransition& pending = pendingTransitions_[i];
         if (pending.transitionId != orchestration_.transitionId) {
             continue;
         }
@@ -584,25 +616,21 @@ void Supervisor::checkTransitionTimeouts() {
         
         const bool timeoutReached = (currentMs - pending.startedAtMs >= pending.timeoutMs);
         if (timeoutReached) {
-            timedOutComponents.push_back(componentName);
+            timedOutIndices.push_back(i);
         }
     }
     
-    for (const std::string& componentName : timedOutComponents) {
-        auto pendingIt = pendingTransitions_.find(componentName);
-        if (pendingIt == pendingTransitions_.end()) {
+    for (const size_t i : timedOutIndices) {
+        PendingComponentTransition& pending = pendingTransitions_[i];
+        if (pending.transitionId != orchestration_.transitionId || pending.timeoutHandled) {
             continue;
         }
         
-        if (pendingIt->second.transitionId != orchestration_.transitionId || pendingIt->second.timeoutHandled) {
-            continue;
-        }
+        pending.timeoutHandled = true;
         
-        pendingIt->second.timeoutHandled = true;
-        
-        const auto hooksIt = componentHooks_.find(componentName);
-        if (hooksIt == componentHooks_.end()) {
-            (void)reportCompletion(componentName.c_str(),
+        const ComponentTransitionHooks& hooks = componentHooks_[i];
+        if (!hooks.transitionInvoker) {
+            (void)reportCompletion(static_cast<ComponentID>(i),
                                    orchestration_.transitionId,
                                    TransitionStatus::Failed,
                                    "timeout hook missing");
@@ -611,8 +639,8 @@ void Supervisor::checkTransitionTimeouts() {
         
         ERROR_LOG(kLogSource, "Transition id=%lu timed out for component %s",
                   static_cast<unsigned long>(orchestration_.transitionId),
-                  componentName.c_str());
-        hooksIt->second.timeoutHook(orchestration_.transitionId);
+                  componentName(static_cast<ComponentID>(i)));
+        hooks.timeoutHook(orchestration_.transitionId);
     }
 }
 
