@@ -75,7 +75,9 @@ void BoardInfoComponent::registerWithController(Supervisor& controller) const {
         [component = const_cast<BoardInfoComponent*>(this), &controller](uint32_t transitionId) {
             component->onTransitionTimeout(transitionId);
             (void)controller.reportCompletion(component->id(), transitionId, TransitionStatus::Failed, "timeout");
-        });
+        },
+        getStateMatrix(),
+        getStateMatrixSize());
 }
 
 bool BoardInfoComponent::setup() {
@@ -119,7 +121,9 @@ void WiFiComponent::registerWithController(Supervisor& controller) const {
         },
         [component = const_cast<WiFiComponent*>(this)](uint32_t transitionId) {
             component->onTransitionTimeout(transitionId);
-        });
+        },
+        getStateMatrix(),
+        getStateMatrixSize());
 }
 
 bool WiFiComponent::setup() {
@@ -254,7 +258,9 @@ void AudioRuntimeComponent::registerWithController(Supervisor& controller) const
         },
         [component = const_cast<AudioRuntimeComponent*>(this)](uint32_t transitionId) {
             component->onTransitionTimeout(transitionId);
-        });
+        },
+        getStateMatrix(),
+        getStateMatrixSize());
 }
 
 bool AudioRuntimeComponent::setup() {
@@ -397,7 +403,9 @@ void CliComponent::registerWithController(Supervisor& controller) const {
         [component = const_cast<CliComponent*>(this), &controller](uint32_t transitionId) {
             component->onTransitionTimeout(transitionId);
             (void)controller.reportCompletion(component->id(), transitionId, TransitionStatus::Failed, "timeout");
-        });
+        },
+        getStateMatrix(),
+        getStateMatrixSize());
 }
 
 bool CliComponent::setup() {
