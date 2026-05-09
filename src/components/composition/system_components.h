@@ -2,27 +2,28 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 
 #include "component_types.h"
 
 inline constexpr ComponentStateMatrix kWiFiStateMatrix[] = {
-    {static_cast<uint32_t>(SystemState::FATAL), static_cast<uint32_t>(SystemState::FATAL), 100, 100},
-    {static_cast<uint32_t>(SystemState::BOOTING), static_cast<uint32_t>(SystemState::BOOTING), 1000, 500},
-    {static_cast<uint32_t>(SystemState::SLEEP), static_cast<uint32_t>(SystemState::READY), 1000, 500},
-    {static_cast<uint32_t>(SystemState::BOOTING), static_cast<uint32_t>(SystemState::CONNECTING), 2000, 500},
-    {static_cast<uint32_t>(SystemState::CONNECTING), static_cast<uint32_t>(SystemState::READY), 8000, 1000},
-    {static_cast<uint32_t>(SystemState::READY), TARGET_MODE, 5000, 500},
-    {static_cast<uint32_t>(SystemState::READY), TARGET_MODE, 15000, 1000},
+    {0, 0, 100, 100},
+    {30, 30, 1000, 500},
+    {20, 50, 1000, 500},
+    {30, 40, 2000, 500},
+    {40, 50, 8000, 1000},
+    {50, TARGET_MODE, 5000, 500},
+    {50, TARGET_MODE, 15000, 1000},
 };
 
 inline constexpr ComponentStateMatrix kAudioStateMatrix[] = {
-    {static_cast<uint32_t>(SystemState::FATAL), static_cast<uint32_t>(SystemState::FATAL), 100, 100},
-    {static_cast<uint32_t>(SystemState::BOOTING), static_cast<uint32_t>(SystemState::BOOTING), 1000, 500},
-    {static_cast<uint32_t>(SystemState::SLEEP), static_cast<uint32_t>(SystemState::READY), 2000, 500},
-    {static_cast<uint32_t>(SystemState::BOOTING), static_cast<uint32_t>(SystemState::CONNECTING), 2000, 500},
-    {static_cast<uint32_t>(SystemState::CONNECTING), static_cast<uint32_t>(SystemState::READY), 2000, 1000},
-    {static_cast<uint32_t>(SystemState::READY), TARGET_MODE, 2000, 500},
-    {static_cast<uint32_t>(SystemState::READY), TARGET_MODE, 5000, 1000},
+    {0, 0, 100, 100},
+    {30, 30, 1000, 500},
+    {20, 50, 2000, 500},
+    {30, 40, 2000, 500},
+    {40, 50, 2000, 1000},
+    {50, TARGET_MODE, 2000, 500},
+    {50, TARGET_MODE, 5000, 1000},
 };
 
 inline constexpr ComponentStateMatrix kCliStateMatrix[] = {
