@@ -1,26 +1,26 @@
 # Event Contract Model
 
-**Status:** Frozen / Approved (US-0025c) | **Updated:** 2026-05-03
+**Status:** Updated (US-0025h) | **Updated:** 2026-05-09
 
 ## Overview
 
-The SystemController uses a minimal generic event contract to coordinate state transitions across the system. This document defines:
+The Supervisor uses a minimal generic event contract to coordinate state transitions across the system. This document defines:
 - Event types and semantics
 - Global vs. local state responsibilities
-- Queue processing model
+- Mailbox processing model
 - Failure handling contract
 
 ---
 
 ## 1. Core Invariants
 
-### SystemController as Single Source of Truth (SSOT)
+### Supervisor as Single Source of Truth (SSOT)
 
-**Global system state** is owned and managed exclusively by SystemController:
+**Global system state** is owned and managed exclusively by Supervisor:
 - `BOOTING` → `SLEEP` → `CONNECTING` → `READY` → `LIVE` → `ERROR`
-- Only SystemController can call `setState(...)` or `transitionTo(...)`
+- Only Supervisor can call `transitionTo(...)`
 - No component or external code may directly modify the global system state
-- All state-change intents must go through the event queue as `SystemEvent`
+- All state-change intents must go through the Mailbox as `SystemEvent`
 
 ### Component Local States as Mirrors
 
@@ -28,7 +28,7 @@ Components may maintain internal lifecycle states that mirror the global guarant
 - **Component states are implementation details**, not driving logic
 - Each SystemState defines guarantees that all components must satisfy
 - Components are responsible for their own internal state consistency
-- Components never push component-local state logic into SystemController
+- Components never push component-local state logic into Supervisor
 
 **Examples of mirrored local states:**
 - **WiFi:** maintains `CONNECTED`/`DISCONNECTED`/`CONNECTING` local lifecycle; mirrors global `READY` guarantee when connected
@@ -52,13 +52,15 @@ Components may maintain internal lifecycle states that mirror the global guarant
 
 ### Minimal Generic Contract
 
-The SystemController event interface uses a minimal three-part model:
+The Supervisor event interface uses a minimal three-part model:
+
+> **Note:** `STATE_REQUESTED` / `STATE_ENTERED` / `STATE_FAILED` is the contract model. The current implementation uses specific event names (`PLAY_REQUESTED`, `STOP_REQUESTED`, `ENTER_SLEEP`) directly. A future story (US-0032) adds a generic `STATE_REQUESTED` event type.
 
 #### `STATE_REQUESTED` (External Intent)
 - **Source:** Components, CLI, hardware interrupts (e.g., light sensor)
 - **Payload:** Target system state (e.g., `READY`, `LIVE`, `SLEEP`)
 - **Semantics:** "Request a transition to this state"
-- **Processing:** Queue discipline + transition guards; may be deferred or ignored based on context
+- **Processing:** Mailbox discipline + transition guards; may be deferred or ignored based on context
 
 **Examples:**
 ```
@@ -67,18 +69,18 @@ STATE_REQUESTED(target=SLEEP)  // Request: enter SLEEP state
 ```
 
 #### `STATE_ENTERED` (Internal Orchestration Outcome)
-- **Source:** Internal to SystemController orchestration
+- **Source:** Internal to Supervisor orchestration
 - **Semantics:** "We have successfully transitioned to this state; all prerequisites met"
 - **Note:** Not exposed as a user-facing event; internal orchestration only
 
 #### `STATE_FAILED` (Internal Orchestration Outcome)
-- **Source:** Internal to SystemController orchestration (after component failure or timeout)
+- **Source:** Internal to Supervisor orchestration (after component failure or timeout)
 - **Semantics:** "Transition to target state failed; fallback applied"
 - **Note:** Not exposed as a user-facing event; internal orchestration only
 
 ### No Intent vs. Domain Event Distinction
 
-**Decision:** All events are treated uniformly in a single FIFO queue with transition-context guards.
+**Decision:** All events are treated uniformly through the single-slot Mailbox with transition-context guards.
 - No separate "intent event" vs. "domain event" buffering path
 - No deferred intent queue; single processing pipeline
 - `isIntentEvent()` helper is removed entirely
@@ -92,25 +94,21 @@ Component-specific events (e.g., `STREAM_LOST`, `WIFI_DISCONNECTED`) are:
 
 ---
 
-## 3. Queue Processing Model
+## 3. Mailbox Processing Model
 
 ### Naming and Semantics
 
-The primary event-draining entrypoint is named **`processEventQueue()`** (replacing ambiguous `dispatchPending()`).
+The primary event-draining entrypoint is named **`processMailbox()`** (replacing `dispatchPending()`).
 
 **Contract:**
-- FIFO queue discipline: events are processed in arrival order
+- Single-slot Mailbox: last-write-wins when multiple events arrive before processing
 - Each event in the current system state maps to exactly one outcome: `StateUnchanged`, `RequestTransition`, or `DirectTransition`
 - Transition-context guards determine which events are valid in each state
 - Stale outcomes (mismatched `transitionId`, invalid state) are ignored deterministically
 
 ### Failure Handling
 
-On enqueue failure in `postEvent(...)`:
-- **Minimum reaction:** Log `ERROR_LOG` with event context (type, target state, timestamp)
-- **Example:** `[ERROR] postEvent failed: STATE_REQUESTED(LIVE) discarded`
-- **Harder escalation** (automatic restart, ERROR-state transition) deferred to follow-up story (→ future "Error Recovery Policy")
-- Every failed enqueue is logged; **no silent failures**
+The Mailbox always succeeds (single-slot, always overwrites). No enqueue failure path exists. The `ERROR_LOG` on failure is moot and is documented here only for historical context — escalation policy is deferred to a follow-up story (→ future "Error Recovery Policy").
 
 ---
 
@@ -120,12 +118,11 @@ All references to events, queues, and processing functions use consistent naming
 
 | Artifact | Standard Name | Notes |
 | --- | --- | --- |
-| Event queue draining | `processEventQueue()` | Declaration, implementation, debug output |
-| External intent event | `STATE_REQUESTED` | Payload includes target state |
+| Mailbox draining | `processMailbox()` | Declaration, implementation, debug output |
+| External intent event | `STATE_REQUESTED` | Payload includes target state (US-0032 scope) |
 | Internal entry outcome | `STATE_ENTERED` | Internal orchestration only |
 | Internal failure outcome | `STATE_FAILED` | Internal orchestration only |
 | Legacy component events | `STREAM_LOST`, `WIFI_DISCONNECTED`, ... | Mapped through adapters; not long-term surface |
-| Event policy enum | `EventPolicy` with `BestEffort`, `Critical` | Replaces ambiguous naming |
 | Reason metadata | Static `const char*` | See section 5 |
 
 ---
@@ -139,10 +136,9 @@ All references to events, queues, and processing functions use consistent naming
 - **Never** used for state-transition decisions, guard clauses, or arbitration
 - Optional: can be `nullptr` for events that do not require a reason
 
-**Examples:**
+**Examples (current API):**
 ```cpp
-postEvent(STATE_REQUESTED(READY), SystemReason::LIGHT_SENSOR_OFF);     // static text
-postEvent(STATE_REQUESTED(LIVE), nullptr);                             // optional
+postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);  // current API
 ```
 
 ### Not a Causal Input
@@ -171,7 +167,7 @@ Failure control-path logic **must not depend on reason text**:
 ### Deterministic Model Without Priority Table
 
 Event ordering is determined by:
-1. **Queue order** (FIFO discipline)
+1. **Mailbox order** (single-slot, last-write-wins)
 2. **Transition-context guards** (state + in-flight orchestration checks)
 3. **Stale outcome detection** (`transitionId` mismatch, active transition state)
 

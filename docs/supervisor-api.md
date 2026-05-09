@@ -21,7 +21,7 @@ The `Supervisor` is **not a component** in the component registry:
 
 The `Supervisor` orchestrates:
 - **Global system state transitions** (BOOTING → CONNECTING → READY → LIVE, with SLEEP and ERROR as endpoints)
-- **Event queue processing** (FreeRTOS queue drain, ordering, arbitration)
+- **Mailbox processing** (single-slot drain, ordering, arbitration)
 - **Component orchestration** (transition coordination, timeout watchdog, completion tracking)
 - **Observer notification** (state change callbacks)
 
