@@ -60,6 +60,11 @@ void Supervisor::postEventBuffered(SystemEvent event, SystemReason reason) {
 void Supervisor::triggerFatal() {
     transitionTo(SystemState::FATAL, SystemEvent::BOOT, SystemReason::NONE);
 }
+
+uint32_t Supervisor::getPendingTimeout(ComponentID id) const {
+    if (id == ComponentID::Count) return 0;
+    return pendingTransitions_[static_cast<size_t>(id)].timeoutMs;
+}
 #endif
 
 void Supervisor::processMailbox() {
@@ -100,9 +105,15 @@ bool Supervisor::registerComponent(ComponentID id, bool isRequired) {
 
 bool Supervisor::setComponentTransitionHooks(ComponentID id,
                                                    TransitionInvoker transitionInvoker,
-                                                   TransitionTimeoutHook timeoutHook) {
+                                                   TransitionTimeoutHook timeoutHook,
+                                                   const ComponentStateMatrix* stateMatrix,
+                                                   size_t stateMatrixSize) {
     if (id == ComponentID::Count) return false;
-    componentHooks_[static_cast<size_t>(id)] = ComponentTransitionHooks{std::move(transitionInvoker), std::move(timeoutHook)};
+    componentHooks_[static_cast<size_t>(id)] = ComponentTransitionHooks{
+        std::move(transitionInvoker),
+        std::move(timeoutHook),
+        stateMatrix,
+        stateMatrixSize};
     return true;
 }
 

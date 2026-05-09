@@ -80,3 +80,12 @@ struct ComponentRegistryEntry {
     bool isRegistered = false;
     const char* lastFailureReason = nullptr;
 };
+
+struct ComponentStateMatrix {
+    uint32_t minState;
+    uint32_t maxState;
+    uint32_t forwardTimeoutMs;
+    uint32_t backwardTimeoutMs;
+};
+
+constexpr uint32_t TARGET_MODE = 0xFF;

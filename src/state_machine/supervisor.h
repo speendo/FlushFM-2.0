@@ -163,6 +163,8 @@ public:
     // Native-only: enters FATAL state for unit testing the halt gate.
     // Production entry to FATAL will go through beginOrchestration(FATAL).
     void triggerFatal();
+
+    uint32_t getPendingTimeout(ComponentID id) const;
 #endif
 
     // Core 0 only: drain the Mailbox slot and run transition logic.
@@ -171,7 +173,9 @@ public:
     bool registerComponent(ComponentID id, bool isRequired);
     bool setComponentTransitionHooks(ComponentID id,
                                      TransitionInvoker transitionInvoker,
-                                     TransitionTimeoutHook timeoutHook);
+                                     TransitionTimeoutHook timeoutHook,
+                                     const ComponentStateMatrix* stateMatrix = nullptr,
+                                     size_t stateMatrixSize = 0);
     ComponentLifecycleStatus getComponentStatus(ComponentID id) const;
     bool isComponentRequired(ComponentID id) const;
     bool reportCompletion(ComponentID id,
@@ -213,6 +217,8 @@ private:
     struct ComponentTransitionHooks {
         TransitionInvoker transitionInvoker;
         TransitionTimeoutHook timeoutHook;
+        const ComponentStateMatrix* stateMatrix = nullptr;
+        size_t stateMatrixSize = 0;
     };
 
     struct StateTransitionInfo {
