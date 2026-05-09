@@ -217,7 +217,7 @@ void WiFiComponent::onDisconnected(void* context) {
         self->completePendingTransition(TransitionStatus::Failed, "wifi disconnected");
     }
 
-    self->system_.postEvent(SystemEvent::WIFI_DISCONNECTED, SystemReason::NONE, EventPolicy::Critical);
+    self->system_.postEvent(SystemEvent::WIFI_DISCONNECTED, SystemReason::NONE);
 }
 
 void WiFiComponent::startPendingTransition(bool streamingTarget, uint32_t transitionId) {
@@ -350,7 +350,7 @@ void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* co
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
             self->completePendingTransition(TransitionStatus::Failed, "stream lost");
         }
-        self->system_.postEvent(SystemEvent::STREAM_LOST, SystemReason::NONE, EventPolicy::Critical);
+        self->system_.postEvent(SystemEvent::STREAM_LOST, SystemReason::NONE);
     } else {
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
             self->completePendingTransition(TransitionStatus::Failed, "audio init failed");

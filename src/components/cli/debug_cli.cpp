@@ -45,7 +45,7 @@ static bool postManualTransition(const char* targetState) {
     }
 
     if (strcmp(targetState, "idle") == 0 || strcmp(targetState, "ready") == 0) {
-        (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST, EventPolicy::Critical);
+        (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST);
         PROD_LOG(kLogSource, "Transition request posted: ready");
         return true;
     }
@@ -59,13 +59,13 @@ static bool postManualTransition(const char* targetState) {
     }
 
     if (strcmp(targetState, "sleep") == 0) {
-        (void)s_controller->postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST, EventPolicy::Critical);
+        (void)s_controller->postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST);
         PROD_LOG(kLogSource, "Transition request posted: sleep");
         return true;
     }
 
     if (strcmp(targetState, "error") == 0) {
-        (void)s_controller->postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::USER_REQUEST, EventPolicy::Critical);
+        (void)s_controller->postEvent(SystemEvent::AUDIO_INIT_FAILED, SystemReason::USER_REQUEST);
         PROD_LOG(kLogSource, "Transition request posted: error");
         return true;
     }

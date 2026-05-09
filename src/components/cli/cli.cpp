@@ -246,16 +246,15 @@ void process(const char* line) {
     if (s_controller) {
         if (strcmp(cmd, "play") == 0 && result.key == cli_output::MessageKey::CONNECTING_STREAM) {
             (void)s_controller->postEvent(SystemEvent::PLAY_REQUESTED,
-                                          SystemReason::USER_REQUEST,
-                                          EventPolicy::Critical);
+                                          SystemReason::USER_REQUEST);
+            (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED,
+                                          SystemReason::USER_REQUEST);
         } else if (strcmp(cmd, "stop") == 0 && result.key == cli_output::MessageKey::STREAM_STOPPED) {
             (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED,
-                                          SystemReason::USER_REQUEST,
-                                          EventPolicy::Critical);
+                                          SystemReason::USER_REQUEST);
         } else if (strcmp(cmd, "reset") == 0 && result.key == cli_output::MessageKey::SESSION_RESET) {
             (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED,
-                                          SystemReason::USER_REQUEST,
-                                          EventPolicy::Critical);
+                                          SystemReason::USER_REQUEST);
         }
     }
 

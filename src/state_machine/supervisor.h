@@ -8,13 +8,6 @@
 
 #if defined(ARDUINO)
 #include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
-#else
-using QueueHandle_t = void*;
-using TickType_t = uint32_t;
-constexpr int pdTRUE = 1;
-constexpr int pdFALSE = 0;
-constexpr TickType_t pdMS_TO_TICKS(uint32_t milliseconds) { return milliseconds; }
 #endif
 
 #include "component_types.h"
@@ -86,30 +79,6 @@ inline const char* toString(SystemEvent event) {
 #undef SYSTEM_EVENT_ENUM
 #undef SYSTEM_EVENT_X
 
-// Event posting policy: controls how postEvent handles queue backpressure.
-// BestEffort — may be dropped if the queue is full (non-blocking).
-// Critical  — waits briefly if needed (bounded-blocking).
-#define EVENT_POLICY_X(V) \
-    V(BestEffort) \
-    V(Critical)
-
-#define EVENT_POLICY_ENUM(name) name,
-enum class EventPolicy {
-    EVENT_POLICY_X(EVENT_POLICY_ENUM)
-};
-
-inline const char* toString(EventPolicy policy) {
-    switch (policy) {
-#define EVENT_POLICY_STRING(name) case EventPolicy::name: return #name;
-        EVENT_POLICY_X(EVENT_POLICY_STRING)
-#undef EVENT_POLICY_STRING
-    }
-    return "UNKNOWN";
-}
-
-#undef EVENT_POLICY_ENUM
-#undef EVENT_POLICY_X
-
 #define SYSTEM_REASON_X(V) \
     V(NONE) \
     V(BOOT_SEQUENCE) \
@@ -176,13 +145,10 @@ public:
 
     // Thread-safe event enqueue for any core/task.
     // reason carries origin/context metadata for logging and debugging.
-    // policy controls queue backpressure behaviour:
-    //   BestEffort — non-blocking; may lose events if the queue is full.
-    //   Critical  — waits briefly; will not overwrite or drop.
-    bool postEvent(SystemEvent event, SystemReason reason, EventPolicy policy = EventPolicy::BestEffort);
+    bool postEvent(SystemEvent event, SystemReason reason);
 
-    // Core 0 only: drain the event queue and run transition logic.
-    void processEventQueue();
+    // Core 0 only: drain the Mailbox slot and run transition logic.
+    void processMailbox();
 
     bool registerComponent(ComponentID id, bool isRequired);
     bool setComponentTransitionHooks(ComponentID id,
@@ -213,9 +179,10 @@ public:
     SystemState queuedTransitionTarget() const;
 
 private:
-    struct QueuedEvent {
-        SystemEvent event;
-        SystemReason reason;
+    struct Mailbox {
+        SystemEvent event = SystemEvent::BOOT;
+        SystemReason reason = SystemReason::NONE;
+        bool pending = false;
     };
 
     struct PendingComponentTransition {
@@ -252,12 +219,8 @@ private:
     SystemState state_ = SystemState::BOOTING;
     SystemState targetState_ = SystemState::SLEEP;
     bool transientError_ = false;
-    QueueHandle_t queue_ = nullptr;
-    std::vector<QueuedEvent> deferredIntentEvents_{};
+    Mailbox mailbox_{};
     std::vector<StateObserver> observers_;
-    bool pendingCriticalEvent_ = false;  // Sticky flag for critical event loss recovery.
-    SystemEvent pendingEvent_ = SystemEvent::BOOT;
-    SystemReason pendingReason_ = SystemReason::NONE;
     uint32_t nextTransitionId_ = 1;
     std::array<ComponentRegistryEntry, static_cast<size_t>(ComponentID::Count)> componentRegistry_{};
     std::array<PendingComponentTransition, static_cast<size_t>(ComponentID::Count)> pendingTransitions_{};

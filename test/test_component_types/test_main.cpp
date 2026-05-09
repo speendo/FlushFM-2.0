@@ -88,11 +88,6 @@ void test_state_machine_labels_round_trip_and_are_unique() {
         {SystemEvent::ENTER_SLEEP, "ENTER_SLEEP"},
     }};
 
-    const std::array<EnumLabelCase<EventPolicy>, 2> policies = {{
-        {EventPolicy::BestEffort, "BestEffort"},
-        {EventPolicy::Critical, "Critical"},
-    }};
-
     const std::array<EnumLabelCase<SystemReason>, 9> reasons = {{
         {SystemReason::NONE, "NONE"},
         {SystemReason::BOOT_SEQUENCE, "BOOT_SEQUENCE"},
@@ -114,7 +109,6 @@ void test_state_machine_labels_round_trip_and_are_unique() {
 
     assert_round_trip_and_uniqueness(states);
     assert_round_trip_and_uniqueness(events);
-    assert_round_trip_and_uniqueness(policies);
     assert_round_trip_and_uniqueness(reasons);
     assert_round_trip_and_uniqueness(decisions);
 }
@@ -122,14 +116,12 @@ void test_state_machine_labels_round_trip_and_are_unique() {
 void test_state_machine_invalid_values_map_to_unknown() {
     const auto invalidState = static_cast<SystemState>(255);
     const auto invalidEvent = static_cast<SystemEvent>(255);
-    const auto invalidPolicy = static_cast<EventPolicy>(255);
     const auto invalidReason = static_cast<SystemReason>(255);
     const auto invalidDecision = static_cast<TransitionRequestDecision>(255);
     const auto invalidComponent = static_cast<ComponentID>(255);
 
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidState));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidEvent));
-    TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidPolicy));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidReason));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidDecision));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", componentName(invalidComponent));

@@ -40,23 +40,20 @@ SystemState state() const;
 ### Event Posting
 
 ```cpp
-bool postEvent(SystemEvent event, SystemReason reason,
-               EventPolicy policy = EventPolicy::BestEffort);
+bool postEvent(SystemEvent event, SystemReason reason);
 ```
-- Posts an event to the processing queue
-- `EventPolicy::BestEffort`: non-blocking; may drop if queue is full
-- `EventPolicy::Critical`: waits briefly (10ms); falls back to sticky pending flags
-- On failure: logs `ERROR_LOG` with event context
-- Thread-safe from any core
+- Posts an event to the single-slot Mailbox
+- Always succeeds; last-write-wins if multiple events arrive before processing
+- Thread-safe from any core (writes to `reason`, `event`, then `pending` flag in order)
 
-### Queue Processing (Core 0 Only)
+### Mailbox Processing (Core 0 Only)
 
 ```cpp
-void processEventQueue();
+void processMailbox();
 ```
-- Drains and processes events from the queue
+- Reads the Mailbox slot and dispatches to `handleEvent()` if pending
 - Called from Core 0 main loop
-- Handles timeouts and state transitions
+- Also checks transition timeouts after each slot read
 
 ### Observer Registration
 

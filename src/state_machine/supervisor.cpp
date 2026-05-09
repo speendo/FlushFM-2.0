@@ -25,24 +25,9 @@ uint32_t nowMs() {
 #endif
 }
 
-bool isIntentEvent(SystemEvent event) {
-    return event == SystemEvent::PLAY_REQUESTED ||
-           event == SystemEvent::STOP_REQUESTED ||
-           event == SystemEvent::ENTER_SLEEP;
-}
-
 }  // namespace
 
 Supervisor::Supervisor() {
-#if defined(ARDUINO)
-    queue_ = xQueueCreate(16, sizeof(QueuedEvent));
-    if (!queue_) {
-        ERROR_LOG(kLogSource, "Critical: event queue allocation failed; state-machine event processing is unavailable");
-    }
-#else
-    // Native/host builds do not use a FreeRTOS queue; postEvent() dispatches directly.
-    queue_ = nullptr;
-#endif
 }
 
 SystemState Supervisor::state() const {
@@ -53,86 +38,35 @@ void Supervisor::subscribe(StateObserver observer) {
     observers_.push_back(observer);
 }
 
-bool Supervisor::postEvent(SystemEvent event, SystemReason reason, EventPolicy policy) {
+bool Supervisor::postEvent(SystemEvent event, SystemReason reason) {
 #if !defined(ARDUINO)
-    (void)policy;
     handleEvent(event, reason);
     return true;
 #else
-    if (!queue_) {
-        ERROR_LOG(kLogSource, "Critical: event queue missing in postEvent(); restarting");
-        delay(50);
-        esp_restart();
-        return false;
-    }
-    const QueuedEvent queued{event, reason};
-    
-    const TickType_t timeout = (policy == EventPolicy::Critical) ? pdMS_TO_TICKS(10) : 0;
-    const bool success = xQueueSend(queue_, &queued, timeout) == pdTRUE;
-    
-    if (!success && policy == EventPolicy::Critical) {
-        // Critical event lost: set sticky flag and log for recovery in processEventQueue().
-        ERROR_LOG(kLogSource, "Event queue full; critical event %s will retry on next dispatch", toString(event));
-        pendingCriticalEvent_ = true;
-        pendingEvent_ = event;
-        pendingReason_ = reason;
-    }
-    
-    return success;
+    mailbox_.reason = reason;
+    mailbox_.event = event;
+    mailbox_.pending = true;
+    return true;
 #endif
 }
 
-void Supervisor::processEventQueue() {
+void Supervisor::processMailbox() {
 #if !defined(ARDUINO)
-    const bool transitionBusy = orchestration_.active || hasActiveStateTransition_ || state_ == SystemState::BOOTING || state_ == SystemState::CONNECTING;
-    if (!transitionBusy && !deferredIntentEvents_.empty()) {
-        const QueuedEvent deferred = deferredIntentEvents_.front();
-        deferredIntentEvents_.erase(deferredIntentEvents_.begin());
-        handleEvent(deferred.event, deferred.reason);
+    if (mailbox_.pending) {
+        SystemEvent event = mailbox_.event;
+        SystemReason reason = mailbox_.reason;
+        mailbox_.pending = false;
+        handleEvent(event, reason);
     }
-
     checkTransitionTimeouts();
     return;
 #else
-    if (!queue_) {
-        ERROR_LOG(kLogSource, "Critical: event queue missing in processEventQueue(); restarting");
-        delay(50);
-        esp_restart();
-        return;
+    if (mailbox_.pending) {
+        SystemEvent event = mailbox_.event;
+        SystemReason reason = mailbox_.reason;
+        mailbox_.pending = false;
+        handleEvent(event, reason);
     }
-
-    auto isTransitionBusy = [this]() {
-        return orchestration_.active || hasActiveStateTransition_ || state_ == SystemState::BOOTING || state_ == SystemState::CONNECTING;
-    };
-
-    // Process any pending critical event first (sticky fallback from queue-full condition).
-    if (pendingCriticalEvent_) {
-        if (isIntentEvent(pendingEvent_) && isTransitionBusy()) {
-            deferredIntentEvents_.push_back(QueuedEvent{pendingEvent_, pendingReason_});
-        } else {
-            PROD_LOG(kLogSource, "Processing pending critical event: %s", toString(pendingEvent_));
-            handleEvent(pendingEvent_, pendingReason_);
-        }
-        pendingCriticalEvent_ = false;
-    }
-
-    // Drain normal queue.
-    QueuedEvent queued{};
-    while (xQueueReceive(queue_, &queued, 0) == pdTRUE) {
-        if (isIntentEvent(queued.event) && isTransitionBusy()) {
-            deferredIntentEvents_.push_back(queued);
-            continue;
-        }
-
-        handleEvent(queued.event, queued.reason);
-    }
-
-    if (!isTransitionBusy() && !deferredIntentEvents_.empty()) {
-        const QueuedEvent deferred = deferredIntentEvents_.front();
-        deferredIntentEvents_.erase(deferredIntentEvents_.begin());
-        handleEvent(deferred.event, deferred.reason);
-    }
-
     checkTransitionTimeouts();
 #endif
 }
