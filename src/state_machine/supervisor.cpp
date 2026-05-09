@@ -187,10 +187,6 @@ bool Supervisor::reportCompletion(ComponentID id,
         if (state_ == SystemState::READY && targetState_ == SystemState::LIVE) {
             handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
         }
-        if (deferredReplayEvent_) {
-            deferredReplayEvent_ = false;
-            handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
-        }
     }
 
     return true;
@@ -210,7 +206,6 @@ TransitionRequestDecision Supervisor::requestTransition(SystemState from,
     }
 
     if (target == activeStateTransition_.from) {
-        // Reciprocal transition supersedes the currently active transition.
         const StateTransitionInfo previous = activeStateTransition_;
         (void)previous;
         activeStateTransition_ = StateTransitionInfo{transitionId, from, target};
@@ -278,10 +273,6 @@ bool Supervisor::beginOrchestration(SystemState target,
         orchestration_.active = false;
 
         if (state_ == SystemState::READY && targetState_ == SystemState::LIVE) {
-            handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
-        }
-        if (deferredReplayEvent_) {
-            deferredReplayEvent_ = false;
             handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
         }
 
@@ -418,13 +409,11 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
 
     // User intents are state-independent and map directly to target states.
     if (event == SystemEvent::ENTER_SLEEP) {
-        pendingReplayRequested_ = false;
         targetState_ = SystemState::SLEEP;
         requestStateTransition(SystemState::SLEEP);
         return;
     }
     if (event == SystemEvent::STOP_REQUESTED) {
-        pendingReplayRequested_ = false;
         targetState_ = SystemState::SLEEP;
         if (state_ == SystemState::CONNECTING) {
             return;
@@ -441,15 +430,15 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
         if (state_ == SystemState::SLEEP) {
             targetState_ = SystemState::LIVE;
             transitionTo(SystemState::CONNECTING, event, reason);
-            if (startupWiFiReady_ && startupAudioReady_) {
+            if (getComponentStatus(ComponentID::WiFi) == ComponentLifecycleStatus::Ready &&
+                getComponentStatus(ComponentID::AudioRuntime) == ComponentLifecycleStatus::Ready) {
                 requestStateTransition(SystemState::READY);
             }
             return;
         }
 
         if (state_ == SystemState::LIVE) {
-            // Keep UX responsive: replay/switch while stopping is deferred until READY is reached.
-            pendingReplayRequested_ = true;
+            targetState_ = SystemState::LIVE;
             requestStateTransition(SystemState::READY);
             return;
         }
@@ -461,34 +450,31 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
     switch (state_) {
         case SystemState::BOOTING:
             if (event == SystemEvent::BOOT) {
-                startupWiFiReady_ = false;
-                startupAudioReady_ = false;
                 transitionTo(SystemState::SLEEP, event, reason);
             }
             break;
 
         case SystemState::SLEEP:
-            // Keep readiness flags up to date while idle so PLAY can immediately continue.
             if (event == SystemEvent::WIFI_READY) {
-                startupWiFiReady_ = true;
+                componentRegistry_[static_cast<size_t>(ComponentID::WiFi)].lifeCycleStatus = ComponentLifecycleStatus::Ready;
             } else if (event == SystemEvent::AUDIO_INIT_OK) {
-                startupAudioReady_ = true;
+                componentRegistry_[static_cast<size_t>(ComponentID::AudioRuntime)].lifeCycleStatus = ComponentLifecycleStatus::Ready;
             } else if (event == SystemEvent::WIFI_DISCONNECTED) {
-                startupWiFiReady_ = false;
+                componentRegistry_[static_cast<size_t>(ComponentID::WiFi)].lifeCycleStatus = ComponentLifecycleStatus::Unknown;
             } else if (event == SystemEvent::AUDIO_INIT_FAILED) {
-                startupAudioReady_ = false;
+                componentRegistry_[static_cast<size_t>(ComponentID::AudioRuntime)].lifeCycleStatus = ComponentLifecycleStatus::Failed;
             }
             break;
 
         case SystemState::CONNECTING:
             if (event == SystemEvent::AUDIO_INIT_OK) {
-                startupAudioReady_ = true;
-                if (startupWiFiReady_) {
+                componentRegistry_[static_cast<size_t>(ComponentID::AudioRuntime)].lifeCycleStatus = ComponentLifecycleStatus::Ready;
+                if (getComponentStatus(ComponentID::WiFi) == ComponentLifecycleStatus::Ready) {
                     requestStateTransition(SystemState::READY);
                 }
             } else if (event == SystemEvent::WIFI_READY) {
-                startupWiFiReady_ = true;
-                if (startupAudioReady_) {
+                componentRegistry_[static_cast<size_t>(ComponentID::WiFi)].lifeCycleStatus = ComponentLifecycleStatus::Ready;
+                if (getComponentStatus(ComponentID::AudioRuntime) == ComponentLifecycleStatus::Ready) {
                     requestStateTransition(SystemState::READY);
                 }
             } else if (event == SystemEvent::COMPONENT_SETUP_FAILED) {
@@ -551,11 +537,6 @@ void Supervisor::transitionTo(SystemState next, SystemEvent trigger, SystemReaso
 
     for (const auto& observer : observers_) {
         observer(next);
-    }
-
-    if (previous == SystemState::LIVE && next == SystemState::READY && pendingReplayRequested_) {
-        pendingReplayRequested_ = false;
-        deferredReplayEvent_ = true;
     }
 
     if (next == targetState_) {

@@ -230,8 +230,4 @@ private:
     bool hasQueuedStateTransition_ = false;
     StateTransitionInfo queuedStateTransition_{};
     OrchestrationContext orchestration_{};
-    bool pendingReplayRequested_ = false;
-    bool deferredReplayEvent_ = false;
-    bool startupWiFiReady_ = false;
-    bool startupAudioReady_ = false;
 };
