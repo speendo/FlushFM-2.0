@@ -32,6 +32,15 @@ bool isIntentEvent(SystemEvent event) {
            event == SystemEvent::ENTER_SLEEP;
 }
 
+ComponentID componentIdFromName(const char* name) {
+    if (!name) return ComponentID::Count;
+    for (size_t i = 0; i < static_cast<size_t>(ComponentID::Count); i++) {
+        const ComponentID id = static_cast<ComponentID>(i);
+        if (std::strcmp(componentName(id), name) == 0) return id;
+    }
+    return ComponentID::Count;
+}
+
 }  // namespace
 
 Supervisor::Supervisor() {
@@ -177,13 +186,18 @@ bool Supervisor::registerComponent(const char* name, bool isRequired) {
         return false;
     }
 
-    auto [it, inserted] = componentRegistry_.emplace(normalizedName, ComponentRegistryEntry{});
-    it->second.isRequired = isRequired;
-    if (inserted) {
-        it->second.lifeCycleStatus = ComponentLifecycleStatus::Unknown;
-        it->second.isDisabled = false;
-        copyFailureReason(it->second.lastFailureReason, sizeof(it->second.lastFailureReason), nullptr);
+    const ComponentID id = componentIdFromName(normalizedName.c_str());
+    if (id == ComponentID::Count) {
+        ERROR_LOG(kLogSource, "Rejected component registration for unknown name: %s", normalizedName.c_str());
+        return false;
     }
+
+    ComponentRegistryEntry& entry = componentRegistry_[static_cast<size_t>(id)];
+    entry.isRequired = isRequired;
+    entry.isRegistered = true;
+    entry.lifeCycleStatus = ComponentLifecycleStatus::Unknown;
+    entry.isDisabled = false;
+    copyFailureReason(entry.lastFailureReason, sizeof(entry.lastFailureReason), nullptr);
 
     PROD_LOG(kLogSource, "Registered component %s (required=%s)",
              normalizedName.c_str(), isRequired ? "true" : "false");
@@ -191,7 +205,16 @@ bool Supervisor::registerComponent(const char* name, bool isRequired) {
 }
 
 bool Supervisor::registerComponent(ComponentID id, bool isRequired) {
-    return registerComponent(componentName(id), isRequired);
+    if (id == ComponentID::Count) return false;
+    ComponentRegistryEntry& entry = componentRegistry_[static_cast<size_t>(id)];
+    entry.isRequired = isRequired;
+    entry.isRegistered = true;
+    entry.lifeCycleStatus = ComponentLifecycleStatus::Unknown;
+    entry.isDisabled = false;
+    copyFailureReason(entry.lastFailureReason, sizeof(entry.lastFailureReason), nullptr);
+    PROD_LOG(kLogSource, "Registered component %s (required=%s)",
+             componentName(id), isRequired ? "true" : "false");
+    return true;
 }
 
 bool Supervisor::setComponentTransitionHooks(const char* name,
@@ -208,7 +231,7 @@ bool Supervisor::setComponentTransitionHooks(const char* name,
         return false;
     }
 
-    if (componentRegistry_.find(normalizedName) == componentRegistry_.end()) {
+    if (componentIdFromName(normalizedName.c_str()) == ComponentID::Count) {
         ERROR_LOG(kLogSource, "Rejected transition hooks for unknown component %s", normalizedName.c_str());
         return false;
     }
@@ -223,16 +246,17 @@ ComponentLifecycleStatus Supervisor::getComponentStatus(const char* name) const 
         return ComponentLifecycleStatus::Unknown;
     }
 
-    const auto it = componentRegistry_.find(normalizedName);
-    if (it == componentRegistry_.end()) {
+    const ComponentID id = componentIdFromName(normalizedName.c_str());
+    if (id == ComponentID::Count) {
         return ComponentLifecycleStatus::Unknown;
     }
 
-    return it->second.lifeCycleStatus;
+    return componentRegistry_[static_cast<size_t>(id)].lifeCycleStatus;
 }
 
 ComponentLifecycleStatus Supervisor::getComponentStatus(ComponentID id) const {
-    return getComponentStatus(componentName(id));
+    if (id == ComponentID::Count) return ComponentLifecycleStatus::Unknown;
+    return componentRegistry_[static_cast<size_t>(id)].lifeCycleStatus;
 }
 
 bool Supervisor::markComponentFailed(const char* name, const char* reason) {
@@ -242,11 +266,16 @@ bool Supervisor::markComponentFailed(const char* name, const char* reason) {
         return false;
     }
 
-    auto [it, inserted] = componentRegistry_.emplace(normalizedName, ComponentRegistryEntry{});
-    (void)inserted;
-    it->second.lifeCycleStatus = ComponentLifecycleStatus::Failed;
-    it->second.isDisabled = true;
-    copyFailureReason(it->second.lastFailureReason, sizeof(it->second.lastFailureReason), reason);
+    const ComponentID id = componentIdFromName(normalizedName.c_str());
+    if (id == ComponentID::Count) {
+        ERROR_LOG(kLogSource, "Rejected component failure for unknown name: %s", normalizedName.c_str());
+        return false;
+    }
+
+    ComponentRegistryEntry& entry = componentRegistry_[static_cast<size_t>(id)];
+    entry.lifeCycleStatus = ComponentLifecycleStatus::Failed;
+    entry.isDisabled = true;
+    copyFailureReason(entry.lastFailureReason, sizeof(entry.lastFailureReason), reason);
 
     ERROR_LOG(kLogSource, "Component %s marked failed: %s",
               normalizedName.c_str(), reason ? reason : "<none>");
@@ -259,16 +288,17 @@ bool Supervisor::isComponentRequired(const char* name) const {
         return false;
     }
 
-    const auto it = componentRegistry_.find(normalizedName);
-    if (it == componentRegistry_.end()) {
+    const ComponentID id = componentIdFromName(normalizedName.c_str());
+    if (id == ComponentID::Count) {
         return false;
     }
 
-    return it->second.isRequired;
+    return componentRegistry_[static_cast<size_t>(id)].isRequired;
 }
 
 bool Supervisor::isComponentRequired(ComponentID id) const {
-    return isComponentRequired(componentName(id));
+    if (id == ComponentID::Count) return false;
+    return componentRegistry_[static_cast<size_t>(id)].isRequired;
 }
 
 bool Supervisor::beginComponentTransition(const char* name, uint32_t transitionId) {
@@ -278,8 +308,8 @@ bool Supervisor::beginComponentTransition(const char* name, uint32_t transitionI
         return false;
     }
 
-    const auto registryIt = componentRegistry_.find(normalizedName);
-    if (registryIt == componentRegistry_.end()) {
+    const ComponentID id = componentIdFromName(normalizedName.c_str());
+    if (id == ComponentID::Count) {
         ERROR_LOG(kLogSource, "Rejected transition begin for unknown component %s", normalizedName.c_str());
         return false;
     }
@@ -320,25 +350,26 @@ bool Supervisor::reportCompletion(const char* componentName,
         return false;
     }
 
-    auto registryIt = componentRegistry_.find(normalizedName);
-    if (registryIt == componentRegistry_.end()) {
+    const ComponentID regId = componentIdFromName(normalizedName.c_str());
+    if (regId == ComponentID::Count) {
         ERROR_LOG(kLogSource, "Ignoring completion for unknown component %s", normalizedName.c_str());
         pendingTransitions_.erase(pendingIt);
         return false;
     }
 
+    ComponentRegistryEntry& entry = componentRegistry_[static_cast<size_t>(regId)];
     if (status == TransitionStatus::Completed) {
-        registryIt->second.lifeCycleStatus = ComponentLifecycleStatus::Ready;
-        registryIt->second.isDisabled = false;
-        copyFailureReason(registryIt->second.lastFailureReason, sizeof(registryIt->second.lastFailureReason), nullptr);
+        entry.lifeCycleStatus = ComponentLifecycleStatus::Ready;
+        entry.isDisabled = false;
+        copyFailureReason(entry.lastFailureReason, sizeof(entry.lastFailureReason), nullptr);
         PROD_LOG(kLogSource, "Component %s reported completion for transition id=%lu",
                  normalizedName.c_str(),
                  static_cast<unsigned long>(transitionId));
     } else {
-        registryIt->second.lifeCycleStatus = ComponentLifecycleStatus::Failed;
-        registryIt->second.isDisabled = true;
-        copyFailureReason(registryIt->second.lastFailureReason, sizeof(registryIt->second.lastFailureReason), reason);
-        if (orchestration_.active && orchestration_.transitionId == transitionId && registryIt->second.isRequired) {
+        entry.lifeCycleStatus = ComponentLifecycleStatus::Failed;
+        entry.isDisabled = true;
+        copyFailureReason(entry.lastFailureReason, sizeof(entry.lastFailureReason), reason);
+        if (orchestration_.active && orchestration_.transitionId == transitionId && entry.isRequired) {
             orchestration_.requiredFailure = true;
         }
         ERROR_LOG(kLogSource, "Component %s reported failure for transition id=%lu: %s",
@@ -443,11 +474,13 @@ bool Supervisor::beginOrchestration(SystemState target,
     orchestration_.requiredFailure = false;
 
     pendingTransitions_.clear();
-    for (const auto& [componentName, entry] : componentRegistry_) {
-        if (entry.isDisabled) {
+    for (size_t i = 0; i < static_cast<size_t>(ComponentID::Count); i++) {
+        const ComponentRegistryEntry& entry = componentRegistry_[i];
+        if (!entry.isRegistered || entry.isDisabled) {
             continue;
         }
-        pendingTransitions_.emplace(componentName, PendingComponentTransition{transitionId});
+        const char* compName = componentName(static_cast<ComponentID>(i));
+        pendingTransitions_.emplace(compName, PendingComponentTransition{transitionId});
     }
 
     if (pendingTransitions_.empty()) {

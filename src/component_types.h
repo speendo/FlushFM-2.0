@@ -80,5 +80,6 @@ struct ComponentRegistryEntry {
     ComponentLifecycleStatus lifeCycleStatus = ComponentLifecycleStatus::Unknown;
     bool isRequired = false;
     bool isDisabled = false;
+    bool isRegistered = false;
     char lastFailureReason[kMaxFailureReasonLen + 1] = {};
 };

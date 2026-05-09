@@ -4,6 +4,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <array>
 #include <cstdint>
 #include <cstddef>
 
@@ -267,7 +268,7 @@ private:
     SystemEvent pendingEvent_ = SystemEvent::BOOT;
     SystemReason pendingReason_ = SystemReason::NONE;
     uint32_t nextTransitionId_ = 1;
-    std::map<std::string, ComponentRegistryEntry> componentRegistry_;
+    std::array<ComponentRegistryEntry, static_cast<size_t>(ComponentID::Count)> componentRegistry_{};
     std::map<std::string, PendingComponentTransition> pendingTransitions_;
     std::map<std::string, ComponentTransitionHooks> componentHooks_;
     bool hasActiveStateTransition_ = false;
