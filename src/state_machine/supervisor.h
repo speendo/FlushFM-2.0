@@ -148,6 +148,8 @@ public:
     // reason carries origin/context metadata for logging and debugging.
     bool postEvent(SystemEvent event, SystemReason reason);
 
+    void setErrorEvent(DebugReason reason, ComponentID source);
+
     // TargetMode (goal) and ObservedState (current reality):
     // state() returns the CONFIRMED state (observedState_), not the goal.
     // The goal (targetMode_) is set by user intents in handleEvent().
@@ -207,6 +209,12 @@ private:
         bool pending = false;
     };
 
+    struct ErrorEvent {
+        bool pending = false;
+        DebugReason reason = nullptr;
+        ComponentID source = ComponentID::Count;
+    };
+
     struct PendingComponentTransition {
         uint32_t transitionId = 0;
         uint32_t timeoutMs = 0;
@@ -244,6 +252,7 @@ private:
     SystemState targetMode_ = SystemState::SLEEP;
     bool transientError_ = false;
     Mailbox mailbox_{};
+    ErrorEvent errorEvent_{};
     std::vector<StateObserver> observers_;
     uint32_t nextTransitionId_ = 1;
     std::array<ComponentRegistryEntry, static_cast<size_t>(ComponentID::Count)> componentRegistry_{};

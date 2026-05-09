@@ -57,6 +57,14 @@ void Supervisor::postEventBuffered(SystemEvent event, SystemReason reason) {
     mailbox_.pending = true;
 }
 
+void Supervisor::setErrorEvent(DebugReason reason, ComponentID source) {
+    if (!errorEvent_.pending) {
+        errorEvent_.pending = true;
+        errorEvent_.reason = reason;
+        errorEvent_.source = source;
+    }
+}
+
 void Supervisor::triggerFatal() {
     transitionTo(SystemState::FATAL, SystemEvent::BOOT, SystemReason::NONE);
 }
@@ -76,6 +84,10 @@ void Supervisor::processMailbox() {
         mailbox_.pending = false;
         handleEvent(event, reason);
     }
+    if (errorEvent_.pending) {
+        errorEvent_.pending = false;
+        transitionTo(SystemState::ERROR, SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::RECOVERY);
+    }
     checkTransitionTimeouts();
     return;
 #else
@@ -85,6 +97,10 @@ void Supervisor::processMailbox() {
         SystemReason reason = mailbox_.reason;
         mailbox_.pending = false;
         handleEvent(event, reason);
+    }
+    if (errorEvent_.pending) {
+        errorEvent_.pending = false;
+        transitionTo(SystemState::ERROR, SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::RECOVERY);
     }
     checkTransitionTimeouts();
 #endif
@@ -479,10 +495,7 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
         if (observedState_ == SystemState::SLEEP) {
             targetMode_ = SystemState::LIVE;
             transitionTo(SystemState::CONNECTING, event, reason);
-            if (getComponentStatus(ComponentID::WiFi) == ComponentLifecycleStatus::Ready &&
-                getComponentStatus(ComponentID::AudioRuntime) == ComponentLifecycleStatus::Ready) {
-                requestStateTransition(SystemState::READY);
-            }
+            requestStateTransition(SystemState::READY);
             return;
         }
 
@@ -496,6 +509,11 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
         return;
     }
 
+    if (event == SystemEvent::COMPONENT_SETUP_FAILED) {
+        transitionTo(SystemState::ERROR, event, reason);
+        return;
+    }
+
     switch (observedState_) {
         case SystemState::FATAL:
             break;
@@ -506,53 +524,15 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
             break;
 
         case SystemState::SLEEP:
-            if (event == SystemEvent::WIFI_READY) {
-                componentRegistry_[static_cast<size_t>(ComponentID::WiFi)].lifeCycleStatus = ComponentLifecycleStatus::Ready;
-            } else if (event == SystemEvent::AUDIO_INIT_OK) {
-                componentRegistry_[static_cast<size_t>(ComponentID::AudioRuntime)].lifeCycleStatus = ComponentLifecycleStatus::Ready;
-            } else if (event == SystemEvent::WIFI_DISCONNECTED) {
-                componentRegistry_[static_cast<size_t>(ComponentID::WiFi)].lifeCycleStatus = ComponentLifecycleStatus::Unknown;
-            } else if (event == SystemEvent::AUDIO_INIT_FAILED) {
-                componentRegistry_[static_cast<size_t>(ComponentID::AudioRuntime)].lifeCycleStatus = ComponentLifecycleStatus::Failed;
-            }
             break;
 
         case SystemState::CONNECTING:
-            if (event == SystemEvent::AUDIO_INIT_OK) {
-                componentRegistry_[static_cast<size_t>(ComponentID::AudioRuntime)].lifeCycleStatus = ComponentLifecycleStatus::Ready;
-                if (getComponentStatus(ComponentID::WiFi) == ComponentLifecycleStatus::Ready) {
-                    requestStateTransition(SystemState::READY);
-                }
-            } else if (event == SystemEvent::WIFI_READY) {
-                componentRegistry_[static_cast<size_t>(ComponentID::WiFi)].lifeCycleStatus = ComponentLifecycleStatus::Ready;
-                if (getComponentStatus(ComponentID::AudioRuntime) == ComponentLifecycleStatus::Ready) {
-                    requestStateTransition(SystemState::READY);
-                }
-            } else if (event == SystemEvent::COMPONENT_SETUP_FAILED) {
-                transitionTo(SystemState::ERROR, event, reason);
-            } else if (event == SystemEvent::AUDIO_INIT_FAILED) {
-                transitionTo(SystemState::ERROR, event, reason);
-            }
             break;
 
         case SystemState::READY:
-            if (event == SystemEvent::WIFI_DISCONNECTED) {
-                transitionTo(SystemState::ERROR, event, reason);
-            } else if (event == SystemEvent::COMPONENT_SETUP_FAILED) {
-                transitionTo(SystemState::ERROR, event, reason);
-            } else if (event == SystemEvent::AUDIO_INIT_FAILED) {
-                transitionTo(SystemState::ERROR, event, reason);
-            }
             break;
 
         case SystemState::LIVE:
-            if (event == SystemEvent::WIFI_DISCONNECTED) {
-                transitionTo(SystemState::ERROR, event, reason);
-            } else if (event == SystemEvent::STREAM_LOST) {
-                transitionTo(SystemState::ERROR, event, reason);
-            } else if (event == SystemEvent::AUDIO_INIT_FAILED) {
-                transitionTo(SystemState::ERROR, event, reason);
-            }
             break;
 
         case SystemState::ERROR:
