@@ -319,7 +319,24 @@ bool Supervisor::beginOrchestration(SystemState target,
 
         pending.startedAtMs = nowMs();
         pending.timeoutHandled = false;
-        pending.timeoutMs = hooks.transitionInvoker(target, transitionId);
+
+        // Always call invoker for side effects (component setup/shutdown)
+        uint32_t invokerTimeout = hooks.transitionInvoker(target, transitionId);
+
+        // Use matrix timeout if available (replaces invoker timeout)
+        if (hooks.stateMatrix && hooks.stateMatrixSize > 0) {
+            size_t idx = stateRank(target) / 10;
+            if (idx < hooks.stateMatrixSize) {
+                bool isForward = stateRank(target) > stateRank(observedState_);
+                pending.timeoutMs = isForward
+                    ? hooks.stateMatrix[idx].forwardTimeoutMs
+                    : hooks.stateMatrix[idx].backwardTimeoutMs;
+            } else {
+                pending.timeoutMs = invokerTimeout;
+            }
+        } else {
+            pending.timeoutMs = invokerTimeout;
+        }
     }
 
     return true;
