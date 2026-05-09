@@ -472,6 +472,24 @@ void test_observed_state_lags_until_orchestration_confirms() {
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
 }
 
+void test_fatal_rejects_all_events_except_boot() {
+    Supervisor controller;
+    controller.triggerFatal();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::FATAL), static_cast<int>(controller.state()));
+
+    controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::FATAL), static_cast<int>(controller.state()));
+
+    controller.postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST);
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::FATAL), static_cast<int>(controller.state()));
+
+    controller.postEvent(SystemEvent::WIFI_DISCONNECTED, SystemReason::NONE);
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::FATAL), static_cast<int>(controller.state()));
+
+    controller.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE);
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(controller.state()));
+}
+
 }  // namespace
 
 int main() {
@@ -498,5 +516,6 @@ int main() {
     RUN_TEST(test_sleep_audio_failed_updates_registry);
     RUN_TEST(test_optional_component_failure_does_not_block_orchestration);
     RUN_TEST(test_observed_state_lags_until_orchestration_confirms);
+    RUN_TEST(test_fatal_rejects_all_events_except_boot);
     return UNITY_END();
 }

@@ -56,10 +56,15 @@ void Supervisor::postEventBuffered(SystemEvent event, SystemReason reason) {
     mailbox_.event = event;
     mailbox_.pending = true;
 }
+
+void Supervisor::triggerFatal() {
+    transitionTo(SystemState::FATAL, SystemEvent::BOOT, SystemReason::NONE);
+}
 #endif
 
 void Supervisor::processMailbox() {
 #if !defined(ARDUINO)
+    if (observedState_ == SystemState::FATAL) return;
     if (mailbox_.pending) {
         SystemEvent event = mailbox_.event;
         SystemReason reason = mailbox_.reason;
@@ -69,6 +74,7 @@ void Supervisor::processMailbox() {
     checkTransitionTimeouts();
     return;
 #else
+    if (observedState_ == SystemState::FATAL) return;
     if (mailbox_.pending) {
         SystemEvent event = mailbox_.event;
         SystemReason reason = mailbox_.reason;
@@ -400,6 +406,13 @@ void Supervisor::checkTransitionTimeouts() {
 }
 
 void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
+    if (observedState_ == SystemState::FATAL) {
+        if (event == SystemEvent::BOOT) {
+            transitionTo(SystemState::BOOTING, event, reason);
+        } else {
+            return;
+        }
+    }
     auto requestStateTransition = [this, event, reason](SystemState target) {
         uint32_t transitionId = nextTransitionId_;
         ++nextTransitionId_;
@@ -456,6 +469,8 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
     }
 
     switch (observedState_) {
+        case SystemState::FATAL:
+            break;
         case SystemState::BOOTING:
             if (event == SystemEvent::BOOT) {
                 transitionTo(SystemState::SLEEP, event, reason);

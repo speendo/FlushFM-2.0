@@ -159,6 +159,10 @@ public:
     // Native-only: writes to the Mailbox slot without dispatching.
     // Used by unit tests to verify Mailbox last-write-wins semantics.
     void postEventBuffered(SystemEvent event, SystemReason reason);
+
+    // Native-only: enters FATAL state for unit testing the halt gate.
+    // Production entry to FATAL will go through beginOrchestration(FATAL).
+    void triggerFatal();
 #endif
 
     // Core 0 only: drain the Mailbox slot and run transition logic.
