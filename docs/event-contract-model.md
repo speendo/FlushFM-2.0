@@ -54,7 +54,7 @@ Components may maintain internal lifecycle states that mirror the global guarant
 
 The Supervisor event interface uses a minimal three-part model:
 
-> **Note:** `STATE_REQUESTED` / `STATE_ENTERED` / `STATE_FAILED` is the contract model. The current implementation uses specific event names (`PLAY_REQUESTED`, `STOP_REQUESTED`, `ENTER_SLEEP`) directly. A future story (US-0032) adds a generic `STATE_REQUESTED` event type.
+> **Note:** `STATE_REQUESTED` / `STATE_ENTERED` / `STATE_FAILED` is the contract model. The event enum now contains only two entries: `COMPONENT_SETUP_FAILED` (failure signal) and `STATE_REQUESTED(targetState)` (all state intents). Legacy aliases (`PLAY_REQUESTED`, `STOP_REQUESTED`, `ENTER_SLEEP`) have been removed.
 
 #### `STATE_REQUESTED` (External Intent)
 - **Source:** Components, CLI, hardware interrupts (e.g., light sensor)
@@ -67,6 +67,8 @@ The Supervisor event interface uses a minimal three-part model:
 STATE_REQUESTED(target=LIVE)   // Request: enter LIVE state
 STATE_REQUESTED(target=SLEEP)  // Request: enter SLEEP state
 ```
+
+`STATE_REQUESTED` is now a first-class `SystemEvent` enum value. The Mailbox carries a `targetState` payload (`SystemState`) that `handleEvent()` reads to dispatch the appropriate transition. Callers use `postEvent(SystemEvent::STATE_REQUESTED, reason, targetState)`. Legacy events (`PLAY_REQUESTED`, `STOP_REQUESTED`, `ENTER_SLEEP`) remain fully functional for backward compatibility.
 
 #### `STATE_ENTERED` (Internal Orchestration Outcome)
 - **Source:** Internal to Supervisor orchestration
@@ -119,7 +121,7 @@ All references to events, queues, and processing functions use consistent naming
 | Artifact | Standard Name | Notes |
 | --- | --- | --- |
 | Mailbox draining | `processMailbox()` | Declaration, implementation, debug output |
-| External intent event | `STATE_REQUESTED` | Payload includes target state (US-0032 scope) |
+| External intent event | `STATE_REQUESTED` | Payload includes target state (`postEvent(event, reason, target)`) |
 | Internal entry outcome | `STATE_ENTERED` | Internal orchestration only |
 | Internal failure outcome | `STATE_FAILED` | Internal orchestration only |
 | Legacy component events | `STREAM_LOST`, `WIFI_DISCONNECTED`, ... | Mapped through adapters; not long-term surface |

@@ -5,7 +5,6 @@
 #if !defined(ARDUINO)
 #include <chrono>
 #else
-#include <esp_system.h>
 #endif
 
 #include "core/debug.h"
@@ -40,6 +39,7 @@ void Supervisor::subscribe(StateObserver observer) {
 
 bool Supervisor::postEvent(SystemEvent event, SystemReason reason) {
 #if !defined(ARDUINO)
+    mailbox_.targetState = SystemState::BOOTING;
     handleEvent(event, reason);
     return true;
 #else
@@ -50,11 +50,18 @@ bool Supervisor::postEvent(SystemEvent event, SystemReason reason) {
 #endif
 }
 
+bool Supervisor::postEvent(SystemEvent event, SystemReason reason, SystemState target) {
 #if !defined(ARDUINO)
-void Supervisor::postEventBuffered(SystemEvent event, SystemReason reason) {
+    mailbox_.targetState = target;
+    handleEvent(event, reason);
+    return true;
+#else
     mailbox_.reason = reason;
     mailbox_.event = event;
+    mailbox_.targetState = target;
     mailbox_.pending = true;
+    return true;
+#endif
 }
 
 void Supervisor::setErrorEvent(DebugReason reason, ComponentID source) {
@@ -63,6 +70,20 @@ void Supervisor::setErrorEvent(DebugReason reason, ComponentID source) {
         errorEvent_.reason = reason;
         errorEvent_.source = source;
     }
+}
+
+#if !defined(ARDUINO)
+void Supervisor::postEventBuffered(SystemEvent event, SystemReason reason) {
+    mailbox_.reason = reason;
+    mailbox_.event = event;
+    mailbox_.pending = true;
+}
+
+void Supervisor::postEventBuffered(SystemEvent event, SystemReason reason, SystemState target) {
+    mailbox_.reason = reason;
+    mailbox_.event = event;
+    mailbox_.targetState = target;
+    mailbox_.pending = true;
 }
 
 void Supervisor::triggerFatal() {
@@ -76,7 +97,6 @@ uint32_t Supervisor::getPendingTimeout(ComponentID id) const {
 #endif
 
 void Supervisor::processMailbox() {
-#if !defined(ARDUINO)
     if (observedState_ == SystemState::FATAL) return;
     if (mailbox_.pending) {
         SystemEvent event = mailbox_.event;
@@ -89,21 +109,6 @@ void Supervisor::processMailbox() {
         transitionTo(SystemState::ERROR, SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::RECOVERY);
     }
     checkTransitionTimeouts();
-    return;
-#else
-    if (observedState_ == SystemState::FATAL) return;
-    if (mailbox_.pending) {
-        SystemEvent event = mailbox_.event;
-        SystemReason reason = mailbox_.reason;
-        mailbox_.pending = false;
-        handleEvent(event, reason);
-    }
-    if (errorEvent_.pending) {
-        errorEvent_.pending = false;
-        transitionTo(SystemState::ERROR, SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::RECOVERY);
-    }
-    checkTransitionTimeouts();
-#endif
 }
 
 bool Supervisor::registerComponent(ComponentID id, bool isRequired) {
@@ -226,57 +231,38 @@ bool Supervisor::reportCompletion(ComponentID id,
         orchestration_.active = false;
 
         if (observedState_ == SystemState::READY && targetMode_ == SystemState::LIVE) {
-            handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
+            mailbox_.targetState = SystemState::LIVE;
+            handleEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST);
         }
     }
 
     return true;
 }
 
-TransitionRequestDecision Supervisor::requestTransition(SystemState from,
-                                                              SystemState target,
-                                                              uint32_t transitionId) {
+bool Supervisor::requestTransition(SystemState from,
+                                        SystemState target,
+                                        uint32_t transitionId) {
     if (from == target) {
-        return TransitionRequestDecision::Ignored;
+        return false;
     }
 
     if (!hasActiveStateTransition_) {
         hasActiveStateTransition_ = true;
         activeStateTransition_ = StateTransitionInfo{transitionId, from, target};
-        return TransitionRequestDecision::Started;
-    }
-
-    if (target == activeStateTransition_.from) {
-        const StateTransitionInfo previous = activeStateTransition_;
-        (void)previous;
-        activeStateTransition_ = StateTransitionInfo{transitionId, from, target};
-        hasQueuedStateTransition_ = false;
-        return TransitionRequestDecision::Superseded;
-    }
-
-    queuedStateTransition_ = StateTransitionInfo{transitionId, from, target};
-    hasQueuedStateTransition_ = true;
-    return TransitionRequestDecision::Queued;
-}
-
-bool Supervisor::finishTransition(uint32_t transitionId) {
-    if (!hasActiveStateTransition_) {
-        return false;
-    }
-
-    if (activeStateTransition_.transitionId != transitionId) {
-        return false;
-    }
-
-    if (hasQueuedStateTransition_) {
-        activeStateTransition_ = queuedStateTransition_;
-        hasQueuedStateTransition_ = false;
-        if (activeStateTransition_.target == observedState_) {
-            hasActiveStateTransition_ = false;
-        }
         return true;
     }
 
+    if (target == activeStateTransition_.from) {
+        activeStateTransition_ = StateTransitionInfo{transitionId, from, target};
+        return true;
+    }
+
+    return false;
+}
+
+bool Supervisor::finishTransition(uint32_t transitionId) {
+    if (!hasActiveStateTransition_) return false;
+    if (activeStateTransition_.transitionId != transitionId) return false;
     hasActiveStateTransition_ = false;
     return true;
 }
@@ -285,8 +271,7 @@ bool Supervisor::beginOrchestration(SystemState target,
                                           SystemEvent trigger,
                                           SystemReason reason,
                                           uint32_t transitionId) {
-    const TransitionRequestDecision decision = requestTransition(observedState_, target, transitionId);
-    if (decision == TransitionRequestDecision::Ignored || decision == TransitionRequestDecision::Queued) {
+    if (!requestTransition(observedState_, target, transitionId)) {
         return false;
     }
 
@@ -314,7 +299,8 @@ bool Supervisor::beginOrchestration(SystemState target,
         orchestration_.active = false;
 
         if (observedState_ == SystemState::READY && targetMode_ == SystemState::LIVE) {
-            handleEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
+            mailbox_.targetState = SystemState::LIVE;
+            handleEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST);
         }
 
         return true;
@@ -374,10 +360,6 @@ bool Supervisor::hasActiveTransition() const {
     return hasActiveStateTransition_;
 }
 
-bool Supervisor::hasQueuedTransition() const {
-    return hasQueuedStateTransition_;
-}
-
 uint32_t Supervisor::activeTransitionId() const {
     return activeStateTransition_.transitionId;
 }
@@ -388,18 +370,6 @@ SystemState Supervisor::activeTransitionFrom() const {
 
 SystemState Supervisor::activeTransitionTarget() const {
     return activeStateTransition_.target;
-}
-
-uint32_t Supervisor::queuedTransitionId() const {
-    return queuedStateTransition_.transitionId;
-}
-
-SystemState Supervisor::queuedTransitionFrom() const {
-    return queuedStateTransition_.from;
-}
-
-SystemState Supervisor::queuedTransitionTarget() const {
-    return queuedStateTransition_.target;
 }
 void Supervisor::checkTransitionTimeouts() {
     if (!orchestration_.active) {
@@ -468,70 +438,55 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
                   started ? "true" : "false");
     };
 
-    // User intents are state-independent and map directly to target states.
-    if (event == SystemEvent::ENTER_SLEEP) {
-        targetMode_ = SystemState::SLEEP;
-        requestStateTransition(SystemState::SLEEP);
-        return;
-    }
-    if (event == SystemEvent::STOP_REQUESTED) {
-        targetMode_ = SystemState::SLEEP;
-        if (observedState_ == SystemState::CONNECTING) {
-            return;
+    if (event == SystemEvent::STATE_REQUESTED) {
+        const SystemState target = mailbox_.targetState;
+        switch (target) {
+            case SystemState::SLEEP:
+                targetMode_ = SystemState::SLEEP;
+                requestStateTransition(SystemState::SLEEP);
+                return;
+            case SystemState::READY:
+                targetMode_ = SystemState::SLEEP;
+                if (observedState_ == SystemState::CONNECTING) {
+                    return;
+                }
+                requestStateTransition(SystemState::READY);
+                return;
+            case SystemState::LIVE:
+                if (observedState_ == SystemState::CONNECTING) {
+                    targetMode_ = SystemState::LIVE;
+                    return;
+                }
+                if (observedState_ == SystemState::SLEEP) {
+                    targetMode_ = SystemState::LIVE;
+                    transitionTo(SystemState::CONNECTING, event, reason);
+                    requestStateTransition(SystemState::READY);
+                    return;
+                }
+                if (observedState_ == SystemState::LIVE) {
+                    targetMode_ = SystemState::LIVE;
+                    requestStateTransition(SystemState::READY);
+                    return;
+                }
+                requestStateTransition(SystemState::LIVE);
+                return;
+            case SystemState::ERROR:
+                transitionTo(observedState_ == SystemState::ERROR ? SystemState::FATAL : SystemState::ERROR, event, reason);
+                return;
+            case SystemState::FATAL:
+                targetMode_ = SystemState::FATAL;
+                transitionTo(SystemState::FATAL, event, reason);
+                return;
+            case SystemState::BOOTING:
+            case SystemState::CONNECTING:
+                return;
         }
-        requestStateTransition(SystemState::READY);
-        return;
-    }
-    if (event == SystemEvent::PLAY_REQUESTED) {
-        if (observedState_ == SystemState::CONNECTING) {
-            targetMode_ = SystemState::LIVE;
-            return;
-        }
-
-        if (observedState_ == SystemState::SLEEP) {
-            targetMode_ = SystemState::LIVE;
-            transitionTo(SystemState::CONNECTING, event, reason);
-            requestStateTransition(SystemState::READY);
-            return;
-        }
-
-        if (observedState_ == SystemState::LIVE) {
-            targetMode_ = SystemState::LIVE;
-            requestStateTransition(SystemState::READY);
-            return;
-        }
-
-        requestStateTransition(SystemState::LIVE);
         return;
     }
 
     if (event == SystemEvent::COMPONENT_SETUP_FAILED) {
         transitionTo(observedState_ == SystemState::ERROR ? SystemState::FATAL : SystemState::ERROR, event, reason);
         return;
-    }
-
-    switch (observedState_) {
-        case SystemState::FATAL:
-            break;
-        case SystemState::BOOTING:
-
-        case SystemState::SLEEP:
-            break;
-
-        case SystemState::CONNECTING:
-            break;
-
-        case SystemState::READY:
-            break;
-
-        case SystemState::LIVE:
-            break;
-
-        case SystemState::ERROR:
-            if (event == SystemEvent::RECOVER) {
-                // Placeholder: error recovery is not yet designed.
-            }
-            break;
     }
 }
 

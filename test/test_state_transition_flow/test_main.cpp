@@ -50,7 +50,7 @@ struct TransitionHooksFixture {
     }
 
     void reachSleep() {
-        controller.postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST);
+        controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::SLEEP);
         if (controller.isOrchestrationActive()) {
             completeAllActive();
         }
@@ -59,7 +59,7 @@ struct TransitionHooksFixture {
 
 // Helper: reach SLEEP from initial BOOTING (no orchestration needed, registeredCount==0)
 void reachSleep(Supervisor& c) {
-    c.postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST);
+    c.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::SLEEP);
 }
 
 void test_sleep_to_ready() {
@@ -68,7 +68,7 @@ void test_sleep_to_ready() {
     fixture.reachSleep();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
 
@@ -83,7 +83,7 @@ void test_sleep_to_live() {
     fixture.reachSleep();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
 
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
 
@@ -99,11 +99,11 @@ void test_ready_to_live() {
     TransitionHooksFixture fixture;
     fixture.install();
     fixture.reachSleep();
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
 
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
 
@@ -115,12 +115,12 @@ void test_live_to_ready() {
     TransitionHooksFixture fixture;
     fixture.install();
     fixture.reachSleep();
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     fixture.completeAllActive();
     fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::READY));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
@@ -132,12 +132,12 @@ void test_live_to_sleep() {
     TransitionHooksFixture fixture;
     fixture.install();
     fixture.reachSleep();
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     fixture.completeAllActive();
     fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::SLEEP));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
@@ -149,17 +149,17 @@ void test_ready_to_sleep() {
     TransitionHooksFixture fixture;
     fixture.install();
     fixture.reachSleep();
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     fixture.completeAllActive();
     fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
     // Go LIVE→READY, then READY→SLEEP
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::READY));
     fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
 
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::SLEEP));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
 
@@ -206,10 +206,10 @@ void test_fatal_absorbing() {
     controller.triggerFatal();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::FATAL), static_cast<int>(controller.state()));
 
-    controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST);
+    controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE);
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::FATAL), static_cast<int>(controller.state()));
 
-    controller.postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST);
+    controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::READY);
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::FATAL), static_cast<int>(controller.state()));
 
     controller.postEvent(SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::COMPONENT_SETUP);
@@ -221,12 +221,12 @@ void test_play_requested_during_connecting_is_deferred_until_ready() {
     fixture.install();
     fixture.reachSleep();
 
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
 
-    // PLAY_REQUESTED again while CONNECTING — should defer (targetMode=LIVE)
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    // STATE_REQUESTED(LIVE) again while CONNECTING — should defer (targetMode=LIVE)
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
 
     fixture.completeAllActive();
@@ -241,14 +241,14 @@ void test_play_requested_while_streaming_restarts_after_idle_transition() {
     TransitionHooksFixture fixture;
     fixture.install();
     fixture.reachSleep();
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     fixture.completeAllActive();
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     fixture.completeAllActive();
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
-    // PLAY_REQUESTED in LIVE → replay: targetMode=LIVE, orchestrate to READY
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    // STATE_REQUESTED(LIVE) in LIVE → replay: targetMode=LIVE, orchestrate to READY
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 
@@ -265,7 +265,7 @@ void test_optional_component_failure_does_not_block_orchestration() {
     TransitionHooksFixture fixture;
     fixture.install();
     fixture.reachSleep();
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
 
     const uint32_t tid = fixture.controller.activeTransitionId();
@@ -285,7 +285,7 @@ void test_observed_state_lags_until_orchestration_confirms() {
     fixture.install();
     fixture.reachSleep();
 
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     // observedState_ is CONNECTING — READY is the target but state() shows CONNECTING
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
@@ -299,11 +299,92 @@ void test_matrix_forward_timeout() {
     TransitionHooksFixture fixture;
     fixture.install();
     fixture.reachSleep();
-    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::PLAY_REQUESTED, SystemReason::USER_REQUEST));
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
     TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
 
     uint32_t wifiTimeout = fixture.controller.getPendingTimeout(ComponentID::WiFi);
     TEST_ASSERT_GREATER_THAN(0, wifiTimeout);
+}
+
+void test_state_requested_sleep() {
+    TransitionHooksFixture fixture;
+    fixture.install();
+    fixture.reachSleep();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
+
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
+    fixture.completeAllActive();
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
+
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::SLEEP));
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
+}
+
+void test_state_requested_live_from_sleep() {
+    TransitionHooksFixture fixture;
+    fixture.install();
+    fixture.reachSleep();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP), static_cast<int>(fixture.controller.state()));
+
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
+}
+
+void test_state_requested_ready() {
+    TransitionHooksFixture fixture;
+    fixture.install();
+    fixture.reachSleep();
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
+    fixture.completeAllActive();
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
+
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::READY));
+    TEST_ASSERT_TRUE(fixture.controller.isOrchestrationActive());
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
+}
+
+void test_state_requested_error() {
+    TransitionHooksFixture fixture;
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::ERROR));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR), static_cast<int>(fixture.controller.state()));
+}
+
+void test_state_requested_fatal() {
+    TransitionHooksFixture fixture;
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::FATAL));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::FATAL), static_cast<int>(fixture.controller.state()));
+}
+
+void test_state_requested_booting_ignored() {
+    Supervisor controller;
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::BOOTING), static_cast<int>(controller.state()));
+    controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::BOOTING);
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::BOOTING), static_cast<int>(controller.state()));
+}
+
+void test_state_requested_deferred_in_connecting() {
+    TransitionHooksFixture fixture;
+    fixture.install();
+    fixture.reachSleep();
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
+
+    TEST_ASSERT_TRUE(fixture.controller.postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::LIVE));
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING), static_cast<int>(fixture.controller.state()));
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY), static_cast<int>(fixture.controller.state()));
+    fixture.completeAllActive();
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE), static_cast<int>(fixture.controller.state()));
 }
 
 }  // namespace
@@ -326,5 +407,12 @@ int main() {
     RUN_TEST(test_optional_component_failure_does_not_block_orchestration);
     RUN_TEST(test_observed_state_lags_until_orchestration_confirms);
     RUN_TEST(test_matrix_forward_timeout);
+    RUN_TEST(test_state_requested_sleep);
+    RUN_TEST(test_state_requested_live_from_sleep);
+    RUN_TEST(test_state_requested_ready);
+    RUN_TEST(test_state_requested_error);
+    RUN_TEST(test_state_requested_fatal);
+    RUN_TEST(test_state_requested_booting_ignored);
+    RUN_TEST(test_state_requested_deferred_in_connecting);
     return UNITY_END();
 }

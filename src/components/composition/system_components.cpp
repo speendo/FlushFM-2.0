@@ -236,14 +236,6 @@ void WiFiComponent::completePendingTransition(TransitionStatus status, const cha
     (void)system_.reportCompletion(id(), pendingTransitionId_, status, reason);
 }
 
-    const uint32_t transitionId = pendingTransitionId_;
-    transitionPending_ = false;
-    pendingTransitionId_ = 0;
-    pendingStreamingTarget_ = false;
-
-    (void)system_.reportCompletion(name(), transitionId, status, reason);
-}
-
 AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer& audio, Supervisor& system)
     : ISystemComponent(ComponentID::AudioRuntime, kAudioRuntimeName), audio_(audio), system_(system) {}
 
@@ -376,15 +368,6 @@ void AudioRuntimeComponent::completePendingTransition(TransitionStatus status, c
     }
     transitionPending_ = false;
     (void)system_.reportCompletion(id(), pendingTransitionId_, status, reason);
-}
-
-    const uint32_t transitionId = pendingTransitionId_;
-    transitionPending_ = false;
-    pendingTransitionId_ = 0;
-    pendingStreamingTarget_ = false;
-    pendingErrorTarget_ = false;
-
-    (void)system_.reportCompletion(name(), transitionId, status, reason);
 }
 
 CliComponent::CliComponent(IAudioPlayer& audio, Supervisor& system)

@@ -74,17 +74,13 @@ void test_state_machine_labels_round_trip_and_are_unique() {
         {SystemState::LIVE, "LIVE"},
     }};
 
-    const std::array<EnumLabelCase<SystemEvent>, 5> events = {{
+    const std::array<EnumLabelCase<SystemEvent>, 2> events = {{
         {SystemEvent::COMPONENT_SETUP_FAILED, "COMPONENT_SETUP_FAILED"},
-        {SystemEvent::PLAY_REQUESTED, "PLAY_REQUESTED"},
-        {SystemEvent::STOP_REQUESTED, "STOP_REQUESTED"},
-        {SystemEvent::RECOVER, "RECOVER"},
-        {SystemEvent::ENTER_SLEEP, "ENTER_SLEEP"},
+        {SystemEvent::STATE_REQUESTED, "STATE_REQUESTED"},
     }};
 
-    const std::array<EnumLabelCase<SystemReason>, 9> reasons = {{
+    const std::array<EnumLabelCase<SystemReason>, 8> reasons = {{
         {SystemReason::NONE, "NONE"},
-        {SystemReason::BOOT_SEQUENCE, "BOOT_SEQUENCE"},
         {SystemReason::COMPONENT_SETUP, "COMPONENT_SETUP"},
         {SystemReason::WIFI_INITIALIZED, "WIFI_INITIALIZED"},
         {SystemReason::AUDIO_TASK_STARTED, "AUDIO_TASK_STARTED"},
@@ -94,30 +90,20 @@ void test_state_machine_labels_round_trip_and_are_unique() {
         {SystemReason::POWER_POLICY, "POWER_POLICY"},
     }};
 
-    const std::array<EnumLabelCase<TransitionRequestDecision>, 4> decisions = {{
-        {TransitionRequestDecision::Ignored, "Ignored"},
-        {TransitionRequestDecision::Started, "Started"},
-        {TransitionRequestDecision::Superseded, "Superseded"},
-        {TransitionRequestDecision::Queued, "Queued"},
-    }};
-
     assert_round_trip_and_uniqueness(states);
     assert_round_trip_and_uniqueness(events);
     assert_round_trip_and_uniqueness(reasons);
-    assert_round_trip_and_uniqueness(decisions);
 }
 
 void test_state_machine_invalid_values_map_to_unknown() {
     const auto invalidState = static_cast<SystemState>(255);
     const auto invalidEvent = static_cast<SystemEvent>(255);
     const auto invalidReason = static_cast<SystemReason>(255);
-    const auto invalidDecision = static_cast<TransitionRequestDecision>(255);
     const auto invalidComponent = static_cast<ComponentID>(255);
 
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidState));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidEvent));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidReason));
-    TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidDecision));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", componentName(invalidComponent));
 }
 

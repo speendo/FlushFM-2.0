@@ -22,7 +22,7 @@ void test_timeout_hook_is_invoked_when_component_does_not_complete() {
         }));
 
     TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::LIVE,
-                                                   SystemEvent::PLAY_REQUESTED,
+                                                   SystemEvent::STATE_REQUESTED,
                                                    SystemReason::USER_REQUEST,
                                                    900));
     TEST_ASSERT_TRUE(controller.isOrchestrationActive());
@@ -49,7 +49,7 @@ void test_zero_timeout_is_treated_as_immediate_timeout() {
         }));
 
     TEST_ASSERT_TRUE(controller.beginOrchestration(SystemState::LIVE,
-                                                   SystemEvent::PLAY_REQUESTED,
+                                                   SystemEvent::STATE_REQUESTED,
                                                    SystemReason::USER_REQUEST,
                                                    901));
     controller.processEventQueue();

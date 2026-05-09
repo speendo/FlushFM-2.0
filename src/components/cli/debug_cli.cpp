@@ -45,7 +45,7 @@ static bool postManualTransition(const char* targetState) {
     }
 
     if (strcmp(targetState, "idle") == 0 || strcmp(targetState, "ready") == 0) {
-        (void)s_controller->postEvent(SystemEvent::STOP_REQUESTED, SystemReason::USER_REQUEST);
+        (void)s_controller->postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::READY);
         PROD_LOG(kLogSource, "Transition request posted: ready");
         return true;
     }
@@ -59,7 +59,7 @@ static bool postManualTransition(const char* targetState) {
     }
 
     if (strcmp(targetState, "sleep") == 0) {
-        (void)s_controller->postEvent(SystemEvent::ENTER_SLEEP, SystemReason::USER_REQUEST);
+        (void)s_controller->postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::SLEEP);
         PROD_LOG(kLogSource, "Transition request posted: sleep");
         return true;
     }

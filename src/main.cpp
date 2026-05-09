@@ -48,7 +48,6 @@ void setup() {
 
     PROD_LOG(kLogSource, "Hello FlushFM");
     registerAudioLibraryCallbacks();
-    s_system.postEvent(SystemEvent::BOOT, SystemReason::BOOT_SEQUENCE);
 
     for (ISystemComponent* component : s_components) {
         component->registerWithController(s_system);
@@ -62,8 +61,9 @@ void setup() {
     // Boot auto-play: queue PLAY request unconditionally.
     // Controller will defer it until CONNECTING/READY is reached.
     PROD_LOG(kLogSource, "Boot auto-play: queue PLAY request");
-    (void)s_system.postEvent(SystemEvent::PLAY_REQUESTED,
-                             SystemReason::USER_REQUEST);
+    (void)s_system.postEvent(SystemEvent::STATE_REQUESTED,
+                             SystemReason::USER_REQUEST,
+                             SystemState::LIVE);
 }
 
 void loop() {

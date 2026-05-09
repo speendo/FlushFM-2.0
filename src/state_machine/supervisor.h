@@ -30,14 +30,6 @@ constexpr uint8_t stateRank(SystemState state) {
     return static_cast<uint8_t>(state);
 }
 
-constexpr bool isBelowState(SystemState lhs, SystemState rhs) {
-    return stateRank(lhs) < stateRank(rhs);
-}
-
-constexpr bool isAtLeastState(SystemState lhs, SystemState rhs) {
-    return stateRank(lhs) >= stateRank(rhs);
-}
-
 inline const char* toString(SystemState state) {
     switch (state) {
 #define SYSTEM_STATE_STRING(name, value) case SystemState::name: return #name;
@@ -52,10 +44,7 @@ inline const char* toString(SystemState state) {
 
 #define SYSTEM_EVENT_X(V) \
     V(COMPONENT_SETUP_FAILED) \
-    V(PLAY_REQUESTED) \
-    V(STOP_REQUESTED) \
-    V(RECOVER) \
-    V(ENTER_SLEEP)
+    V(STATE_REQUESTED)
 
 #define SYSTEM_EVENT_ENUM(name) name,
 enum class SystemEvent {
@@ -76,7 +65,6 @@ inline const char* toString(SystemEvent event) {
 
 #define SYSTEM_REASON_X(V) \
     V(NONE) \
-    V(BOOT_SEQUENCE) \
     V(COMPONENT_SETUP) \
     V(WIFI_INITIALIZED) \
     V(AUDIO_TASK_STARTED) \
@@ -104,29 +92,6 @@ inline const char* toString(SystemReason reason) {
 #undef SYSTEM_REASON_ENUM
 #undef SYSTEM_REASON_X
 
-#define TRANSITION_REQUEST_DECISION_X(V) \
-    V(Ignored) \
-    V(Started) \
-    V(Superseded) \
-    V(Queued)
-
-#define TRANSITION_REQUEST_DECISION_ENUM(name) name,
-enum class TransitionRequestDecision : uint8_t {
-    TRANSITION_REQUEST_DECISION_X(TRANSITION_REQUEST_DECISION_ENUM)
-};
-
-inline const char* toString(TransitionRequestDecision decision) {
-    switch (decision) {
-#define TRANSITION_REQUEST_DECISION_STRING(name) case TransitionRequestDecision::name: return #name;
-        TRANSITION_REQUEST_DECISION_X(TRANSITION_REQUEST_DECISION_STRING)
-#undef TRANSITION_REQUEST_DECISION_STRING
-    }
-    return "UNKNOWN";
-}
-
-#undef TRANSITION_REQUEST_DECISION_ENUM
-#undef TRANSITION_REQUEST_DECISION_X
-
 class Supervisor {
 public:
     using StateObserver = std::function<void(SystemState)>;
@@ -142,6 +107,10 @@ public:
     // reason carries origin/context metadata for logging and debugging.
     bool postEvent(SystemEvent event, SystemReason reason);
 
+    // Three-parameter overload: posts STATE_REQUESTED with a target state payload.
+    // The target is stored in the Mailbox and read by handleEvent().
+    bool postEvent(SystemEvent event, SystemReason reason, SystemState target);
+
     void setErrorEvent(DebugReason reason, ComponentID source);
 
     // TargetMode (goal) and ObservedState (current reality):
@@ -155,6 +124,7 @@ public:
     // Native-only: writes to the Mailbox slot without dispatching.
     // Used by unit tests to verify Mailbox last-write-wins semantics.
     void postEventBuffered(SystemEvent event, SystemReason reason);
+    void postEventBuffered(SystemEvent event, SystemReason reason, SystemState target);
 
     // Native-only: enters FATAL state for unit testing the halt gate.
     // Production entry to FATAL will go through beginOrchestration(FATAL).
@@ -179,7 +149,7 @@ public:
                           TransitionStatus status,
                           DebugReason reason);
     bool beginComponentTransition(ComponentID id, uint32_t transitionId);
-    TransitionRequestDecision requestTransition(SystemState from, SystemState target, uint32_t transitionId);
+    bool requestTransition(SystemState from, SystemState target, uint32_t transitionId);
     bool finishTransition(uint32_t transitionId);
     bool beginOrchestration(SystemState target,
                             SystemEvent trigger,
@@ -188,18 +158,15 @@ public:
     bool isOrchestrationActive() const;
     size_t componentsWaitingForCompletion() const;
     bool hasActiveTransition() const;
-    bool hasQueuedTransition() const;
     uint32_t activeTransitionId() const;
     SystemState activeTransitionFrom() const;
     SystemState activeTransitionTarget() const;
-    uint32_t queuedTransitionId() const;
-    SystemState queuedTransitionFrom() const;
-    SystemState queuedTransitionTarget() const;
 
 private:
     struct Mailbox {
         SystemEvent event = static_cast<SystemEvent>(0);
         SystemReason reason = SystemReason::NONE;
+        SystemState targetState = SystemState::BOOTING;
         bool pending = false;
     };
 
@@ -254,7 +221,5 @@ private:
     std::array<ComponentTransitionHooks, static_cast<size_t>(ComponentID::Count)> componentHooks_{};
     bool hasActiveStateTransition_ = false;
     StateTransitionInfo activeStateTransition_{};
-    bool hasQueuedStateTransition_ = false;
-    StateTransitionInfo queuedStateTransition_{};
     OrchestrationContext orchestration_{};
 };
