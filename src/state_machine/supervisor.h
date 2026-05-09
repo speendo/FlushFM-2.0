@@ -147,6 +147,12 @@ public:
     // reason carries origin/context metadata for logging and debugging.
     bool postEvent(SystemEvent event, SystemReason reason);
 
+#if !defined(ARDUINO)
+    // Native-only: writes to the Mailbox slot without dispatching.
+    // Used by unit tests to verify Mailbox last-write-wins semantics.
+    void postEventBuffered(SystemEvent event, SystemReason reason);
+#endif
+
     // Core 0 only: drain the Mailbox slot and run transition logic.
     void processMailbox();
 

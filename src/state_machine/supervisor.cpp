@@ -50,6 +50,14 @@ bool Supervisor::postEvent(SystemEvent event, SystemReason reason) {
 #endif
 }
 
+#if !defined(ARDUINO)
+void Supervisor::postEventBuffered(SystemEvent event, SystemReason reason) {
+    mailbox_.reason = reason;
+    mailbox_.event = event;
+    mailbox_.pending = true;
+}
+#endif
+
 void Supervisor::processMailbox() {
 #if !defined(ARDUINO)
     if (mailbox_.pending) {
