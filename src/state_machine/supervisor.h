@@ -133,6 +133,10 @@ public:
     uint32_t getPendingTimeout(ComponentID id) const;
 #endif
 
+    // Core 0 only: idempotent boot entry triggered by main::setup().
+    // Triggers BOOTING internally without exposing it through postEvent().
+    void setup();
+
     // Core 0 only: drain the Mailbox slot and run transition logic.
     void processMailbox();
 
@@ -206,7 +210,10 @@ private:
     };
 
     void handleEvent(SystemEvent event, SystemReason reason);
-    void transitionTo(SystemState next, SystemEvent trigger, SystemReason reason, uint32_t transitionId = 0);
+    void setObservedStateImmediate(SystemState next, SystemEvent trigger, SystemReason reason, uint32_t transitionId = 0);
+    // Hierarchy-driven state stepper: computes next intermediate step toward targetMode_
+    // using rank comparison (> / < / ==). Called when no orchestration is in flight.
+    void stepTowardTarget(SystemEvent event, SystemReason reason);
     void checkTransitionTimeouts();
 
     SystemState observedState_ = SystemState::BOOTING;
