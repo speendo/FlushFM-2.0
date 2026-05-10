@@ -1,6 +1,6 @@
 # Supervisor API Boundary
 
-**Status:** Approved (US-0027a) | **Updated:** 2026-05-09
+**Status:** Approved (US-0027a) | **Updated:** 2026-05-10
 
 ## Overview
 
@@ -36,6 +36,14 @@ SystemState state() const;
 ```
 - Returns current global system state
 - No preconditions; safe to call anytime
+
+### Boot Entry
+
+```cpp
+bool setup();
+```
+- Idempotent boot entry used by `main::setup()`
+- Initializes the Supervisor-side boot path without exposing `BOOTING` through `postEvent(...)`
 
 ### Event Posting
 
@@ -123,8 +131,8 @@ The following methods are **internal orchestration helpers**:
 
 ```cpp
 void handleEvent(SystemEvent event, SystemReason reason);       // Core event dispatch
-void transitionTo(SystemState next, SystemEvent trigger,
-                  SystemReason reason, uint32_t transitionId);  // State commit + observers
+void setObservedStateImmediate(SystemState next, SystemEvent trigger,
+                             SystemReason reason, uint32_t transitionId);  // State commit + observers
 void checkTransitionTimeouts();                                  // Timeout watchdog
 ```
 

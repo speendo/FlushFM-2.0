@@ -18,7 +18,7 @@ The Supervisor uses a minimal generic event contract to coordinate state transit
 
 **Global system state** is owned and managed exclusively by Supervisor:
 - `BOOTING` → `SLEEP` → `CONNECTING` → `READY` → `LIVE` → `ERROR`
-- Only Supervisor can call `transitionTo(...)`
+- Only Supervisor can call `setObservedStateImmediate(...)`
 - No component or external code may directly modify the global system state
 - All state-change intents must go through the Mailbox as `SystemEvent`
 

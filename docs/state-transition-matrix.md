@@ -4,7 +4,7 @@
 
 Every `(SystemState, SystemEvent)` pair has exactly one normalized outcome:
 
-- **direct → STATE**: transition directly via `transitionTo()` (no orchestration)
+- **direct → STATE**: transition directly via `setObservedStateImmediate()` (no orchestration)
 - **request → STATE**: orchestration to target state via `requestStateTransition()`
 - **state unchanged**: no state change (event ignored or only registry updated)
 - **defer**: event is recorded but action is deferred until a later state
