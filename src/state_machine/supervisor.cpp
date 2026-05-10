@@ -425,6 +425,54 @@ void Supervisor::checkTransitionTimeouts() {
     }
 }
 
+// Hierarchy-driven stepper: computes the next state to orchestrate toward targetMode_
+// using rank comparison (> / < / ==). Called when no orchestration is in flight.
+void Supervisor::stepTowardTarget(SystemEvent event, SystemReason reason) {
+    // Do not step from ERROR/FATAL — recovery/exit is out of scope
+    if (observedState_ == SystemState::ERROR || observedState_ == SystemState::FATAL) return;
+
+    const uint8_t targetRank = stateRank(targetMode_);
+    const uint8_t obsRank = stateRank(observedState_);
+
+    if (targetRank == obsRank) {
+        // LIVE replay: step to READY so auto-continuation brings us back to LIVE
+        if (targetRank == 60) {
+            uint32_t tid = nextTransitionId_;
+            ++nextTransitionId_;
+            if (nextTransitionId_ == 0) nextTransitionId_ = 1;
+            (void)beginOrchestration(SystemState::READY, event, reason, tid);
+        }
+        return;
+    }
+
+    auto request = [this, event, reason](SystemState target) {
+        uint32_t tid = nextTransitionId_;
+        ++nextTransitionId_;
+        if (nextTransitionId_ == 0) nextTransitionId_ = 1;
+        (void)beginOrchestration(target, event, reason, tid);
+    };
+
+    if (targetRank > obsRank) {
+        // Moving up: step through the L2 upward sequence
+        if (obsRank <= 30) {
+            setObservedStateImmediate(SystemState::CONNECTING, event, reason);
+            request(SystemState::READY);
+        } else {
+            // obsRank == 50 (READY): step to LIVE
+            request(SystemState::LIVE);
+        }
+    } else {
+        // Moving down: obsRank > targetRank
+        if (obsRank == 60) {
+            // LIVE: step down through READY first
+            request(SystemState::READY);
+        } else {
+            // READY to SLEEP: direct orchestration
+            request(targetMode_);
+        }
+    }
+}
+
 void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
     if (observedState_ == SystemState::FATAL) {
         return;
