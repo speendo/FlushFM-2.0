@@ -93,7 +93,7 @@ void Supervisor::postEventBuffered(SystemEvent event, SystemReason reason, Syste
 }
 
 void Supervisor::triggerFatal() {
-    transitionTo(SystemState::FATAL, static_cast<SystemEvent>(0), SystemReason::NONE);
+    setObservedStateImmediate(SystemState::FATAL, static_cast<SystemEvent>(0), SystemReason::NONE);
 }
 
 uint32_t Supervisor::getPendingTimeout(ComponentID id) const {
@@ -112,7 +112,7 @@ void Supervisor::processMailbox() {
     }
     if (errorEvent_.pending) {
         errorEvent_.pending = false;
-        transitionTo(SystemState::ERROR, SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::RECOVERY);
+        setObservedStateImmediate(SystemState::ERROR, SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::RECOVERY);
     }
     checkTransitionTimeouts();
 }
@@ -222,12 +222,12 @@ bool Supervisor::reportCompletion(ComponentID id,
 
     if (orchestration_.active && orchestration_.transitionId == transitionId && !hasPendingTransitions()) {
         if (orchestration_.requiredFailure) {
-            transitionTo(SystemState::ERROR,
+            setObservedStateImmediate(SystemState::ERROR,
                          SystemEvent::COMPONENT_SETUP_FAILED,
                          SystemReason::RECOVERY,
                          transitionId);
         } else {
-            transitionTo(orchestration_.target,
+            setObservedStateImmediate(orchestration_.target,
                          orchestration_.trigger,
                          orchestration_.reason,
                          transitionId);
@@ -300,7 +300,7 @@ bool Supervisor::beginOrchestration(SystemState target,
     }
 
     if (registeredCount == 0) {
-        transitionTo(target, trigger, reason, transitionId);
+        setObservedStateImmediate(target, trigger, reason, transitionId);
         (void)finishTransition(transitionId);
         orchestration_.active = false;
 
@@ -465,7 +465,7 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
                 }
                 if (observedState_ == SystemState::SLEEP) {
                     targetMode_ = SystemState::LIVE;
-                    transitionTo(SystemState::CONNECTING, event, reason);
+                    setObservedStateImmediate(SystemState::CONNECTING, event, reason);
                     requestStateTransition(SystemState::READY);
                     return;
                 }
@@ -477,11 +477,11 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
                 requestStateTransition(SystemState::LIVE);
                 return;
             case SystemState::ERROR:
-                transitionTo(observedState_ == SystemState::ERROR ? SystemState::FATAL : SystemState::ERROR, event, reason);
+                setObservedStateImmediate(observedState_ == SystemState::ERROR ? SystemState::FATAL : SystemState::ERROR, event, reason);
                 return;
             case SystemState::FATAL:
                 targetMode_ = SystemState::FATAL;
-                transitionTo(SystemState::FATAL, event, reason);
+                setObservedStateImmediate(SystemState::FATAL, event, reason);
                 return;
             case SystemState::BOOTING:
             case SystemState::CONNECTING:
@@ -491,12 +491,12 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
     }
 
     if (event == SystemEvent::COMPONENT_SETUP_FAILED) {
-        transitionTo(observedState_ == SystemState::ERROR ? SystemState::FATAL : SystemState::ERROR, event, reason);
+        setObservedStateImmediate(observedState_ == SystemState::ERROR ? SystemState::FATAL : SystemState::ERROR, event, reason);
         return;
     }
 }
 
-void Supervisor::transitionTo(SystemState next, SystemEvent trigger, SystemReason reason, uint32_t transitionId) {
+void Supervisor::setObservedStateImmediate(SystemState next, SystemEvent trigger, SystemReason reason, uint32_t transitionId) {
     if (next == observedState_) {
         return;
     }
