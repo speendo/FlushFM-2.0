@@ -51,6 +51,12 @@ bool Supervisor::postEvent(SystemEvent event, SystemReason reason) {
 }
 
 bool Supervisor::postEvent(SystemEvent event, SystemReason reason, SystemState target) {
+    // Reject external requests for transient internal stepping states
+    if (event == SystemEvent::STATE_REQUESTED &&
+        (target == SystemState::BOOTING || target == SystemState::CONNECTING)) {
+        PROD_LOG(kLogSource, "Rejected STATE_REQUESTED for transient state %s", toString(target));
+        return false;
+    }
 #if !defined(ARDUINO)
     mailbox_.targetState = target;
     handleEvent(event, reason);
