@@ -29,6 +29,23 @@ uint32_t nowMs() {
 Supervisor::Supervisor() {
 }
 
+// Idempotent boot entry: initiates internal BOOTING flow when observedState_ is BOOTING.
+// Sets target to LIVE and uses existing orchestration paths — never calls postEvent(BOOTING).
+void Supervisor::setup() {
+    if (observedState_ != SystemState::BOOTING) return;
+    targetMode_ = SystemState::LIVE;
+    setObservedStateImmediate(SystemState::CONNECTING,
+                              SystemEvent::STATE_REQUESTED,
+                              SystemReason::COMPONENT_SETUP);
+    uint32_t tid = nextTransitionId_;
+    ++nextTransitionId_;
+    if (nextTransitionId_ == 0) nextTransitionId_ = 1;
+    (void)beginOrchestration(SystemState::READY,
+                             SystemEvent::STATE_REQUESTED,
+                             SystemReason::COMPONENT_SETUP,
+                             tid);
+}
+
 SystemState Supervisor::state() const {
     return observedState_;
 }

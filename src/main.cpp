@@ -51,19 +51,9 @@ void setup() {
 
     for (ISystemComponent* component : s_components) {
         component->registerWithController(s_system);
-        if (!component->setup()) {
-            ERROR_LOG(kLogSource, "Component setup failed: %s", component->name());
-            s_system.postEvent(SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::COMPONENT_SETUP);
-        }
-        s_system.processMailbox();
     }
 
-    // Boot auto-play: queue PLAY request unconditionally.
-    // Controller will defer it until CONNECTING/READY is reached.
-    PROD_LOG(kLogSource, "Boot auto-play: queue PLAY request");
-    (void)s_system.postEvent(SystemEvent::STATE_REQUESTED,
-                             SystemReason::USER_REQUEST,
-                             SystemState::LIVE);
+    (void)s_system.setup();
 }
 
 void loop() {
