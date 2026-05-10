@@ -221,6 +221,9 @@ bool Supervisor::reportCompletion(ComponentID id,
     };
 
     if (orchestration_.active && orchestration_.transitionId == transitionId && !hasPendingTransitions()) {
+        // Save user intent before setObservedStateImmediate may reset targetMode_ to SLEEP
+        const SystemState savedTarget = targetMode_;
+
         if (orchestration_.requiredFailure) {
             setObservedStateImmediate(SystemState::ERROR,
                          SystemEvent::COMPONENT_SETUP_FAILED,
@@ -236,9 +239,9 @@ bool Supervisor::reportCompletion(ComponentID id,
         (void)finishTransition(transitionId);
         orchestration_.active = false;
 
-        if (observedState_ == SystemState::READY && targetMode_ == SystemState::LIVE) {
-            mailbox_.targetState = SystemState::LIVE;
-            handleEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST);
+        // Continue toward saved intent only if we have not yet arrived
+        if (observedState_ != savedTarget) {
+            stepTowardTarget(orchestration_.trigger, orchestration_.reason);
         }
     }
 
@@ -300,13 +303,16 @@ bool Supervisor::beginOrchestration(SystemState target,
     }
 
     if (registeredCount == 0) {
+        // Save user intent before setObservedStateImmediate may reset targetMode_ to SLEEP
+        const SystemState savedTarget = targetMode_;
+
         setObservedStateImmediate(target, trigger, reason, transitionId);
         (void)finishTransition(transitionId);
         orchestration_.active = false;
 
-        if (observedState_ == SystemState::READY && targetMode_ == SystemState::LIVE) {
-            mailbox_.targetState = SystemState::LIVE;
-            handleEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST);
+        // Continue toward saved intent only if we have not yet arrived
+        if (observedState_ != savedTarget) {
+            stepTowardTarget(orchestration_.trigger, orchestration_.reason);
         }
 
         return true;
@@ -477,64 +483,34 @@ void Supervisor::handleEvent(SystemEvent event, SystemReason reason) {
     if (observedState_ == SystemState::FATAL) {
         return;
     }
-    auto requestStateTransition = [this, event, reason](SystemState target) {
-        uint32_t transitionId = nextTransitionId_;
-        ++nextTransitionId_;
-        if (nextTransitionId_ == 0) {
-            nextTransitionId_ = 1;
-        }
-
-        const bool started = beginOrchestration(target, event, reason, transitionId);
-        DEBUG_LOG(kLogSource, "Transition request id=%lu %s -> %s started=%s",
-                  static_cast<unsigned long>(transitionId),
-                  toString(observedState_),
-                  toString(target),
-                  started ? "true" : "false");
-    };
 
     if (event == SystemEvent::STATE_REQUESTED) {
         const SystemState target = mailbox_.targetState;
-        switch (target) {
-            case SystemState::SLEEP:
-                targetMode_ = SystemState::SLEEP;
-                requestStateTransition(SystemState::SLEEP);
-                return;
-            case SystemState::READY:
-                targetMode_ = SystemState::SLEEP;
-                if (observedState_ == SystemState::CONNECTING) {
-                    return;
-                }
-                requestStateTransition(SystemState::READY);
-                return;
-            case SystemState::LIVE:
-                if (observedState_ == SystemState::CONNECTING) {
-                    targetMode_ = SystemState::LIVE;
-                    return;
-                }
-                if (observedState_ == SystemState::SLEEP) {
-                    targetMode_ = SystemState::LIVE;
-                    setObservedStateImmediate(SystemState::CONNECTING, event, reason);
-                    requestStateTransition(SystemState::READY);
-                    return;
-                }
-                if (observedState_ == SystemState::LIVE) {
-                    targetMode_ = SystemState::LIVE;
-                    requestStateTransition(SystemState::READY);
-                    return;
-                }
-                requestStateTransition(SystemState::LIVE);
-                return;
-            case SystemState::ERROR:
-                setObservedStateImmediate(observedState_ == SystemState::ERROR ? SystemState::FATAL : SystemState::ERROR, event, reason);
-                return;
-            case SystemState::FATAL:
-                targetMode_ = SystemState::FATAL;
-                setObservedStateImmediate(SystemState::FATAL, event, reason);
-                return;
-            case SystemState::BOOTING:
-            case SystemState::CONNECTING:
-                return;
+
+        // ERROR: immediate non-orchestrated state update
+        if (target == SystemState::ERROR) {
+            setObservedStateImmediate(observedState_ == SystemState::ERROR
+                                          ? SystemState::FATAL : SystemState::ERROR,
+                                      event, reason);
+            return;
         }
+
+        // FATAL: immediate non-orchestrated state update, halt all processing
+        if (target == SystemState::FATAL) {
+            targetMode_ = SystemState::FATAL;
+            setObservedStateImmediate(SystemState::FATAL, event, reason);
+            return;
+        }
+
+        // Orchestration in flight: store user intent, do not overwrite Mailbox targetState
+        if (orchestration_.active) {
+            targetMode_ = target;
+            return;
+        }
+
+        // Set intent and step toward it (fixes READY bug: targetMode_ is now correct)
+        targetMode_ = target;
+        stepTowardTarget(event, reason);
         return;
     }
 
