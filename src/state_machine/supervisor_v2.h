@@ -11,8 +11,6 @@
 #include <cstring>
 using EventGroupHandle_t = void*;
 struct StaticEventGroup_t { uint8_t data[32]; };
-using portMUX_TYPE = uint32_t;
-#define portMUX_INITIALIZER_UNLOCKED 0
 using TickType_t = uint32_t;
 using EventBits_t = uint32_t;
 #endif
@@ -79,6 +77,7 @@ struct ActiveTransition {
 struct Mailbox {
 	bool pending = false;
 	SystemState requestedTarget;
+	portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
 };
 
 /** @brief Error event: single-slot flag with payload.
@@ -88,6 +87,7 @@ struct ErrorEvent {
 	bool pending = false;
 	DebugReason reason = nullptr;
 	ComponentID source = ComponentID::Count;
+	portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
 };
 
 /** @brief Recovery attempt tracking.
@@ -104,22 +104,6 @@ struct RetryPolicy {
 	bool isExhausted() const {
 		return recoveryCounter >= maxRecoveries;
 	}
-};
-
-/** @brief Single-slot mailbox for component state targets.
- *  Last-write-wins. Owned by each component; the supervisor writes cross-core.
- */
-struct ComponentMailbox {
-	bool pending = false;
-	SystemState targetState;
-};
-
-/** @brief A component-owned mailbox slot with its spinlock.
- *  The supervisor holds a pointer to this and writes under spinlock.
- */
-struct ComponentMailboxSlot {
-	ComponentMailbox mailbox;
-	portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
 };
 
 enum class ComponentStatus : uint8_t {
@@ -197,9 +181,9 @@ public:
 	/** @brief Register a component with the supervisor.
 	 *  Called by each component at boot to signal its presence.
 	 *  @param id The component to register.
-	 *  @param slot Pointer to the component-owned mailbox+spinlock.
+	 *  @param mailbox Pointer to the component-owned ComponentMailbox.
 	 */
-	void registerComponent(ComponentID id, ComponentMailboxSlot* slot);
+	void registerComponent(ComponentID id, ComponentMailbox* mailbox);
 
 private:
 	/** @brief Consume and clear a pending state request.
@@ -308,7 +292,7 @@ private:
 	StaticEventGroup_t eventGroupBuffer_{};
 	EventGroupHandle_t eventGroup_{};
 
-	ComponentMailboxSlot* componentMailboxSlots_[componentCount]{};
+	ComponentMailbox* componentMailboxes_[componentCount]{};
 
 	TickType_t orchestrationDeadlineMs_{};
 	bool hasActiveOrchestration_{};

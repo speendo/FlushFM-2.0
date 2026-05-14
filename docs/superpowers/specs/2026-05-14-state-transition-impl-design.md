@@ -16,8 +16,8 @@ Core 0 (Supervisor task)                     Core 0/1 (Components)
 ┌──────────────────────────────┐            ┌────────────────────┐
 │  Supervisor::run()           │            │  WiFiComponent     │
 │  ┌────────────────────────┐  │            │  AudioRuntimeComp  │
-│  │  Drain Mailbox         │◄─┼─spinlock───┤  CLI               │
-│  │  Drain ErrorEvent      │◄─┼─spinlock───┤  BoardInfo         │
+│  │  Consume Mailbox     │◄─┼─spinlock───┤  CLI               │
+│  │  Consume ErrorEvent  │◄─┼─spinlock───┤  BoardInfo         │
 │  │  Step toward target    │  │            │  LightSensor (fut) │
 │  │  Check state timeout   │  │            └────────┬───────────┘
 │  │  Write component mbx   ├──┼──last-write-wins────┤
@@ -53,13 +53,15 @@ Core 0 (Supervisor task)                     Core 0/1 (Components)
 struct ComponentMailbox {
     bool pending = false;
     SystemState targetState;       // last-write-wins
+    portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
 };
 ```
 
+- Defined in `component_types.h` (shared by supervisor and components)
 - Each component owns its own `ComponentMailbox` as a member
 - During `registerComponent()`, the component passes a pointer to its mailbox
 - The supervisor stores: `ComponentMailbox* componentMailboxes_[componentCount]` (initialized to `nullptr`)
-- `postNextComponentState(id)` writes to `componentMailboxes_[id]` under spinlock (reads target from `nextState_.transitionTarget`)
+- `postNextComponentState(id)` writes to `componentMailboxes_[id]` under the embedded spinlock (reads target from `nextState_.transitionTarget`)
 - The component reads its own mailbox locally (no cross-core read)
 - `isRequired` is a compile-time constant on each component class (`static constexpr bool isRequired = ...`). The supervisor reads it from the component interface; it is NOT passed to `registerComponent()`.
 
@@ -177,7 +179,7 @@ Each component gets a `ComponentMailbox` (one array entry per `ComponentID`).
 This means the old `invokeComponentTransition()` with its virtual method calls is replaced by a shared-memory handoff.
 
 ### Boot presence discovery
-At boot time, each component that is physically present calls `registerComponent(id, &mailboxSlot)` to check in with the supervisor. The supervisor marks the slot as present (`componentMailboxSlots_[id] != nullptr`).
+At boot time, each component that is physically present calls `registerComponent(id, &mailbox)` to check in with the supervisor. The supervisor marks the component as present (`componentMailboxes_[id] != nullptr`).
 
 After a discovery window (or when the first boot orchestration begins), the supervisor checks:
 - Missing required component → `postErrorEvent()` → ERROR immediately
@@ -281,52 +283,40 @@ This is safe to call from any core (FreeRTOS event group API is ISR-safe).
 
 ## 7. Spinlock Guards
 
-Two shared data structures need protection against cross-core access:
+All spinlocks are embedded in the structs they protect — no standalone spinlock members.
 
 ### Mailbox spinlock
-```cpp
-portMUX_TYPE mailboxSpinlock_ = portMUX_INITIALIZER_UNLOCKED;
-```
-Used by:
+Embedded in `Mailbox`: `portMUX_TYPE spinlock` member. Used by:
 - `postStateRequest()` — write to `stateRequestMailbox_`
 - `consumeStateRequest()` in `run()` — read and clear `stateRequestMailbox_`
 
 ### ErrorEvent spinlock
-```cpp
-portMUX_TYPE errorSpinlock_ = portMUX_INITIALIZER_UNLOCKED;
-```
-Used by:
+Embedded in `ErrorEvent`: `portMUX_TYPE spinlock` member. Used by:
 - `postErrorEvent()` — write to `errorEvent_`
 - `consumeErrorEvent()` in `run()` — read and clear `errorEvent_`
 
-### Per-component mailbox spinlock
+### Component mailbox spinlock
+Embedded in `ComponentMailbox`: `portMUX_TYPE spinlock` member. The supervisor holds a pointer array:
 ```cpp
-// Owned by each component, supervisor holds a pointer
-struct ComponentMailboxSlot {
-    ComponentMailbox mailbox;
-    portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
-};
-
-// In supervisor:
-ComponentMailboxSlot* componentMailboxSlots_[componentCount] = {};
+ComponentMailbox* componentMailboxes_[componentCount] = {};
 ```
 
-Usage pattern (supervisor writes cross-core to component mailbox):
+Usage pattern (supervisor writes cross-core, lock is inside the struct):
 ```cpp
 void SupervisorV2::postStateRequest(SystemState target) {
-    portENTER_CRITICAL(&mailboxSpinlock_);
+    portENTER_CRITICAL(&stateRequestMailbox_.spinlock);
     stateRequestMailbox_.pending = true;
     stateRequestMailbox_.requestedTarget = target;
-    portEXIT_CRITICAL(&mailboxSpinlock_);
+    portEXIT_CRITICAL(&stateRequestMailbox_.spinlock);
 }
 
 void SupervisorV2::postNextComponentState(ComponentID id) {
-    auto* slot = componentMailboxSlots_[static_cast<int>(id)];
-    if (slot == nullptr) return;
-    portENTER_CRITICAL(&slot->spinlock);
-    slot->mailbox.pending = true;
-    slot->mailbox.targetState = nextState_.transitionTarget;
-    portEXIT_CRITICAL(&slot->spinlock);
+    auto* mbx = componentMailboxes_[static_cast<int>(id)];
+    if (mbx == nullptr) return;
+    portENTER_CRITICAL(&mbx->spinlock);
+    mbx->pending = true;
+    mbx->targetState = nextState_.transitionTarget;
+    portEXIT_CRITICAL(&mbx->spinlock);
 }
 ```
 
@@ -339,7 +329,7 @@ void SupervisorV2::postNextComponentState(ComponentID id) {
 |--------|---------|
 | `void run()` | Main tick function, called by FreeRTOS task |
 | `void completeTransition(ComponentID id, TransitionStatus status)` | Called by components to signal completion |
-| `void registerComponent(ComponentID id, ComponentMailboxSlot* slot)` | Component presence check-in, no isRequired param |
+| `void registerComponent(ComponentID id, ComponentMailbox* mailbox)` | Component presence check-in, passes mailbox pointer |
 
 ### Private (new)
 | Method | Purpose |
@@ -397,7 +387,7 @@ All testable on `pio test -e native` without FreeRTOS:
 
 ## 11. Implementation Order
 
-1. Add `ComponentMailbox`, `ComponentMailboxSlot` structs, pointer arrays, event group handle, and FATAL members to supervisor_v2.h
+1. Add `ComponentMailbox` to `component_types.h` with embedded spinlock, add spinlocks to `Mailbox`/`ErrorEvent`, update pointer array and registerComponent signature in `supervisor_v2.h`
 2. Implement `registerComponent()`, `completeTransition()`, component mailbox methods, and boot presence check
 3. Add spinlock guards to `consumeStateRequest()` and `consumeErrorEvent()`
 4. Update `getNextState()` to explicitly return FATAL when `current == FATAL`

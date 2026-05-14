@@ -3,6 +3,26 @@
 #include <cstdint>
 #include <cstddef>
 
+#if defined(ARDUINO)
+#include <freertos/FreeRTOS.h>
+#else
+using portMUX_TYPE = uint32_t;
+#define portMUX_INITIALIZER_UNLOCKED 0
+#endif
+
+// Forward declaration — full definition is in supervisor_v2.h
+enum class SystemState : uint8_t;
+
+/** @brief Single-slot mailbox for component state targets.
+ *  Last-write-wins. Owned by each component; the supervisor writes cross-core
+ *  under the embedded spinlock.
+ */
+struct ComponentMailbox {
+	bool pending = false;
+	SystemState targetState;
+	portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
+};
+
 #define COMPONENT_TYPES_TRANSITION_STATUS_X(V) \
     V(Completed) \
     V(Failed)
