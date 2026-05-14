@@ -21,7 +21,7 @@
 
 - [x] Add `void run()` — main tick function
 - [x] Add `void completeTransition(ComponentID id, TransitionStatus status)` — component completion signal
-- [x] Add `void registerComponent(ComponentID id, ComponentMailbox* mailbox)` — component presence check-in
+- [x] Add `void registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired)` — component presence check-in
 
 ### Subtask 1c: Add new private method declarations
 

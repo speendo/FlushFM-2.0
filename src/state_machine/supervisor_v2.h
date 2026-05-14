@@ -13,6 +13,10 @@ using EventGroupHandle_t = void*;
 struct StaticEventGroup_t { uint8_t data[32]; };
 using TickType_t = uint32_t;
 using EventBits_t = uint32_t;
+inline EventGroupHandle_t xEventGroupCreateStatic(StaticEventGroup_t*) { return nullptr; }
+inline EventBits_t xEventGroupClearBits(EventGroupHandle_t, EventBits_t) { return 0; }
+inline EventBits_t xEventGroupSetBits(EventGroupHandle_t, EventBits_t) { return 0; }
+inline EventBits_t xEventGroupGetBits(EventGroupHandle_t) { return 0; }
 #endif
 
 #include "component_types.h"
@@ -182,8 +186,9 @@ public:
 	 *  Called by each component at boot to signal its presence.
 	 *  @param id The component to register.
 	 *  @param mailbox Pointer to the component-owned ComponentMailbox.
+	 *  @param isRequired Whether this component is required for quorum.
 	 */
-	void registerComponent(ComponentID id, ComponentMailbox* mailbox);
+	void registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired);
 
 private:
 	/** @brief Consume and clear a pending state request.
@@ -279,6 +284,12 @@ private:
 	 */
 	void handleFatal();
 
+	/** @brief Check that all required components have registered.
+	 *  Posts an error event for each missing required component.
+	 *  Called during the first orchestration to validate boot presence.
+	 */
+	void checkComponentPresence();
+
 	SystemState observedState_;
 	SystemState targetState_;
 	ActiveTransition nextState_;
@@ -293,6 +304,7 @@ private:
 	EventGroupHandle_t eventGroup_{};
 
 	ComponentMailbox* componentMailboxes_[componentCount]{};
+	bool isRequired_[componentCount]{};
 
 	TickType_t orchestrationDeadlineMs_{};
 	bool hasActiveOrchestration_{};

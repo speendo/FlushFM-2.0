@@ -8,6 +8,8 @@
 #else
 using portMUX_TYPE = uint32_t;
 #define portMUX_INITIALIZER_UNLOCKED 0
+#define portENTER_CRITICAL(mux) ((void)(mux))
+#define portEXIT_CRITICAL(mux) ((void)(mux))
 #endif
 
 // Forward declaration — full definition is in supervisor_v2.h
@@ -21,6 +23,24 @@ struct ComponentMailbox {
 	bool pending = false;
 	SystemState targetState;
 	portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
+
+	/** @brief Read and clear a pending state target under spinlock.
+	 *  Safe to call from any core. Blocks briefly if the supervisor is
+	 *  concurrently writing to this mailbox.
+	 *  @param outTarget Receives the target state if one was pending.
+	 *  @return true if a target was consumed, false otherwise.
+	 */
+	bool consumeNextState(SystemState& outTarget) {
+		portENTER_CRITICAL(&spinlock);
+		if (!pending) {
+			portEXIT_CRITICAL(&spinlock);
+			return false;
+		}
+		outTarget = targetState;
+		pending = false;
+		portEXIT_CRITICAL(&spinlock);
+		return true;
+	}
 };
 
 #define COMPONENT_TYPES_TRANSITION_STATUS_X(V) \

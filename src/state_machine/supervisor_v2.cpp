@@ -42,30 +42,37 @@ bool isErrorState(SystemState state) {
  *  @return The next system state.
  */
 SystemState getNextState(SystemState current, SystemState target) {
+    // FATAL is absorbent — no state transitions out of FATAL.
+    if (current == SystemState::FATAL) return SystemState::FATAL;
+
+    // ERROR and FATAL as target are immediate — no stepping needed.
     if (isErrorState(target)) {
-        return target; // Immediate transition for error states
+        return target;
     }
 
-    // Recovery from ERROR/FATAL jumps directly to BOOTING, skipping SLEEP
+    // Recovery from ERROR jumps directly to BOOTING, skipping SLEEP.
+    // Only applies when the target is not SLEEP itself.
     if (isErrorState(current) && target != SystemState::SLEEP) {
         return SystemState::BOOTING;
     }
     
-    // For other states, step through the route based on rank comparison
+    // For all other combinations, step through the route based on rank comparison.
+    // Lower rank = less active (FATAL=0, ERROR=10, SLEEP=20, BOOTING=30,
+    // CONNECTING=40, READY=50, LIVE=60). Step up or down one rank at a time.
     int currentIndex = getIndex(current);
     int targetIndex = getIndex(target);
 
     if (currentIndex < 0 || targetIndex < 0) {
         ERROR_LOG(kLogSource, "Invalid state in getNextState: current=%s target=%s; falling back to FATAL",
                   stateToString(current), stateToString(target));
-        return SystemState::FATAL; // Invalid states, enter FATAL as a safe fallback
+        return SystemState::FATAL;
     }
 
     if (currentIndex < targetIndex) {
-        return stateRoute[currentIndex + 1]; // Step up
+        return stateRoute[currentIndex + 1]; // Step up toward target
     }
     if (currentIndex > targetIndex) {
-        return stateRoute[currentIndex - 1]; // Step down
+        return stateRoute[currentIndex - 1]; // Step down toward target
     }
     return current; // Already at target
 }
@@ -73,7 +80,18 @@ SystemState getNextState(SystemState current, SystemState target) {
 SupervisorV2::SupervisorV2() = default;
 
 void SupervisorV2::setup() {
+    eventGroup_ = xEventGroupCreateStatic(&eventGroupBuffer_);
 	loadTransitionTimeoutConfig();
+}
+
+void SupervisorV2::checkComponentPresence() {
+    // Scan all registered components. Post an error for any required
+    // component that never called registerComponent (null mailbox pointer).
+    for (size_t i = 0; i < componentCount; i++) {
+        if (componentMailboxes_[i] == nullptr && isRequired_[i]) {
+            postErrorEvent("component absent", static_cast<ComponentID>(i));
+        }
+    }
 }
 
 int SupervisorV2::getMaxRecoveries() const {
@@ -108,46 +126,111 @@ SystemState SupervisorV2::getTargetState() const {
     return targetState_;
 }
 
+void SupervisorV2::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
+    // Store the mailbox pointer for cross-core writes. Null means absent.
+    componentMailboxes_[static_cast<int>(id)] = mailbox;
+    // Track required/optional for boot presence checks and failure handling.
+    isRequired_[static_cast<int>(id)] = isRequired;
+}
+
+void SupervisorV2::postNextComponentState(ComponentID id) {
+    // Write the current stepping state to a component's mailbox under spinlock.
+    // The component will read this in its own loop and react.
+    ComponentMailbox* mailbox = componentMailboxes_[static_cast<int>(id)];
+    if (mailbox == nullptr) return;
+    portENTER_CRITICAL(&mailbox->spinlock);
+    mailbox->pending = true;
+    mailbox->targetState = nextState_.transitionTarget;
+    portEXIT_CRITICAL(&mailbox->spinlock);
+}
+
+void SupervisorV2::completeTransition(ComponentID id, TransitionStatus status) {
+    if (status == TransitionStatus::Completed) {
+        // Set this component's bit in the event group. The orchestration
+        // completes when all required, non-degraded components have set
+        // their bits — checked on each run() tick.
+        xEventGroupSetBits(eventGroup_, 1 << static_cast<int>(id));
+        return;
+    }
+
+    // Component reported Failed. How we handle it depends on whether this
+    // component is required or optional:
+    //   - Required: post an error event which the supervisor consumes on the
+    //     next run() tick. This sets targetState_ to ERROR and aborts the
+    //     current orchestration. The recovery logic then decides what to do.
+    //   - Optional: mark as DEGRADED and exclude from the orchestration
+    //     quorum. The remaining components are expected to finish normally.
+    if (isRequired_[static_cast<int>(id)]) {
+        postErrorEvent("component failed", id);
+    } else {
+        componentStatuses_[static_cast<int>(id)] = ComponentStatus::DEGRADED;
+    }
+}
+
 void SupervisorV2::postStateRequest(SystemState target) {
-	stateRequestMailbox_.pending = true;
-	stateRequestMailbox_.requestedTarget = target;
+    portENTER_CRITICAL(&stateRequestMailbox_.spinlock);
+    stateRequestMailbox_.pending = true;
+    stateRequestMailbox_.requestedTarget = target;
+    portEXIT_CRITICAL(&stateRequestMailbox_.spinlock);
 }
 
 void SupervisorV2::postErrorEvent(DebugReason reason, ComponentID source) {
-	if (!errorEvent_.pending) {
-		errorEvent_.pending = true;
-		errorEvent_.reason = reason;
-		errorEvent_.source = source;
-	}
+    portENTER_CRITICAL(&errorEvent_.spinlock);
+    if (!errorEvent_.pending) {
+        errorEvent_.pending = true;
+        errorEvent_.reason = reason;
+        errorEvent_.source = source;
+    }
+    portEXIT_CRITICAL(&errorEvent_.spinlock);
 }
 
 bool SupervisorV2::consumeStateRequest() {
-    if (!stateRequestMailbox_.pending) {
-        return false;
+    SystemState target;
+    bool hadPending = false;
+
+    portENTER_CRITICAL(&stateRequestMailbox_.spinlock);
+    if (stateRequestMailbox_.pending) {
+        target = stateRequestMailbox_.requestedTarget;
+        stateRequestMailbox_.pending = false;
+        hadPending = true;
     }
-    setTargetState(stateRequestMailbox_.requestedTarget);
-    stateRequestMailbox_.pending = false;
-    return true;
+    portEXIT_CRITICAL(&stateRequestMailbox_.spinlock);
+
+    if (hadPending) {
+        setTargetState(target);
+    }
+    return hadPending;
 }
 
 void SupervisorV2::consumeErrorEvent() {
-	if (!errorEvent_.pending) {
-		return;
-	}
+    DebugReason reasonCopy = nullptr;
+    ComponentID sourceCopy = ComponentID::Count;
+    bool gotError = false;
 
-	PROD_LOG(kLogSource, "[%s] %s - recovery attempt #%d/%d",
-	         componentName(errorEvent_.source), errorEvent_.reason,
-	         retryPolicy_.recoveryCounter + 1, retryPolicy_.maxRecoveries);
+    portENTER_CRITICAL(&errorEvent_.spinlock);
+    if (errorEvent_.pending) {
+        reasonCopy = errorEvent_.reason;
+        sourceCopy = errorEvent_.source;
+        errorEvent_.pending = false;
+        errorEvent_.reason = nullptr;
+        errorEvent_.source = ComponentID::Count;
+        gotError = true;
+    }
+    portEXIT_CRITICAL(&errorEvent_.spinlock);
 
-	retryPolicy_.recoveryCounter++;
+    if (!gotError) return;
 
-	if (retryPolicy_.isExhausted()) {
-		setTargetState(SystemState::FATAL);
-	}
+    PROD_LOG(kLogSource, "[%s] %s - recovery attempt #%d/%d",
+             componentName(sourceCopy), reasonCopy,
+             retryPolicy_.recoveryCounter + 1, retryPolicy_.maxRecoveries);
 
-	errorEvent_.pending = false;
-	errorEvent_.reason = nullptr;
-	errorEvent_.source = ComponentID::Count;
+    retryPolicy_.recoveryCounter++;
+
+    if (retryPolicy_.isExhausted()) {
+        setTargetState(SystemState::FATAL);
+    } else {
+        setTargetState(SystemState::ERROR);
+    }
 }
 
 void SupervisorV2::setTargetState(SystemState target) {

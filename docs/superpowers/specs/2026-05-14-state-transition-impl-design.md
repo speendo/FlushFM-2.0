@@ -34,7 +34,7 @@ Core 0 (Supervisor task)                     Core 0/1 (Components)
 - Component completion is signaled via a FreeRTOS event group (safe from any core)
 - Both Supervisor and Components own a `SystemState` mailbox (last-write-wins, spinlock)
 - All non-degraded components participate in every orchestration
-- `isRequired` is a compile-time constant on each component class. The supervisor reads it from the component interface. Components self-report their required status at registration time via presence check-in, not a parameter.
+- `isRequired` is a compile-time constant on each component class. The component passes it during `registerComponent()`; the supervisor stores it in an internal array indexed by `ComponentID`.
 
 ---
 
@@ -172,14 +172,14 @@ Each component gets a `ComponentMailbox` (one array entry per `ComponentID`).
 
 - **Supervisor writes** to the component's mailbox when starting an orchestration: `postNextComponentState(ComponentID id)`
   - Acquires per-component spinlock, sets `pending = true`, writes `targetState = nextState_.transitionTarget`, releases
-- **Component reads** on its own task loop: `consumeNextState()`
-  - Returns `true` and the target state if pending, clears mailbox
+- **Component reads** on its own task loop: `mailbox_.consumeNextState(target)`
+  - Acquires the same spinlock, reads `targetState`, clears `pending`, releases, returns true. False if nothing pending.
 - **Component reacts** by calling the appropriate method (`setOFF`, `setIDLE`, `setSTREAMING`, `setERROR`)
 
 This means the old `invokeComponentTransition()` with its virtual method calls is replaced by a shared-memory handoff.
 
 ### Boot presence discovery
-At boot time, each component that is physically present calls `registerComponent(id, &mailbox)` to check in with the supervisor. The supervisor marks the component as present (`componentMailboxes_[id] != nullptr`).
+At boot time, each component that is physically present calls `registerComponent(id, &mailbox, isRequired)` to check in with the supervisor. The supervisor marks the component as present (`componentMailboxes_[id] != nullptr`) and stores its required/optional flag.
 
 After a discovery window (or when the first boot orchestration begins), the supervisor checks:
 - Missing required component → `postErrorEvent()` → ERROR immediately
@@ -311,12 +311,12 @@ void SupervisorV2::postStateRequest(SystemState target) {
 }
 
 void SupervisorV2::postNextComponentState(ComponentID id) {
-    auto* mbx = componentMailboxes_[static_cast<int>(id)];
-    if (mbx == nullptr) return;
-    portENTER_CRITICAL(&mbx->spinlock);
-    mbx->pending = true;
-    mbx->targetState = nextState_.transitionTarget;
-    portEXIT_CRITICAL(&mbx->spinlock);
+    ComponentMailbox* mailbox = componentMailboxes_[static_cast<int>(id)];
+    if (mailbox == nullptr) return;
+    portENTER_CRITICAL(&mailbox->spinlock);
+    mailbox->pending = true;
+    mailbox->targetState = nextState_.transitionTarget;
+    portEXIT_CRITICAL(&mailbox->spinlock);
 }
 ```
 
@@ -329,7 +329,7 @@ void SupervisorV2::postNextComponentState(ComponentID id) {
 |--------|---------|
 | `void run()` | Main tick function, called by FreeRTOS task |
 | `void completeTransition(ComponentID id, TransitionStatus status)` | Called by components to signal completion |
-| `void registerComponent(ComponentID id, ComponentMailbox* mailbox)` | Component presence check-in, passes mailbox pointer |
+| `void registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired)` | Component presence check-in, passes mailbox pointer and required flag |
 
 ### Private (new)
 | Method | Purpose |
