@@ -34,6 +34,7 @@ Core 0 (Supervisor task)                     Core 0/1 (Components)
 - Component completion is signaled via a FreeRTOS event group (safe from any core)
 - Both Supervisor and Components own a `SystemState` mailbox (last-write-wins, spinlock)
 - All non-degraded components participate in every orchestration
+- `isRequired` is a compile-time constant on each component class. The supervisor reads it from the component interface. Components self-report their required status at registration time via presence check-in, not a parameter.
 
 ---
 
@@ -58,13 +59,14 @@ struct ComponentMailbox {
 - Each component owns its own `ComponentMailbox` as a member
 - During `registerComponent()`, the component passes a pointer to its mailbox
 - The supervisor stores: `ComponentMailbox* componentMailboxes_[componentCount]` (initialized to `nullptr`)
-- `postNextComponentState(id, target)` writes to `componentMailboxes_[id]` under spinlock
+- `postNextComponentState(id)` writes to `componentMailboxes_[id]` under spinlock (reads target from `nextState_.transitionTarget`)
 - The component reads its own mailbox locally (no cross-core read)
+- `isRequired` is a compile-time constant on each component class (`static constexpr bool isRequired = ...`). The supervisor reads it from the component interface; it is NOT passed to `registerComponent()`.
 
 - The event group handle is stored as a member (`EventGroupHandle_t eventGroup_`)
 - Target bits: `1 << static_cast<int>(componentId)` for each registered component
-- FATAL housekeeping: `TickType_t fatalEnteredAtMs_` records when FATAL was first entered
-- `uint32_t fatalDwellMs_ = 60000` — configurable time spent in FATAL before deep sleep (default 60s)
+- FATAL housekeeping: `TickType_t fatalDeadlineMs_` — absolute deadline for deep sleep. Computed once as `now + fatalDwellMs` when FATAL is entered; checked each tick in `handleFatal()`. (fatalDwellMs is a compile-time constant, not stored as a member.)
+- `SystemState lastTargetBeforeError_` — saved target for ERROR recovery placeholder. Automatically snapshotted by `setTargetState()` when transitioning to ERROR. TODO: remove once `determineRecoveryTarget()` is replaced with real recovery logic.
 
 ---
 
@@ -76,8 +78,8 @@ Called once per iteration of the FreeRTOS supervisor task. Never blocks (no queu
 void SupervisorV2::run() {
     // 1. Event processing — skipped in FATAL (system is dead, no new input)
     if (observedState_ != FATAL) {
-        drainErrorEvent();         // spinlock, calls consumeErrorEvent()
-        drainMailbox();            // spinlock, if pending -> setTargetState()
+        consumeErrorEvent();       // spinlock inside, logs, increments counter, FATAL if exhausted
+        consumeStateRequest();     // spinlock inside, if pending -> setTargetState()
     }
 
     // 2. State stepping — skipped in FATAL (FATAL is absorbent)
@@ -114,17 +116,18 @@ void SupervisorV2::run() {
 - State stepping is skipped: FATAL is absorbent, no automatic transitions out.
 - `getNextState(FATAL, X)` returns FATAL for any target — defensive catch for callers.
 
-#### 3.2 Drain ErrorEvent
-- Only called when `observedState_ != FATAL`
-- Acquire error event spinlock
-- If `errorEvent_.pending`, call `consumeErrorEvent()` (logs, increments counter, sets FATAL if exhausted)
-- Release spinlock
+#### 3.2 Consume ErrorEvent (inside spinlock)
+- Called from `run()` on every non-FATAL tick
+- Acquires error event spinlock, then calls into `consumeErrorEvent()` logic:
+  - If `errorEvent_.pending`, logs error, increments recovery counter, sets FATAL if exhausted
+  - Clears pending and payload
+- Releases spinlock
 
-#### 3.3 Drain Mailbox
-- Processed on every non-FATAL tick. Last-write-wins: new posts during ERROR overwrite the slot but are drained immediately.
-- Acquire mailbox spinlock
-- If `stateRequestMailbox_.pending`, read target, clear pending, release, call `setTargetState()`
-- Release spinlock
+#### 3.3 Consume Mailbox (inside spinlock)
+- Called from `run()` on every non-FATAL tick
+- Acquires mailbox spinlock
+- If `stateRequestMailbox_.pending`, reads target, clears pending, releases spinlock, calls `setTargetState()`
+- If no request pending, releases spinlock
 
 #### 3.4 Step Toward Target
 - Call `getNextState(observedState_, targetState_)` to get the intermediate stepping state
@@ -143,16 +146,16 @@ void SupervisorV2::run() {
 
 #### 3.6 Error Recovery (after ERROR orchestration completes)
 - When `observedState_ == ERROR` and no orchestration is in flight, call `determineRecoveryTarget()`
-- Default: returns the last externally-requested target before ERROR (stored in `lastTargetBeforeError_`)
+- Placeholder: returns the state saved in `lastTargetBeforeError_` (TODO: remove once real recovery logic is implemented)
+- `lastTargetBeforeError_` is automatically snapshotted by `setTargetState()` when transitioning to ERROR: before overwriting `targetState_`, if the old target was not ERROR and the new target is ERROR, the old target is saved
 - Future: poll light sensor, WiFi state, and other input components
 - Result is posted via `postStateRequest()` — goes through the mailbox, consumed on the next tick
 
 #### 3.7 FATAL Housekeeping
 - `handleFatal()` runs on each tick while `observedState_ == FATAL`
-- On first call, records `fatalEnteredAtMs_ = xTaskGetTickCount()`
-- On each subsequent tick: if `(now - fatalEnteredAtMs_) >= fatalDwellMs_`, commence deep sleep sequence
+- On first call: `fatalDeadlineMs_ = xTaskGetTickCount() + 60000` (dwell is a compile-time constant)
+- On each subsequent tick: if `xTaskGetTickCount() >= fatalDeadlineMs_`, commence deep sleep sequence
 - Deep sleep sequence: log final message, call any registered shutdown hooks, then `esp_deep_sleep_start()`
-- The dwell time (default 60s) allows components to signal the user (e.g., LED blinks red) before power-down
 
 #### 3.8 State Timeout
 - Each orchestration records `transitionStartMs` and the per-state timeout
@@ -165,13 +168,22 @@ void SupervisorV2::run() {
 
 Each component gets a `ComponentMailbox` (one array entry per `ComponentID`).
 
-- **Supervisor writes** to the component's mailbox when starting an orchestration: `postNextComponentState(ComponentID id, SystemState nextState)`
-  - Acquires per-component spinlock, sets `pending = true`, writes `targetState`, releases
+- **Supervisor writes** to the component's mailbox when starting an orchestration: `postNextComponentState(ComponentID id)`
+  - Acquires per-component spinlock, sets `pending = true`, writes `targetState = nextState_.transitionTarget`, releases
 - **Component reads** on its own task loop: `consumeNextState()`
   - Returns `true` and the target state if pending, clears mailbox
 - **Component reacts** by calling the appropriate method (`setOFF`, `setIDLE`, `setSTREAMING`, `setERROR`)
 
 This means the old `invokeComponentTransition()` with its virtual method calls is replaced by a shared-memory handoff.
+
+### Boot presence discovery
+At boot time, each component that is physically present calls `registerComponent(id, &mailboxSlot)` to check in with the supervisor. The supervisor marks the slot as present (`componentMailboxSlots_[id] != nullptr`).
+
+After a discovery window (or when the first boot orchestration begins), the supervisor checks:
+- Missing required component → `postErrorEvent()` → ERROR immediately
+- Missing optional component → mark DEGRADED, exclude from quorum
+
+The discovery window ends when the first orchestration starts (BOOTING → CONNECTING). Any component that hasn't registered by then is considered absent.
 
 ### Component-side pattern
 ```cpp
@@ -205,9 +217,8 @@ void WiFiComponent::loop() {
 1. Determine `expectedBits_`: OR of `(1 << id)` for each non-degraded, required component
 2. `xEventGroupClearBits(eventGroup_, 0xFFFF)` — clear all bits (FreeRTOS: pass all used bits to avoid race)
 3. Write each component's mailbox with the target state
-4. Look up the per-state timeout from `TransitionTimeoutConfig` and store as `currentTimeoutMs_`
-5. Set `orchestrationStartMs_ = xTaskGetTickCount()`
-6. Set `hasActiveOrchestration_ = true`
+4. Look up the per-state timeout from `TransitionTimeoutConfig`, compute `deadline = now + timeout`, store as `orchestrationDeadlineMs_`
+5. Set `hasActiveOrchestration_ = true`
 
 ### Checking completion (on each run() tick)
 1. `EventBits_t bits = xEventGroupGetBits(eventGroup_)`
@@ -216,7 +227,7 @@ void WiFiComponent::loop() {
 
 ### Timeout handling (during active orchestration)
 - On each `run()` tick, if `hasActiveOrchestration_`:
-  - Check `(xTaskGetTickCount() - orchestrationStartMs_) >= pdMS_TO_TICKS(currentTimeoutMs_)`
+  - Check `orchestrationDeadlineMs_ != 0 && xTaskGetTickCount() >= orchestrationDeadlineMs_`
   - If timed out:
     - For each component that has not set its event group bit: mark as FAILED
     - If FAILED component is required: `postErrorEvent()` → enter ERROR
@@ -256,7 +267,7 @@ This is safe to call from any core (FreeRTOS event group API is ISR-safe).
 
 ### Leaving ERROR (recovery)
 1. When ERROR orchestration completes, `determineRecoveryTarget()` is called
-2. Current placeholder: returns the last externally-requested target before ERROR (stored in a saved `lastTargetBeforeError_` member)
+2. Placeholder: returns `lastTargetBeforeError_` (TODO: remove once real recovery logic is implemented). This member is auto-snapshotted by `setTargetState()` when entering ERROR — before overwriting `targetState_`, if the old target was non-ERROR and the new one is ERROR, the old target is saved.
 3. Future: poll light sensor (and other input components) to decide the highest justifiable state
 4. The result is passed to `postStateRequest()`, which goes through the mailbox and is consumed on the next tick
 5. When the recovery orchestration completes, `setObservedState()` resets the recovery counter automatically via `resetRecoveryIfOutOfError()`
@@ -278,7 +289,7 @@ portMUX_TYPE mailboxSpinlock_ = portMUX_INITIALIZER_UNLOCKED;
 ```
 Used by:
 - `postStateRequest()` — write to `stateRequestMailbox_`
-- `drainMailbox()` in `run()` — read and clear `stateRequestMailbox_`
+- `consumeStateRequest()` in `run()` — read and clear `stateRequestMailbox_`
 
 ### ErrorEvent spinlock
 ```cpp
@@ -286,7 +297,7 @@ portMUX_TYPE errorSpinlock_ = portMUX_INITIALIZER_UNLOCKED;
 ```
 Used by:
 - `postErrorEvent()` — write to `errorEvent_`
-- `drainErrorEvent()` in `run()` — read and clear `errorEvent_`
+- `consumeErrorEvent()` in `run()` — read and clear `errorEvent_`
 
 ### Per-component mailbox spinlock
 ```cpp
@@ -309,12 +320,12 @@ void SupervisorV2::postStateRequest(SystemState target) {
     portEXIT_CRITICAL(&mailboxSpinlock_);
 }
 
-void SupervisorV2::postNextComponentState(ComponentID id, SystemState target) {
+void SupervisorV2::postNextComponentState(ComponentID id) {
     auto* slot = componentMailboxSlots_[static_cast<int>(id)];
     if (slot == nullptr) return;
     portENTER_CRITICAL(&slot->spinlock);
     slot->mailbox.pending = true;
-    slot->mailbox.targetState = target;
+    slot->mailbox.targetState = nextState_.transitionTarget;
     portEXIT_CRITICAL(&slot->spinlock);
 }
 ```
@@ -328,23 +339,21 @@ void SupervisorV2::postNextComponentState(ComponentID id, SystemState target) {
 |--------|---------|
 | `void run()` | Main tick function, called by FreeRTOS task |
 | `void completeTransition(ComponentID id, TransitionStatus status)` | Called by components to signal completion |
-| `void registerComponent(ComponentID id, bool isRequired)` | Register a component with the supervisor |
+| `void registerComponent(ComponentID id, ComponentMailboxSlot* slot)` | Component presence check-in, no isRequired param |
 
 ### Private (new)
 | Method | Purpose |
 |--------|---------|
-| `void drainMailbox()` | Read and clear stateRequestMailbox_ under spinlock |
-| `void drainErrorEvent()` | Read error event under spinlock, delegate to consumeErrorEvent |
 | `void startOrchestration(SystemState target)` | Begin component transitions toward target |
 | `void checkOrchestrationCompletion()` | Read event group, advance state if all bits set |
 | `void checkStateTimeout()` | Detect stale orchestrations, handle timeout |
 | `void setObservedState(SystemState state)` | Commit observed state, log, clear orchestration, reset recovery counter |
 | `SystemState determineRecoveryTarget()` | Decide what to aim for after ERROR |
-| `void postNextComponentState(ComponentID id, SystemState nextState)` | Write to a component's mailbox |
-| `void handleFatal()` | Manage deep sleep transition after FATAL dwell timeout |
+| `void postNextComponentState(ComponentID id)` | Write target from nextState_ to component mailbox |
+| `void handleFatal()` | On first call: set fatalDeadlineMs_ = now + 60s. On subsequent calls: deep sleep if deadline reached |
 
 ### Removed from public API
-- `registerComponent()` and `setComponentTransitionHooks()` are replaced by the new mailbox pattern
+- `setComponentTransitionHooks()` is replaced by the new mailbox pattern
 - `reportCompletion()` is replaced by `completeTransition()`
 
 ---
@@ -356,10 +365,10 @@ The timeout config (`TransitionTimeoutConfig`) stores per-state forward/backward
 When starting an orchestration:
 - Determine direction (forward if `target > observed`, backward otherwise)
 - Look up `timeoutConfig_.forwardTimeouts[idx]` or `.backwardTimeouts[idx]` for the target state
-- Store as `currentTimeoutMs_`
+- Compute `orchestrationDeadlineMs_ = xTaskGetTickCount() + timeout`
 
 On each `run()` tick:
-- If `hasActiveOrchestration_`: check `(xTaskGetTickCount() - orchestrationStartMs_) >= pdMS_TO_TICKS(currentTimeoutMs_)`
+- If `hasActiveOrchestration_`: check `orchestrationDeadlineMs_ != 0 && xTaskGetTickCount() >= orchestrationDeadlineMs_`
 - If timed out:
   - For each component that has not yet set its event group bit: mark as FAILED
   - If FAILED component is required: `postErrorEvent()` → enter ERROR
@@ -372,7 +381,7 @@ On each `run()` tick:
 All testable on `pio test -e native` without FreeRTOS:
 
 - **State machine logic:** Test `getNextState()` rank-based stepping (already exists)
-- **Mailbox drain logic:** Test `drainMailbox()` / `drainErrorEvent()` with spinlock stubs (lock/unlock no-ops on native)
+- **Mailbox drain logic:** Test `consumeStateRequest()` / `consumeErrorEvent()` with spinlock stubs (lock/unlock no-ops on native)
 - **Orchestration completion:** Mock event group with a simple bitset (or event group stub), test completion detection with various bit patterns
 - **Timeout detection:** Test timeout logic with fake clock
 - **Component mailbox:** Test `postNextComponentState()` / `consumeNextState()` round-trip
@@ -389,8 +398,8 @@ All testable on `pio test -e native` without FreeRTOS:
 ## 11. Implementation Order
 
 1. Add `ComponentMailbox`, `ComponentMailboxSlot` structs, pointer arrays, event group handle, and FATAL members to supervisor_v2.h
-2. Implement `registerComponent()`, `completeTransition()`, component mailbox methods
-3. Implement `drainMailbox()` and `drainErrorEvent()` with spinlock guards
+2. Implement `registerComponent()`, `completeTransition()`, component mailbox methods, and boot presence check
+3. Add spinlock guards to `consumeStateRequest()` and `consumeErrorEvent()`
 4. Update `getNextState()` to explicitly return FATAL when `current == FATAL`
 5. Implement `startOrchestration()`, `checkOrchestrationCompletion()`, `checkStateTimeout()`
 6. Implement `setObservedState()`, `determineRecoveryTarget()`, and `handleFatal()`

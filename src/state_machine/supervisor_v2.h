@@ -6,6 +6,15 @@
 
 #if defined(ARDUINO)
 #include <freertos/FreeRTOS.h>
+#include <freertos/event_groups.h>
+#else
+#include <cstring>
+using EventGroupHandle_t = void*;
+struct StaticEventGroup_t { uint8_t data[32]; };
+using portMUX_TYPE = uint32_t;
+#define portMUX_INITIALIZER_UNLOCKED 0
+using TickType_t = uint32_t;
+using EventBits_t = uint32_t;
 #endif
 
 #include "component_types.h"
@@ -142,6 +151,10 @@ class SupervisorV2 {
 public:
 	SupervisorV2();
 
+	/** @brief Initialise the supervisor.
+	 *  Creates the FreeRTOS event group via xEventGroupCreateStatic(),
+	 *  loads the transition timeout config from defaults (NVS in future).
+	 */
 	void setup();
 
 	/** @brief Get the currently observed system state.
@@ -166,6 +179,27 @@ public:
 	 *  @param source The component that generated the error.
 	 */
 	void postErrorEvent(DebugReason reason, ComponentID source);
+
+	/** @brief Run one tick of the state machine.
+	 *  Drains mailboxes, steps toward target, checks orchestration completion
+	 *  and timeouts. Called from the FreeRTOS task loop.
+	 */
+	void run();
+
+	/** @brief Signal component transition completion.
+	 *  Safe to call from any core. Sets the component's event group bit
+	 *  on success or handles failure (required -> ERROR, optional -> DEGRADED).
+	 *  @param id The component reporting completion.
+	 *  @param status Completed or Failed.
+	 */
+	void completeTransition(ComponentID id, TransitionStatus status);
+
+	/** @brief Register a component with the supervisor.
+	 *  Called by each component at boot to signal its presence.
+	 *  @param id The component to register.
+	 *  @param slot Pointer to the component-owned mailbox+spinlock.
+	 */
+	void registerComponent(ComponentID id, ComponentMailboxSlot* slot);
 
 private:
 	/** @brief Consume and clear a pending state request.
@@ -218,6 +252,49 @@ private:
 	 */
 	void resetRecoveryIfOutOfError();
 
+	/** @brief Begin an orchestration toward the given target state.
+	 *  Clears the event group, writes all component mailboxes with the
+	 *  target state, records start time and deadline.
+	 *  @param target The state to orchestrate toward.
+	 */
+	void startOrchestration(SystemState target);
+
+	/** @brief Check if all expected event group bits are set.
+	 *  If complete, advances observedState_ via setObservedState().
+	 */
+	void checkOrchestrationCompletion();
+
+	/** @brief Check whether the current orchestration has timed out.
+	 *  Marks overdue components as FAILED and handles consequences.
+	 */
+	void checkStateTimeout();
+
+	/** @brief Commit a new observed state.
+	 *  Logs the transition, clears active orchestration flags,
+	 *  calls resetRecoveryIfOutOfError().
+	 *  @param state The new observed state.
+	 */
+	void setObservedState(SystemState state);
+
+	/** @brief Determine the target state to aim for after ERROR recovery.
+	 *  Placeholder: returns the state saved in lastTargetBeforeError_.
+	 *  @return The recovery target state.
+	 */
+	SystemState determineRecoveryTarget();
+
+	/** @brief Write the current orchestration target to a component's mailbox.
+	 *  Reads target from nextState_.transitionTarget.
+	 *  @param id Which component to target.
+	 */
+	void postNextComponentState(ComponentID id);
+
+	/** @brief Manage the deep sleep shutdown after FATAL.
+	 *  On first call, sets fatalDeadlineMs_ = now + 60s.
+	 *  On subsequent calls, triggers esp_deep_sleep_start() if the
+	 *  deadline has elapsed.
+	 */
+	void handleFatal();
+
 	SystemState observedState_;
 	SystemState targetState_;
 	ActiveTransition nextState_;
@@ -227,6 +304,23 @@ private:
 	RetryPolicy retryPolicy_{};
 	ComponentStatusMap componentStatuses_{};
 	TransitionTimeoutConfig timeoutConfig_{};
+
+	StaticEventGroup_t eventGroupBuffer_{};
+	EventGroupHandle_t eventGroup_{};
+
+	ComponentMailboxSlot* componentMailboxSlots_[componentCount]{};
+
+	TickType_t orchestrationDeadlineMs_{};
+	bool hasActiveOrchestration_{};
+	EventBits_t expectedBits_{};
+
+	TickType_t fatalDeadlineMs_{};
+
+	/** @brief Saved target for ERROR recovery placeholder.
+	 *  Auto-snapshotted by setTargetState() when transitioning to ERROR.
+	 *  TODO: remove once determineRecoveryTarget() is replaced with real logic.
+	 */
+	SystemState lastTargetBeforeError_;
 
 	void setTargetState(SystemState target);
 };
