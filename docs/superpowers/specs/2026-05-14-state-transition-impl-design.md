@@ -400,8 +400,8 @@ All testable on `pio test -e native` without FreeRTOS:
 2. Implement `registerComponent()`, `completeTransition()`, component mailbox methods, and boot presence check ✅ (step 2)
 3. Add spinlock guards to `consumeStateRequest()` and `consumeErrorEvent()` ✅ (step 3)
 4. Update `getNextState()` to explicitly return FATAL when `current == FATAL` ✅ (step 4)
-5. Add `OrchestrationOrder`/`OrchestrationResponse`/`OrchestrationResult` structs, replace polling members/methods with split-task equivalents, add native stubs — **step 4.1**
-6. Add `setObservedState()` (minimal), update `completeTransition(Failed)`, implement `startOrchestration()`, `checkOrchestrationResponse()`, `orchestrationWorker()` in `supervisor_v2_orch.cpp`, wire worker task in `setup()` — **step 5 (revised for split-task)**
+5. Split `supervisor_v2.cpp` into three `.cpp` files — `supervisor_v2.cpp` (config), `orchestrator.cpp` (cross-core I/O), `state_machine.cpp` (state logic) — **step 4.1**
+6. Add `OrchestrationOrder`/`OrchestrationResponse`/`OrchestrationResult` structs, replace polling members/methods with split-task equivalents, add native stubs, implement `startOrchestration()`, `checkOrchestrationResponse()`, `orchestrationWorker()` in `orchestrator.cpp`, wire worker task in `setup()` — **step 5**
 7. Implement `determineRecoveryTarget()`, and `handleFatal()`; enhance `setObservedState()` with logging and `resetRecoveryIfOutOfError()` — **step 6**
 8. Implement `run()` — the full tick sequence — **step 7**
 9. Write unit tests for remaining paths — **step 8**
