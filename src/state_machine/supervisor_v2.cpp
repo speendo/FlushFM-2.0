@@ -8,16 +8,7 @@ constexpr const char* kLogSource = "Supervisor";
 
 }  // namespace
 
-/** @brief Get the index of a system state in the state route array.
- *  @param state The system state to find.
- *  @return The index of the state, or -1 if not found.
- */
-static int getIndex(SystemState state) {
-    for (size_t i = 0; i < stateCount; ++i) {
-        if (stateRoute[i] == state) return static_cast<int>(i);
-    }
-    return -1; // Invalid state
-}
+
 
 const char* stateToString(SystemState state) {
     switch (state) {
