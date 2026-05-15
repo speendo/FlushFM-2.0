@@ -50,16 +50,57 @@ enum class SystemState : uint8_t {
 
 #undef SYSTEM_STATE_ENUM
 
-/* Generate the array of state names */
-#define SYSTEM_STATE_ARRAY(name, value) SystemState::name,
+namespace detail {
 
-const SystemState stateRoute[] = {
-	SYSTEM_STATE_X(SYSTEM_STATE_ARRAY)
-};
+    /* Rank values in declaration order -- extracted at compile time */
+    constexpr uint8_t kValues[] = {
+    #define X(name, value) value,
+        SYSTEM_STATE_X(X)
+    #undef X
+    };
 
-#undef SYSTEM_STATE_ARRAY
+    /* State enum values in declaration order -- replaces old stateRoute[] */
+    constexpr SystemState kRoute[] = {
+    #define X(name, value) SystemState::name,
+        SYSTEM_STATE_X(X)
+    #undef X
+    };
 
-constexpr size_t stateCount = sizeof(stateRoute) / sizeof(SystemState);
+    constexpr uint8_t kCount = sizeof(kValues) / sizeof(kValues[0]);
+
+    /* Maximum rank value, determines lookup table size */
+    constexpr uint8_t kMaxValue = [] {
+        uint8_t m = 0;
+        for (auto v : kValues) if (v > m) m = v;
+        return m;
+    }();
+
+    /* Build a table: index by uint8_t rank value -> positional index (or -1) */
+    constexpr auto buildRankTable() {
+        std::array<int, kMaxValue + 1> t{};
+        for (auto& v : t) v = -1;
+        for (uint8_t i = 0; i < kCount; ++i)
+            t[kValues[i]] = static_cast<int>(i);
+        return t;
+    }
+
+    constexpr auto kRankTable = buildRankTable();
+
+}  // namespace detail
+
+/* Backward-compatible aliases -- .cpp and existing tests use these unchanged */
+constexpr auto& stateRoute = detail::kRoute;
+constexpr size_t stateCount = detail::kCount;
+
+/** @brief O(1) lookup: state rank value -> positional index.
+ *  @param state The system state to look up.
+ *  @return Index (0, 1, 2...) or -1 if the rank value has no mapping.
+ */
+inline constexpr int getIndex(SystemState state) {
+    const uint8_t raw = static_cast<uint8_t>(state);
+    if (raw > detail::kMaxValue) return -1;
+    return detail::kRankTable[raw];
+}
 
 constexpr size_t componentCount = static_cast<size_t>(ComponentID::Count);
 
@@ -303,8 +344,8 @@ private:
 	StaticEventGroup_t eventGroupBuffer_{};
 	EventGroupHandle_t eventGroup_{};
 
-	ComponentMailbox* componentMailboxes_[componentCount]{};
-	bool isRequired_[componentCount]{};
+	std::array<ComponentMailbox*, componentCount> componentMailboxes_{};
+	std::array<bool, componentCount> isRequired_{};
 
 	TickType_t orchestrationDeadlineMs_{};
 	bool hasActiveOrchestration_{};
@@ -320,3 +361,5 @@ private:
 
 	void setTargetState(SystemState target);
 };
+
+#undef SYSTEM_STATE_X
