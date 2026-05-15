@@ -140,10 +140,17 @@ void SupervisorV2::resetRecoveryIfOutOfError() {
     }
 }
 
-/** @brief Commit a new observed state. Minimal version — step 6 adds logging and resetRecoveryIfOutOfError.
+/** @brief Commit a new observed state.
+ *  Logs the state transition, resets the recovery counter if exiting an error
+ *  state, and clears the active orchestration flag.
  *  @param state The new observed state.
  */
 void SupervisorV2::setObservedState(SystemState state) {
+    PROD_LOG(kLogSource, "%s -> %s",
+             stateToString(observedState_), stateToString(state));
+
     observedState_ = state;
     hasActiveOrchestration_ = false;
+
+    resetRecoveryIfOutOfError();
 }
