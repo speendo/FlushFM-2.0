@@ -126,3 +126,55 @@ void SupervisorV2::checkOrchestrationResponse() {
         // setting targetState_ to ERROR or FATAL as appropriate.
     }
 }
+
+/** @brief Orchestration worker task. Reads orders from orderMailbox_ and blocks
+ *  on xEventGroupWaitBits until all expected bits are set or the deadline expires.
+ *  Posts a result back to responseMailbox_ for the state machine to consume.
+ *  @param param Pointer to the SupervisorV2 instance (cast from void*).
+ */
+void orchestrationWorker(void* param) {
+    auto* supervisor = static_cast<SupervisorV2*>(param);
+    for (;;) {
+        // Read an order from the state machine. If none pending, yield briefly
+        // (10 FreeRTOS ticks = 10ms with 1ms/tick config) and try again.
+        // consume() uses an embedded spinlock so this is safe cross-core.
+        if (!supervisor->orderMailbox_.consume()) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+
+        // Compute how long to wait: absolute deadline (in ms) minus current time (in ms).
+        // pdMS_TO_TICKS converts ms to FreeRTOS ticks. With default 1ms/tick config
+        // this is a no-op, but using it explicitly ensures portability.
+        TickType_t now = xTaskGetTickCount();
+        TickType_t waitTicks = pdMS_TO_TICKS(supervisor->orderMailbox_.deadlineMs - now);
+
+        // FreeRTOS xEventGroupWaitBits blocks the task until either:
+        //   1. All bits in expectedBits are set -> returns the matched bits
+        //   2. waitTicks elapses -> returns only the bits that ARE set
+        // The two pdTRUE arguments mean:
+        //   pdTRUE (clear on exit) - atomically clear the matched bits when returning
+        //   pdTRUE (wait for all)  - ALL expectedBits must be set, not just any one
+        EventBits_t bits = xEventGroupWaitBits(supervisor->eventGroup_,
+                                                supervisor->orderMailbox_.expectedBits,
+                                                pdTRUE,
+                                                pdTRUE,
+                                                waitTicks);
+
+        // If all expected bits are accounted for in the return value, the
+        // orchestration completed successfully. Otherwise, some bits are
+        // missing - compute which ones for the TIMED_OUT response.
+        if ((bits & supervisor->orderMailbox_.expectedBits) == supervisor->orderMailbox_.expectedBits) {
+            supervisor->responseMailbox_.post(OrchestrationResult::COMPLETED, 0);
+        } else {
+            EventBits_t missing = supervisor->orderMailbox_.expectedBits & ~bits;
+            supervisor->responseMailbox_.post(OrchestrationResult::TIMED_OUT, missing);
+        }
+
+        // Wake the state machine task so it processes the response immediately.
+        // xTaskNotifyGive sends a direct-to-task notification; the state
+        // machine's run() loop is blocked on ulTaskNotifyTake() and will
+        // unblock when this call completes.
+        xTaskNotifyGive(supervisor->supervisorTaskHandle_);
+    }
+}

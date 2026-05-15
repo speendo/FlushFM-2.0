@@ -155,6 +155,7 @@ using TaskHandle_t = void*;
 
 inline constexpr TickType_t pdMS_TO_TICKS(TickType_t ms) { return ms; }
 inline void vTaskDelay(TickType_t) {}
+inline constexpr int pdTRUE = 1;
 
 inline EventGroupHandle_t xEventGroupCreateStatic(StaticEventGroup_t* buffer) {
     std::memset(buffer, 0, sizeof(StaticEventGroup_t));
@@ -175,6 +176,15 @@ inline EventBits_t xEventGroupSetBits(EventGroupHandle_t handle, EventBits_t bit
 inline EventBits_t xEventGroupGetBits(EventGroupHandle_t handle) {
     if (handle == nullptr) return 0;
     return *reinterpret_cast<uint32_t*>(handle);
+}
+inline EventBits_t xEventGroupWaitBits(EventGroupHandle_t handle, EventBits_t bitsToWaitFor,
+                                        bool clearOnExit, bool waitForAll, TickType_t) {
+    if (handle == nullptr) return 0;
+    auto* bits = reinterpret_cast<uint32_t*>(handle);
+    EventBits_t result = *bits & bitsToWaitFor;
+    if (waitForAll && result != bitsToWaitFor) return 0;
+    if (clearOnExit) *bits &= ~bitsToWaitFor;
+    return result;
 }
 inline void xTaskCreatePinnedToCore(void (*task)(void*), const char*, uint32_t,
                                      void* param, uint32_t, TaskHandle_t*, int) {}
@@ -716,7 +726,7 @@ void SupervisorV2::setup() {
 
     xTaskCreatePinnedToCore(
         orchestrationWorker,            // entry point: the function the task runs
-        "OrchWorker",                   // human-readable name (visible in debugger/FreeRTOS tracing)
+        "OrchestrationWorker",          // human-readable name (visible in debugger/FreeRTOS tracing)
         4096,                           // stack size in bytes; 4KB for the wait loop + mailbox access
         this,                           // argument passed to orchestrationWorker() as void*
         1,                              // priority: 1 = below default 2, yields to state machine

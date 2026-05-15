@@ -103,6 +103,8 @@ SystemState getNextState(SystemState current, SystemState target);
 
 const char* stateToString(SystemState state);
 
+void orchestrationWorker(void* param);
+
 enum class SubState {
 	PENDING, // Waiting for orchestration to complete, then will step to targetMode_.
 	COMMITTED, // Orchestration completed, stepped to targetMode_, and is now the observed state.

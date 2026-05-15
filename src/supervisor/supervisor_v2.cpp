@@ -5,6 +5,18 @@ SupervisorV2::SupervisorV2() = default;
 void SupervisorV2::setup() {
     eventGroup_ = xEventGroupCreateStatic(&eventGroupBuffer_);
     loadTransitionTimeoutConfig();
+
+    supervisorTaskHandle_ = xTaskGetCurrentTaskHandle();
+
+    xTaskCreatePinnedToCore(
+        orchestrationWorker,            // entry point: the function the task runs
+        "OrchWorker",                   // human-readable name (visible in debugger/FreeRTOS tracing)
+        4096,                           // stack size in bytes
+        this,                           // argument passed as void*
+        1,                              // priority: 1 = below default 2, yields to state machine
+        &workerTaskHandle_,             // out parameter: receives the task handle
+        0                               // core affinity: 0 = Core 0, same as state machine
+    );
 }
 
 int SupervisorV2::getMaxRecoveries() const {
