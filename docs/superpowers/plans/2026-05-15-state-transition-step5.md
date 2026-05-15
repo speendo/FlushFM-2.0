@@ -79,7 +79,7 @@ struct OrchestrationResponse {
     EventBits_t timedOutComponents = 0;  // Bitmask of components that missed the deadline
     portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
 
-    void post(OrchestrationResult r, EventBits_t timedOut = 0) {
+    void post(OrchestrationResult r, EventBits_t timedOut) {
         portENTER_CRITICAL(&spinlock);
         result = r;
         timedOutComponents = timedOut;
@@ -523,7 +523,7 @@ void test_check_response_completed_advances_observed_state() {
     supervisor.startOrchestration(SystemState::CONNECTING);
     supervisor.responseMailbox_.pending = false;
 
-    supervisor.responseMailbox_.post(OrchestrationResult::COMPLETED);
+    supervisor.responseMailbox_.post(OrchestrationResult::COMPLETED, 0);
 
     supervisor.checkOrchestrationResponse();
 
@@ -645,7 +645,7 @@ void orchestrationWorker(void* param) {
                                                 waitTicks);
 
         if ((bits & expectedBits) == expectedBits) {
-            supervisor->responseMailbox_.post(OrchestrationResult::COMPLETED);
+            supervisor->responseMailbox_.post(OrchestrationResult::COMPLETED, 0);
         } else {
             // Timeout — find which bits are still missing
             EventBits_t missing = expectedBits & ~bits;
