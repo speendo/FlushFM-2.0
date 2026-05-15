@@ -1,139 +1,44 @@
-# Step 5: Orchestration Order/Response Mailboxes + startOrchestration + checkOrchestrationResponse + Worker
+# Step 5: Orchestration Method Implementations (startOrchestration, checkOrchestrationResponse, orchestrationWorker)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement the split-task orchestration engine: `OrchestrationOrder`/`OrchestrationResponse` mailboxes for state-machine-to-worker communication, `startOrchestration` (writes order), `checkOrchestrationResponse` (reads response, handles COMPLETED/TIMED_OUT), and the `orchestrationWorker` free function (blocks on `xEventGroupWaitBits`).
+**Goal:** Implement the orchestrator sub-file `supervisor_v2_orch.cpp` with `startOrchestration`, `checkOrchestrationResponse`, and `orchestrationWorker`. Wire the worker task in `setup()`. Add a minimal `setObservedState()` in `supervisor_v2.cpp` so the completion path compiles. Update `completeTransition` optional failure to set event group bit.
 
-**Architecture:** State machine methods live in `supervisor_v2.cpp`. Orchestration methods (`startOrchestration`, `checkOrchestrationResponse`, `orchestrationWorker`) live in a new sub-file `supervisor_v2_orch.cpp` — same class, split across `.cpp` files for readability. State machine posts orders via `orderMailbox_` (spinlock). Orchestration worker task blocks on `xEventGroupWaitBits(expectedBits, ALL, timeout)`, wakes on completion or timeout, posts result to `responseMailbox_` (spinlock). State machine reads response on next `run()` tick. No polling — the worker uses native FreeRTOS blocking.
+**Architecture:** All orchestrator methods live in `supervisor_v2_orch.cpp` (sub-file of SupervisorV2 class). The state machine `setup()` in `supervisor_v2.cpp` creates the worker task. Tests include both `.cpp` files.
 
-**Tech Stack:** C++17, PlatformIO native (mailbox + response tests), Unity test framework, `#define private public` access pattern. Tests include both `supervisor_v2.cpp` (class) and `supervisor_v2_orch.cpp` (orchestration methods). Worker function hardware-only (not tested on native).
+**Tech Stack:** C++17, PlatformIO native, Unity test framework, `#define private public`. Worker hardware-only.
+
+**Prerequisite:** Step 4.1 (structs, members, method declarations, friend, native stubs already in place).
 
 ---
 
 ### File Structure
 
-- **Modify:** `src/state_machine/supervisor_v2.h` — add `OrchestrationResult`, `OrchestrationOrder`, `OrchestrationResponse` structs; add `orderMailbox_`/`responseMailbox_`/`workerTaskHandle_` members; remove `expectedBits_`/`orchestrationDeadlineMs_`; add `friend void orchestrationWorker(void*)`; add `checkOrchestrationResponse()` declaration; remove old `checkOrchestrationCompletion()`/`checkStateTimeout()` declarations
-- **Modify:** `src/state_machine/supervisor_v2.cpp` — `completeTransition(Failed)` sets event group bit for optional; `setup()` creates worker task
+- **Modify:** `src/state_machine/supervisor_v2.cpp` — add minimal `setObservedState()`, update `completeTransition` optional failure, update `setup()` to create worker task
 - **Create:** `src/state_machine/supervisor_v2_orch.cpp` — `startOrchestration()`, `checkOrchestrationResponse()`, `orchestrationWorker()`
-- **Create:** `test/test_supervisor_v2_orchestration/test_main.cpp` — 11 tests (startOrchestration + checkOrchestrationResponse + completeTransition)
-- **Modify:** `platformio.ini` — test_ignore during development
+- **Create:** `test/test_supervisor_v2_orchestration/test_main.cpp` — 11 tests
+- **Modify:** `platformio.ini` — test_ignore during development, remove at end
 
 ---
 
-### Task 5a: Add structs, members, friend declaration, remove old members
+### Task 5a: Minimal setObservedState + completeTransition optional failure fix
 
-- [ ] **Step 5a.1: Add test_ignore to platformio.ini**
+- [ ] **Step 5a.1: Add minimal `setObservedState()` to `supervisor_v2.cpp`**
 
-```ini
-test_framework = unity
-test_ignore = test_supervisor_v2_orchestration
-```
-
-- [ ] **Step 5a.2: Add `OrchestrationResult`, `OrchestrationOrder`, `OrchestrationResponse` to `supervisor_v2.h`**
-
-Add after the `ErrorEvent` struct definition (after line 136):
+Add after `resetRecoveryIfOutOfError()` (after line 236):
 
 ```cpp
-enum class OrchestrationResult : uint8_t {
-    COMPLETED,
-    TIMED_OUT
-};
-
-struct OrchestrationOrder {
-    bool pending = false;
-    EventBits_t expectedBits = 0;
-    TickType_t deadlineMs = 0;
-    SystemState transitionTarget;
-    portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
-
-    void post(EventBits_t bits, TickType_t deadline, SystemState target) {
-        portENTER_CRITICAL(&spinlock);
-        expectedBits = bits;
-        deadlineMs = deadline;
-        transitionTarget = target;
-        pending = true;
-        portEXIT_CRITICAL(&spinlock);
-    }
-
-    bool consume(EventBits_t& outBits, TickType_t& outDeadline, SystemState& outTarget) {
-        portENTER_CRITICAL(&spinlock);
-        if (!pending) { portEXIT_CRITICAL(&spinlock); return false; }
-        outBits = expectedBits;
-        outDeadline = deadlineMs;
-        outTarget = transitionTarget;
-        pending = false;
-        portEXIT_CRITICAL(&spinlock);
-        return true;
-    }
-};
-
-struct OrchestrationResponse {
-    bool pending = false;
-    OrchestrationResult result = OrchestrationResult::COMPLETED;
-    EventBits_t timedOutComponents = 0;
-    portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
-
-    void post(OrchestrationResult r, EventBits_t timedOut = 0) {
-        portENTER_CRITICAL(&spinlock);
-        result = r;
-        timedOutComponents = timedOut;
-        pending = true;
-        portEXIT_CRITICAL(&spinlock);
-    }
-
-    bool consume(OrchestrationResult& outResult, EventBits_t& outTimedOut) {
-        portENTER_CRITICAL(&spinlock);
-        if (!pending) { portEXIT_CRITICAL(&spinlock); return false; }
-        outResult = result;
-        outTimedOut = timedOutComponents;
-        pending = false;
-        portEXIT_CRITICAL(&spinlock);
-        return true;
-    }
-};
+void SupervisorV2::setObservedState(SystemState state) {
+    observedState_ = state;
+    hasActiveOrchestration_ = false;
+}
 ```
 
-- [ ] **Step 5a.3: Update SupervisorV2 class members**
+(Full version with logging and `resetRecoveryIfOutOfError` comes in step 6.)
 
-Remove these two members from the private section:
-```cpp
-    TickType_t orchestrationDeadlineMs_{};
-    EventBits_t expectedBits_{};
-```
+- [ ] **Step 5a.2: Update `completeTransition()` optional failure path**
 
-Replace the `hasActiveOrchestration_` line with:
-```cpp
-    bool hasActiveOrchestration_{};
-```
-
-Add these members after `hasActiveOrchestration_`:
-```cpp
-    OrchestrationOrder orderMailbox_{};
-    OrchestrationResponse responseMailbox_{};
-    TaskHandle_t workerTaskHandle_{};
-```
-
-- [ ] **Step 5a.4: Update method declarations in SupervisorV2**
-
-Remove these two declarations:
-```cpp
-    void checkOrchestrationCompletion();
-    void checkStateTimeout();
-```
-
-Add this declaration in their place:
-```cpp
-    void checkOrchestrationResponse();
-```
-
-- [ ] **Step 5a.5: Add friend declaration**
-
-Add before the closing `};` of class `SupervisorV2`:
-```cpp
-    friend void orchestrationWorker(void* param);
-```
-
-- [ ] **Step 5a.6: Update `completeTransition()` optional failure path in `supervisor_v2.cpp`**
+In `supervisor_v2.cpp`, change:
 ```cpp
     } else {
         componentStatuses_[static_cast<int>(id)] = ComponentStatus::DEGRADED;
@@ -148,28 +53,35 @@ To:
     }
 ```
 
-- [ ] **Step 5a.7: Run full suite to verify no breakage**
+- [ ] **Step 5a.3: Run full suite**
 
 ```bash
 pio test -e native
 ```
 
-Expected: 95 succeeded (same as before, existing test suites pass). New test suite ignored.
+Expected: 95 succeeded. 4 pre-existing errors unchanged.
 
-- [ ] **Step 5a.8: Commit**
+- [ ] **Step 5a.4: Commit**
 
 ```bash
-git add src/state_machine/supervisor_v2.cpp src/state_machine/supervisor_v2.h
-git commit -m "step 5a: add OrchestrationOrder/Response structs, remove polling members, update completeTransition"
+git add src/state_machine/supervisor_v2.cpp
+git commit -m "step 5a: add minimal setObservedState, update completeTransition optional failure to set event bit"
 ```
 
 ---
 
-### Task 5b: Implement startOrchestration + 6 tests
+### Task 5b: Implement startOrchestration + 7 tests
 
-- [ ] **Step 5b.1: Create test file with startOrchestration tests**
+- [ ] **Step 5b.1: Add test_ignore to platformio.ini**
 
-**File: `test/test_supervisor_v2_orchestration/test_main.cpp`** — includes both `supervisor_v2.cpp` (class definition) and `supervisor_v2_orch.cpp` (orchestration methods):
+```ini
+test_framework = unity
+test_ignore = test_supervisor_v2_orchestration
+```
+
+- [ ] **Step 5b.2: Create test file with startOrchestration + completeTransition tests**
+
+**File: `test/test_supervisor_v2_orchestration/test_main.cpp`** — includes both .cpp files:
 
 ```cpp
 #include <unity.h>
@@ -308,15 +220,15 @@ int main() {
 }
 ```
 
-- [ ] **Step 5b.2: Run tests — expect compile failure** (no `startOrchestration` defined)
+- [ ] **Step 5b.3: Run tests — expect compile failure**
 
 ```bash
 pio test -e native --filter test_supervisor_v2_orchestration
 ```
 
-Expected: FAIL with `'startOrchestration' is not a member of 'SupervisorV2'`
+Expected: FAIL — `supervisor_v2_orch.cpp` doesn't exist yet.
 
-- [ ] **Step 5b.3: Create `src/state_machine/supervisor_v2_orch.cpp` with `startOrchestration()`**
+- [ ] **Step 5b.4: Create `src/state_machine/supervisor_v2_orch.cpp` with `startOrchestration()`**
 
 ```cpp
 #include "state_machine/supervisor_v2.h"
@@ -354,7 +266,7 @@ void SupervisorV2::startOrchestration(SystemState target) {
 }
 ```
 
-- [ ] **Step 5b.4: Run tests**
+- [ ] **Step 5b.5: Run tests**
 
 ```bash
 pio test -e native --filter test_supervisor_v2_orchestration
@@ -362,7 +274,7 @@ pio test -e native --filter test_supervisor_v2_orchestration
 
 Expected: 7 tests PASS.
 
-- [ ] **Step 5b.5: Run full suite**
+- [ ] **Step 5b.6: Run full suite**
 
 ```bash
 pio test -e native
@@ -370,16 +282,16 @@ pio test -e native
 
 Expected: 97 succeeded (90 baseline + 7 new). 4 pre-existing errors unchanged.
 
-- [ ] **Step 5b.6: Commit**
+- [ ] **Step 5b.7: Commit**
 
 ```bash
-git add src/state_machine/supervisor_v2_orch.cpp test/test_supervisor_v2_orchestration/test_main.cpp
+git add src/state_machine/supervisor_v2_orch.cpp test/test_supervisor_v2_orchestration/
 git commit -m "step 5b: create supervisor_v2_orch.cpp with startOrchestration"
 ```
 
 ---
 
-### Task 5c: Implement checkOrchestrationResponse + 3 tests
+### Task 5c: Implement checkOrchestrationResponse + 4 tests
 
 - [ ] **Step 5c.1: Add `checkOrchestrationResponse()` to `supervisor_v2_orch.cpp`**
 
@@ -422,7 +334,7 @@ void test_check_response_completed_advances_observed_state() {
 
     supervisor.observedState_ = SystemState::BOOTING;
     supervisor.startOrchestration(SystemState::CONNECTING);
-    supervisor.responseMailbox_.pending = false;  // clear anything stale
+    supervisor.responseMailbox_.pending = false;
 
     supervisor.responseMailbox_.post(OrchestrationResult::COMPLETED);
 
@@ -450,7 +362,6 @@ void test_check_response_timed_out_required_posts_error() {
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentStatus::FAILED),
                       static_cast<int>(supervisor.componentStatuses_[static_cast<int>(ComponentID::WiFi)]));
     TEST_ASSERT_FALSE(supervisor.hasActiveOrchestration_);
-    // Error event was posted — targetState_ will be set to ERROR when consumed
 }
 
 void test_check_response_timed_out_optional_is_degraded() {
@@ -514,7 +425,7 @@ git commit -m "step 5c: add checkOrchestrationResponse to supervisor_v2_orch.cpp
 
 ---
 
-### Task 5d: Implement orchestrationWorker + wire up in setup()
+### Task 5d: Implement orchestrationWorker + wire in setup()
 
 - [ ] **Step 5d.1: Add `orchestrationWorker()` to `supervisor_v2_orch.cpp`**
 
@@ -549,18 +460,7 @@ void orchestrationWorker(void* param) {
 }
 ```
 
-- [ ] **Step 5d.2: Add `NativeTaskHandle_t` stub for native in `supervisor_v2.h`**
-
-Under `#if !defined(ARDUINO)` block, add after the `using ...` lines:
-
-```cpp
-using TaskHandle_t = void*;
-inline void xTaskCreatePinnedToCore(void (*)(void*), const char*, uint32_t, void*, uint32_t, TaskHandle_t*, int) {
-    // No-op on native — worker is not tested on native
-}
-```
-
-- [ ] **Step 5d.3: Update `setup()` in `supervisor_v2.cpp`**
+- [ ] **Step 5d.2: Update `setup()` in `supervisor_v2.cpp`**
 
 Add task creation after `loadTransitionTimeoutConfig()`:
 
@@ -576,12 +476,12 @@ void SupervisorV2::setup() {
         this,
         1,
         &workerTaskHandle_,
-        0  // Core 0
+        0
     );
 }
 ```
 
-- [ ] **Step 5d.4: Run tests**
+- [ ] **Step 5d.3: Run full suite**
 
 ```bash
 pio test -e native
@@ -589,11 +489,13 @@ pio test -e native
 
 Expected: 101 succeeded (no regression — worker setup is no-op on native).
 
-- [ ] **Step 5d.5: Remove test_ignore from platformio.ini**
+- [ ] **Step 5d.4: Remove test_ignore from platformio.ini**
 
-- [ ] **Step 5d.6: Commit**
+Delete the `test_ignore = test_supervisor_v2_orchestration` line.
+
+- [ ] **Step 5d.5: Commit**
 
 ```bash
-git add platformio.ini src/state_machine/supervisor_v2.cpp src/state_machine/supervisor_v2.h src/state_machine/supervisor_v2_orch.cpp
-git commit -m "step 5d: add orchestrationWorker + wire in setup()"
+git add platformio.ini src/state_machine/supervisor_v2.cpp src/state_machine/supervisor_v2_orch.cpp
+git commit -m "step 5d: add orchestrationWorker + wire worker task in setup()"
 ```
