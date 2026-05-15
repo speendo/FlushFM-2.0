@@ -67,6 +67,8 @@ SystemState getNextState(SystemState current, SystemState target) {
 }
 
 void SupervisorV2::checkComponentPresence() {
+    // Scan all registered components. Post an error for any required
+    // component that never called registerComponent (null mailbox pointer).
     for (size_t i = 0; i < componentCount; i++) {
         if (componentMailboxes_[i] == nullptr && isRequired_[i]) {
             postErrorEvent("component absent", static_cast<ComponentID>(i));
