@@ -457,6 +457,10 @@ void SupervisorV2::startOrchestration(SystemState target) {
 
     xEventGroupClearBits(eventGroup_, kAllComponentBits);
 
+    // Set the transition target before writing mailboxes — postNextComponentState
+    // reads nextState_.transitionTarget to know what to write.
+    nextState_.transitionTarget = target;
+
     // Write the stepping target to every registered component's mailbox.
     // Components read this on their own task loop and react accordingly.
     for (size_t i = 0; i < componentCount; i++) {
@@ -472,7 +476,6 @@ void SupervisorV2::startOrchestration(SystemState target) {
 
     orderMailbox_.post(bits, xTaskGetTickCount() + timeout, target);
 
-    nextState_.transitionTarget = target;
     nextState_.subState = SubState::PENDING;
     hasActiveOrchestration_ = true;
 }

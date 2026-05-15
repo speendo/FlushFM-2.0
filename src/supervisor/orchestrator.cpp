@@ -72,6 +72,10 @@ void SupervisorV2::startOrchestration(SystemState target) {
 
     xEventGroupClearBits(eventGroup_, kAllComponentBits);
 
+    // Set the transition target before writing mailboxes — postNextComponentState
+    // reads nextState_.transitionTarget to know what to write.
+    nextState_.transitionTarget = target;
+
     // Write the stepping target to every registered component's mailbox.
     // Components read this on their own task loop and react accordingly.
     for (size_t i = 0; i < componentCount; i++) {
@@ -87,7 +91,38 @@ void SupervisorV2::startOrchestration(SystemState target) {
 
     orderMailbox_.post(bits, xTaskGetTickCount() + timeout, target);
 
-    nextState_.transitionTarget = target;
     nextState_.subState = SubState::PENDING;
     hasActiveOrchestration_ = true;
+}
+
+/** @brief Check for a pending orchestration response from the worker task.
+ *  Reads responseMailbox_ (non-blocking, spinlock inside).
+ *  On COMPLETED: advances observedState_ to the orchestration target.
+ *  On TIMED_OUT: clears the active flag and handles overdue components.
+ */
+void SupervisorV2::checkOrchestrationResponse() {
+    if (!responseMailbox_.consume()) return;
+
+    // Clear the active flag regardless of outcome — the orchestration cycle
+    // is done (either all bits arrived or the deadline elapsed).
+    hasActiveOrchestration_ = false;
+
+    if (responseMailbox_.result == OrchestrationResult::COMPLETED) {
+        nextState_.subState = SubState::COMMITTED;
+        setObservedState(nextState_.transitionTarget);
+    } else {
+        // TIMED_OUT — some components did not set their event group bits
+        EventBits_t timedOut = responseMailbox_.timedOutComponents;
+        for (size_t i = 0; i < componentCount; i++) {
+            if (!(timedOut & (1 << i))) continue;
+            if (isRequired_[i]) {
+                componentStatuses_[i] = ComponentStatus::FAILED;
+                postErrorEvent("transition timeout", static_cast<ComponentID>(i));
+            } else {
+                componentStatuses_[i] = ComponentStatus::DEGRADED;
+            }
+        }
+        // The posted error event will be consumed on the next run() tick,
+        // setting targetState_ to ERROR or FATAL as appropriate.
+    }
 }

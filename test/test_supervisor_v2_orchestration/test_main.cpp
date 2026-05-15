@@ -122,6 +122,70 @@ void test_complete_transition_optional_failed_sets_event_bit() {
                       static_cast<int>(supervisor.componentStatuses_[static_cast<int>(ComponentID::CLI)]));
 }
 
+void test_check_response_completed_advances_observed_state() {
+    SupervisorV2 supervisor;
+    TestComponent wifi;
+    supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
+
+    supervisor.observedState_ = SystemState::BOOTING;
+    supervisor.startOrchestration(SystemState::CONNECTING);
+    supervisor.responseMailbox_.pending = false;
+
+    supervisor.responseMailbox_.post(OrchestrationResult::COMPLETED, 0);
+
+    supervisor.checkOrchestrationResponse();
+
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING),
+                      static_cast<int>(supervisor.observedState_));
+    TEST_ASSERT_FALSE(supervisor.hasActiveOrchestration_);
+    TEST_ASSERT_EQUAL(static_cast<int>(SubState::COMMITTED),
+                      static_cast<int>(supervisor.nextState_.subState));
+}
+
+void test_check_response_timed_out_required_posts_error() {
+    SupervisorV2 supervisor;
+    TestComponent wifi;
+    supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
+    supervisor.setMaxRecoveries(3);
+
+    supervisor.observedState_ = SystemState::BOOTING;
+    supervisor.responseMailbox_.post(OrchestrationResult::TIMED_OUT,
+        1 << static_cast<int>(ComponentID::WiFi));
+
+    supervisor.checkOrchestrationResponse();
+
+    TEST_ASSERT_EQUAL(static_cast<int>(ComponentStatus::FAILED),
+                      static_cast<int>(supervisor.componentStatuses_[static_cast<int>(ComponentID::WiFi)]));
+    TEST_ASSERT_FALSE(supervisor.hasActiveOrchestration_);
+}
+
+void test_check_response_timed_out_optional_is_degraded() {
+    SupervisorV2 supervisor;
+    TestComponent cli;
+    supervisor.registerComponent(ComponentID::CLI, &cli.mailbox, false);
+
+    supervisor.observedState_ = SystemState::BOOTING;
+    supervisor.responseMailbox_.post(OrchestrationResult::TIMED_OUT,
+        1 << static_cast<int>(ComponentID::CLI));
+
+    supervisor.checkOrchestrationResponse();
+
+    TEST_ASSERT_EQUAL(static_cast<int>(ComponentStatus::DEGRADED),
+                      static_cast<int>(supervisor.componentStatuses_[static_cast<int>(ComponentID::CLI)]));
+    TEST_ASSERT_FALSE(supervisor.hasActiveOrchestration_);
+}
+
+void test_check_response_returns_when_no_pending() {
+    SupervisorV2 supervisor;
+
+    supervisor.hasActiveOrchestration_ = true;
+    supervisor.responseMailbox_.pending = false;
+
+    supervisor.checkOrchestrationResponse();
+
+    TEST_ASSERT_TRUE(supervisor.hasActiveOrchestration_);
+}
+
 }  // namespace
 
 int main() {
@@ -133,5 +197,9 @@ int main() {
     RUN_TEST(test_start_orchestration_clears_event_group_bits);
     RUN_TEST(test_start_orchestration_sets_deadline_in_order);
     RUN_TEST(test_complete_transition_optional_failed_sets_event_bit);
+    RUN_TEST(test_check_response_completed_advances_observed_state);
+    RUN_TEST(test_check_response_timed_out_required_posts_error);
+    RUN_TEST(test_check_response_timed_out_optional_is_degraded);
+    RUN_TEST(test_check_response_returns_when_no_pending);
     return UNITY_END();
 }
