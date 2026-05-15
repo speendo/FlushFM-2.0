@@ -14,6 +14,46 @@
 
 #include "component_types.h"
 
+#define COMPONENT_TYPES_LIFECYCLE_STATUS_X(V) \
+    V(Unknown) \
+    V(Ready) \
+    V(Failed) \
+    V(Disabled)
+
+#define COMPONENT_TYPES_LIFECYCLE_STATUS_ENUM(name) name,
+enum class ComponentLifecycleStatus : uint8_t {
+    COMPONENT_TYPES_LIFECYCLE_STATUS_X(COMPONENT_TYPES_LIFECYCLE_STATUS_ENUM)
+};
+
+inline const char* toString(ComponentLifecycleStatus status) {
+    switch (status) {
+#define COMPONENT_TYPES_LIFECYCLE_STATUS_STRING(name) case ComponentLifecycleStatus::name: return #name;
+        COMPONENT_TYPES_LIFECYCLE_STATUS_X(COMPONENT_TYPES_LIFECYCLE_STATUS_STRING)
+#undef COMPONENT_TYPES_LIFECYCLE_STATUS_STRING
+    }
+    return "UNKNOWN";
+}
+
+#undef COMPONENT_TYPES_LIFECYCLE_STATUS_ENUM
+#undef COMPONENT_TYPES_LIFECYCLE_STATUS_X
+
+struct ComponentRegistryEntry {
+    ComponentLifecycleStatus lifeCycleStatus = ComponentLifecycleStatus::Unknown;
+    bool isRequired = false;
+    bool isDisabled = false;
+    bool isRegistered = false;
+    const char* lastFailureReason = nullptr;
+};
+
+struct ComponentStateMatrix {
+    uint32_t minState;
+    uint32_t maxState;
+    uint32_t forwardTimeoutMs;
+    uint32_t backwardTimeoutMs;
+};
+
+constexpr uint32_t TARGET_MODE = 0xFF;
+
 /** Extract the numeric rank of a SystemState.
  *  @param state The state to query.
  *  @return The uint8_t rank value (0, 10, 20, ... 60). */
