@@ -40,6 +40,8 @@ void SupervisorV2::postStateRequest(SystemState target) {
     stateRequestMailbox_.pending = true;
     stateRequestMailbox_.requestedTarget = target;
     portEXIT_CRITICAL(&stateRequestMailbox_.spinlock);
+
+    xTaskNotifyGive(supervisorTaskHandle_);
 }
 
 void SupervisorV2::postErrorEvent(DebugReason reason, ComponentID source) {
@@ -50,6 +52,8 @@ void SupervisorV2::postErrorEvent(DebugReason reason, ComponentID source) {
         errorEvent_.source = source;
     }
     portEXIT_CRITICAL(&errorEvent_.spinlock);
+
+    xTaskNotifyGive(supervisorTaskHandle_);
 }
 
 /** @brief Begin an orchestration toward the given target state.
