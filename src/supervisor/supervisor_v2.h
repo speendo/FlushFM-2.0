@@ -11,36 +11,18 @@
 #include "native_stubs.h"
 #endif
 
-#include "component_types.h"
+#include "../component_types.h"
 
-/** @defgroup supervisor_state System States
- *  Ranked system states used by the Supervisor state machine.
- *  States are ordered by rank (multiples of 10) to enable directional
- *  comparison (upward/downward transitions). Lower rank = less active.
- *  @{ */
-
-/** X-macro generating the SystemState enum.
- *  Each entry is `V(name, rank)` where rank is a uint8_t value.
- *  Ranks are spaced by 10 to allow future insertions.
- *  Values ≤30 are considered transient/internal stepping states
- *  and cannot be targeted by external STATE_REQUESTED calls. */
+#ifndef SYSTEM_STATE_X
 #define SYSTEM_STATE_X(V) \
-	V(FATAL, 0)       /* Unrecoverable, halts all processing. */ \
-	V(ERROR, 10)      /* Recoverable error, target resets to SLEEP. */ \
-	V(SLEEP, 20)      /* Low-power idle. */ \
-	V(BOOTING, 30)    /* Initial power-on (transient, unreachable from external requests). */ \
-	V(CONNECTING, 40) /* Network/audio connecting (transient, zero-dwell pass-through). */ \
-	V(READY, 50)      /* Components initialized, ready for streaming. */ \
-	V(LIVE, 60)       /* Active audio streaming. */
-
-/* Generate the enum values */
-#define SYSTEM_STATE_ENUM(name, value) name = value,
-
-enum class SystemState : uint8_t {
-    SYSTEM_STATE_X(SYSTEM_STATE_ENUM)
-};
-
-#undef SYSTEM_STATE_ENUM
+    V(FATAL, 0) \
+    V(ERROR, 10) \
+    V(SLEEP, 20) \
+    V(BOOTING, 30) \
+    V(CONNECTING, 40) \
+    V(READY, 50) \
+    V(LIVE, 60)
+#endif
 
 namespace detail {
 
@@ -80,9 +62,11 @@ namespace detail {
 
 }  // namespace detail
 
+#undef SYSTEM_STATE_X
+
 /* Backward-compatible aliases -- .cpp and existing tests use these unchanged */
-constexpr auto& stateRoute = detail::kRoute;
-constexpr size_t stateCount = detail::kCount;
+inline constexpr auto& stateRoute = detail::kRoute;
+inline constexpr size_t stateCount = detail::kCount;
 
 /** @brief O(1) lookup: state rank value -> positional index.
  *  @param state The system state to look up.

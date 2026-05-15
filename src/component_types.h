@@ -1,4 +1,5 @@
-#pragma once
+#ifndef COMPONENT_TYPES_H_
+#define COMPONENT_TYPES_H_
 
 #include <cstdint>
 #include <cstddef>
@@ -12,8 +13,39 @@ using portMUX_TYPE = uint32_t;
 #define portEXIT_CRITICAL(mux) ((void)(mux))
 #endif
 
-// Forward declaration — full definition is in supervisor_v2.h
-enum class SystemState : uint8_t;
+/** @brief Ranked system state enum for the Supervisor state machine.
+ *  X-macro: V(name, rank) where rank is a uint8_t.
+ *  Ranks are spaced by 10 to allow future insertions.
+ *  FATAL is absorbent (no transitions out), ERROR triggers recovery. */
+#define SYSTEM_STATE_X(V) \
+    V(FATAL, 0) \
+    V(ERROR, 10) \
+    V(SLEEP, 20) \
+    V(BOOTING, 30) \
+    V(CONNECTING, 40) \
+    V(READY, 50) \
+    V(LIVE, 60)
+
+#define SYSTEM_STATE_ENUM(name, value) name = value,
+
+enum class SystemState : uint8_t {
+    SYSTEM_STATE_X(SYSTEM_STATE_ENUM)
+};
+
+#undef SYSTEM_STATE_ENUM
+
+inline bool isErrorState(SystemState state) {
+    return state == SystemState::ERROR || state == SystemState::FATAL;
+}
+
+inline const char* stateToString(SystemState state) {
+    switch (state) {
+#define SYSTEM_STATE_STRING(name, value) case SystemState::name: return #name;
+        SYSTEM_STATE_X(SYSTEM_STATE_STRING)
+#undef SYSTEM_STATE_STRING
+        default: return "UNKNOWN";
+    }
+}
 
 /** @brief Single-slot mailbox for component state targets.
  *  Last-write-wins. Owned by each component; the supervisor writes cross-core
@@ -129,3 +161,5 @@ struct ComponentStateMatrix {
 };
 
 constexpr uint32_t TARGET_MODE = 0xFF;
+
+#endif  // COMPONENT_TYPES_H_

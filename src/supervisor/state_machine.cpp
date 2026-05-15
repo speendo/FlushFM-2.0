@@ -8,23 +8,6 @@ constexpr const char* kLogSource = "Supervisor";
 
 }  // namespace
 
-const char* stateToString(SystemState state) {
-    switch (state) {
-        case SystemState::FATAL: return "FATAL";
-        case SystemState::ERROR: return "ERROR";
-        case SystemState::SLEEP: return "SLEEP";
-        case SystemState::BOOTING: return "BOOTING";
-        case SystemState::CONNECTING: return "CONNECTING";
-        case SystemState::READY: return "READY";
-        case SystemState::LIVE: return "LIVE";
-    }
-    return "UNKNOWN";
-}
-
-bool isErrorState(SystemState state) {
-    return state == SystemState::ERROR || state == SystemState::FATAL;
-}
-
 /** @brief Get the next system state based on the current and target states.
  *  @param current The current system state.
  *  @param target The target system state.

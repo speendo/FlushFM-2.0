@@ -12,40 +12,6 @@
 
 #include "component_types.h"
 
-/** @defgroup supervisor_state System States
- *  Ranked system states used by the Supervisor state machine.
- *  States are ordered by rank (multiples of 10) to enable directional
- *  comparison (upward/downward transitions). Lower rank = less active.
- *  @{ */
-
-/** X-macro generating the SystemState enum.
- *  Each entry is `V(name, rank)` where rank is a uint8_t value.
- *  Ranks are spaced by 10 to allow future insertions.
- *  Values ≤30 are considered transient/internal stepping states
- *  and cannot be targeted by external STATE_REQUESTED calls. */
-#define SYSTEM_STATE_X(V) \
-    V(FATAL, 0) \
-    V(ERROR, 10) \
-    V(SLEEP, 20) \
-    V(BOOTING, 30) \
-    V(CONNECTING, 40) \
-    V(READY, 50) \
-    V(LIVE, 60)
-
-#define SYSTEM_STATE_ENUM(name, value) name = value,
-
-/** System-wide operational states, ranked by activity level.
- *  - FATAL(0):   Unrecoverable, halts all processing.
- *  - ERROR(10):  Recoverable error, target resets to SLEEP.
- *  - SLEEP(20):  Low-power idle.
- *  - BOOTING(30):Initial power-on (transient, unreachable from external requests).
- *  - CONNECTING(40): Network/audio connecting (transient, zero-dwell pass-through).
- *  - READY(50):  Components initialized, ready for streaming.
- *  - LIVE(60):   Active audio streaming. */
-enum class SystemState : uint8_t {
-    SYSTEM_STATE_X(SYSTEM_STATE_ENUM)
-};
-
 /** Extract the numeric rank of a SystemState.
  *  @param state The state to query.
  *  @return The uint8_t rank value (0, 10, 20, ... 60). */

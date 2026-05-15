@@ -7,6 +7,7 @@
 #include "core/debug.h"
 #include "settings.h"
 #include "supervisor/supervisor.h"
+#include "supervisor/supervisor_v2.h"
 #include "components/composition/system_components.h"
 
 namespace {
@@ -25,6 +26,7 @@ static BoardInfoComponent s_boardInfo;
 static WiFiComponent s_wifi(s_system);
 static AudioRuntimeComponent s_audioRuntime(s_audio, s_system);
 static CliComponent s_cli(s_audio, s_system);
+static SupervisorV2 s_supervisorV2;
 
 static ISystemComponent* s_components[] = {
     &s_boardInfo,
@@ -32,6 +34,18 @@ static ISystemComponent* s_components[] = {
     &s_audioRuntime,
     &s_cli,
 };
+
+// ---------------------------------------------------------------------------
+// SupervisorV2 state machine task — pinned to Core 0
+// ---------------------------------------------------------------------------
+
+static void stateMachineTask(void* param) {
+    auto* supervisorV2 = static_cast<SupervisorV2*>(param);
+    supervisorV2->setup();
+    for (;;) {
+        supervisorV2->run();
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Arduino entry points
@@ -54,6 +68,16 @@ void setup() {
     }
 
     (void)s_system.setup();
+
+    xTaskCreatePinnedToCore(
+        stateMachineTask,
+        "StateMachine",
+        8192,
+        &s_supervisorV2,
+        2,
+        nullptr,
+        0
+    );
 }
 
 void loop() {
