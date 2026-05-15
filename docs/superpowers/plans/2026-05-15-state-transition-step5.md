@@ -508,7 +508,7 @@ git commit -m "step 5c: add kAllComponentBits constant, add startOrchestration t
 
 ### Task 5d: Implement checkOrchestrationResponse + 4 tests
 
-- [ ] **Step 5d.1: Add `checkOrchestrationResponse()` to `orchestrator.cpp`**
+- [x] **Step 5d.1: Add `checkOrchestrationResponse()` to `orchestrator.cpp`**
 
 ```cpp
 /** @brief Check for a pending orchestration response from the worker task.
@@ -544,7 +544,7 @@ void SupervisorV2::checkOrchestrationResponse() {
 }
 ```
 
-- [ ] **Step 5d.2: Add tests to test file**
+- [x] **Step 5d.2: Add tests to test file**
 
 Add before `}  // namespace`:
 
@@ -622,7 +622,7 @@ Add RUN_TEST calls before `return UNITY_END();`:
     RUN_TEST(test_check_response_returns_when_no_pending);
 ```
 
-- [ ] **Step 5d.3: Run tests**
+- [x] **Step 5d.3: Run tests**
 
 ```bash
 pio test -e native --filter test_supervisor_v2_orchestration
@@ -630,7 +630,7 @@ pio test -e native --filter test_supervisor_v2_orchestration
 
 Expected: 11 tests PASS.
 
-- [ ] **Step 5d.4: Run full suite**
+- [x] **Step 5d.4: Run full suite**
 
 ```bash
 pio test -e native
@@ -638,7 +638,7 @@ pio test -e native
 
 Expected: 108 succeeded (97 baseline + 11 new). 4 pre-existing errors.
 
-- [ ] **Step 5d.5: Commit**
+- [x] **Step 5d.5: Commit**
 
 ```bash
 git add src/supervisor/orchestrator.cpp test/test_supervisor_v2_orchestration/test_main.cpp
@@ -660,29 +660,46 @@ git commit -m "step 5d: add checkOrchestrationResponse to orchestrator.cpp"
 void orchestrationWorker(void* param) {
     auto* supervisor = static_cast<SupervisorV2*>(param);
     for (;;) {
-        // Wait for an order from the state machine
+        // Read an order from the state machine. If none pending, yield briefly
+        // (10 FreeRTOS ticks = 10ms with 1ms/tick config) and try again.
+        // consume() uses an embedded spinlock so this is safe cross-core.
         if (!supervisor->orderMailbox_.consume()) {
             vTaskDelay(pdMS_TO_TICKS(10));
             continue;
         }
 
-        // Block until all bits set, OR the deadline passes. FreeRTOS handles
-        // the timeout internally — the pdTRUE flags mean clear-on-exit and
-        // wait-for-all-bits respectively.
-        TickType_t waitTicks = pdMS_TO_TICKS(supervisor->orderMailbox_.deadlineMs - xTaskGetTickCount());
+        // Compute how long to wait: absolute deadline (in ms) minus current time (in ms).
+        // pdMS_TO_TICKS converts ms to FreeRTOS ticks. With default 1ms/tick config
+        // this is a no-op, but using it explicitly ensures portability.
+        TickType_t now = xTaskGetTickCount();
+        TickType_t waitTicks = pdMS_TO_TICKS(supervisor->orderMailbox_.deadlineMs - now);
+
+        // FreeRTOS xEventGroupWaitBits blocks the task until either:
+        //   1. All bits in expectedBits are set → returns the matched bits
+        //   2. waitTicks elapses → returns only the bits that ARE set
+        // The two pdTRUE arguments mean:
+        //   pdTRUE (clear on exit) — atomically clear the matched bits when returning
+        //   pdTRUE (wait for all)  — ALL expectedBits must be set, not just any one
         EventBits_t bits = xEventGroupWaitBits(supervisor->eventGroup_,
                                                 supervisor->orderMailbox_.expectedBits,
                                                 pdTRUE,
                                                 pdTRUE,
                                                 waitTicks);
 
+        // If all expected bits are accounted for in the return value, the
+        // orchestration completed successfully. Otherwise, some bits are
+        // missing — compute which ones for the TIMED_OUT response.
         if ((bits & supervisor->orderMailbox_.expectedBits) == supervisor->orderMailbox_.expectedBits) {
             supervisor->responseMailbox_.post(OrchestrationResult::COMPLETED, 0);
         } else {
-            // Timeout — find which bits are still missing
             EventBits_t missing = supervisor->orderMailbox_.expectedBits & ~bits;
             supervisor->responseMailbox_.post(OrchestrationResult::TIMED_OUT, missing);
         }
+
+        // Wake the state machine task so it processes the response immediately.
+        // xTaskNotifyGive sends a direct-to-task notification; the state
+        // machine's run() loop is blocked on ulTaskNotifyTake() and will
+        // unblock when this call completes.
         xTaskNotifyGive(supervisor->supervisorTaskHandle_);
     }
 }
