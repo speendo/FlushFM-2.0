@@ -96,6 +96,9 @@ inline constexpr int getIndex(SystemState state) {
 
 constexpr size_t componentCount = static_cast<size_t>(ComponentID::Count);
 
+/** @brief Bitmask covering all component event-group bits. Auto-scales with componentCount. */
+constexpr EventBits_t kAllComponentBits = (1U << componentCount) - 1;
+
 SystemState getNextState(SystemState current, SystemState target);
 
 const char* stateToString(SystemState state);

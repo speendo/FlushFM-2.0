@@ -177,6 +177,7 @@ inline EventBits_t xEventGroupGetBits(EventGroupHandle_t handle) {
 }
 inline void xTaskCreatePinnedToCore(void (*task)(void*), const char*, uint32_t,
                                      void* param, uint32_t, TaskHandle_t*, int) {}
+inline TickType_t xTaskGetTickCount() { return 0; }
 ```
 
 Replace the `#if !defined(ARDUINO)` block in `supervisor_v2.h` with:
@@ -376,6 +377,7 @@ void test_start_orchestration_sets_deadline_in_order() {
     SupervisorV2 supervisor;
     TestComponent wifi;
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
+    supervisor.setup();
 
     supervisor.observedState_ = SystemState::BOOTING;
     supervisor.startOrchestration(SystemState::CONNECTING);
@@ -462,9 +464,7 @@ void SupervisorV2::startOrchestration(SystemState target) {
     // Look up the per-state timeout. Forward if the target has a higher rank
     // than the current observed state, backward otherwise.
     bool isForward = (getIndex(target) > getIndex(observedState_));
-    uint32_t timeout = isForward
-        ? timeoutConfig_.forwardTimeouts[getIndex(target)]
-        : timeoutConfig_.backwardTimeouts[getIndex(target)];
+    uint32_t timeout = getTransitionTimeout(target, isForward);
 
     orderMailbox_.post(bits, xTaskGetTickCount() + timeout, target);
 

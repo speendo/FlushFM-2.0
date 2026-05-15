@@ -33,3 +33,4 @@ inline EventBits_t xEventGroupGetBits(EventGroupHandle_t handle) {
 }
 inline void xTaskCreatePinnedToCore(void (*task)(void*), const char*, uint32_t,
                                      void* param, uint32_t, TaskHandle_t*, int) {}
+inline TickType_t xTaskGetTickCount() { return 0; }

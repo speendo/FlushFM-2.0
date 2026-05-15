@@ -51,3 +51,43 @@ void SupervisorV2::postErrorEvent(DebugReason reason, ComponentID source) {
     }
     portEXIT_CRITICAL(&errorEvent_.spinlock);
 }
+
+/** @brief Begin an orchestration toward the given target state.
+ *  Computes the expected-bits mask, clears the event group, writes all
+ *  component mailboxes, and posts an OrchestrationOrder for the worker task.
+ *  @param target The intermediate stepping state to orchestrate toward.
+ */
+void SupervisorV2::startOrchestration(SystemState target) {
+    // Build the expected-bits mask: one bit per registered, non-degraded
+    // component. Both required and optional components participate in the
+    // quorum — optional components are only excluded after they time out or
+    // explicitly fail (at which point they become DEGRADED).
+    EventBits_t bits = 0;
+    for (size_t i = 0; i < componentCount; i++) {
+        if (componentMailboxes_[i] != nullptr
+            && componentStatuses_[i] != ComponentStatus::DEGRADED) {
+            bits |= (1 << i);
+        }
+    }
+
+    xEventGroupClearBits(eventGroup_, kAllComponentBits);
+
+    // Write the stepping target to every registered component's mailbox.
+    // Components read this on their own task loop and react accordingly.
+    for (size_t i = 0; i < componentCount; i++) {
+        if (componentMailboxes_[i] != nullptr) {
+            postNextComponentState(static_cast<ComponentID>(i));
+        }
+    }
+
+    // Look up the per-state timeout. Forward if the target has a higher rank
+    // than the current observed state, backward otherwise.
+    bool isForward = (getIndex(target) > getIndex(observedState_));
+    uint32_t timeout = getTransitionTimeout(target, isForward);
+
+    orderMailbox_.post(bits, xTaskGetTickCount() + timeout, target);
+
+    nextState_.transitionTarget = target;
+    nextState_.subState = SubState::PENDING;
+    hasActiveOrchestration_ = true;
+}
