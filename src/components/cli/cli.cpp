@@ -99,6 +99,12 @@ public:
 
 CliEnvironment s_env;
 
+void printComponentStatusSummary(const SupervisorV2& supervisorV2) {
+    Serial.printf("System:     %s\r\n", stateToString(supervisorV2.getObservedState()));
+    Serial.printf("Target:     %s\r\n", stateToString(supervisorV2.getTargetState()));
+    Serial.println();
+}
+
 } // namespace
 
 static void printDebugHelp() {
