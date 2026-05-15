@@ -62,7 +62,7 @@ private:
     static void onConnected(void* context);
     static void onDisconnected(void* context);
     void startPendingTransition(bool streamingTarget, uint32_t transitionId);
-    void completePendingTransition(TransitionStatus status, const char* reason);
+    void completePendingTransition(TransitionStatus status);
 
     ComponentMailbox supervisorV2Mailbox;
     bool bootAutoConnectSucceeded_ = false;
@@ -86,7 +86,7 @@ public:
 private:
     static void onAudioSignal(audio_runtime::Signal signal, void* context);
     void startPendingTransition(bool streamingTarget, uint32_t transitionId);
-    void completePendingTransition(TransitionStatus status, const char* reason);
+    void completePendingTransition(TransitionStatus status);
 
     IAudioPlayer& audio_;
     ComponentMailbox supervisorV2Mailbox;
