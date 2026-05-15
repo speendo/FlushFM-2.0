@@ -26,18 +26,26 @@
 
 - [ ] **Step 5a.1: Add `OrchestrationResult`, `OrchestrationOrder`, `OrchestrationResponse` to `supervisor_v2.h`**
 
-Add after the `ErrorEvent` struct definition (after line 136):
+Add after the `ErrorEvent` struct definition (after line 136), with doxygen comments following the existing codebase pattern:
 
 ```cpp
+/** @brief Result of an orchestration attempt.
+ *  COMPLETED: all required bits were set before the deadline.
+ *  TIMED_OUT: the deadline elapsed with bits still missing.
+ */
 enum class OrchestrationResult : uint8_t {
     COMPLETED,
     TIMED_OUT
 };
 
+/** @brief Order posted by the state machine to the orchestration worker.
+ *  Single-slot, spinlock-guarded. Last-write-wins.
+ *  The worker reads this via consume() and begins waiting on the event group.
+ */
 struct OrchestrationOrder {
     bool pending = false;
-    EventBits_t expectedBits = 0;
-    TickType_t deadlineMs = 0;
+    EventBits_t expectedBits = 0;        // Bits to wait for
+    TickType_t deadlineMs = 0;            // Absolute tick deadline
     SystemState transitionTarget;
     portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
 
@@ -62,10 +70,13 @@ struct OrchestrationOrder {
     }
 };
 
+/** @brief Response posted by the orchestration worker to the state machine.
+ *  Single-slot, spinlock-guarded. The state machine reads this on each run() tick.
+ */
 struct OrchestrationResponse {
     bool pending = false;
     OrchestrationResult result = OrchestrationResult::COMPLETED;
-    EventBits_t timedOutComponents = 0;
+    EventBits_t timedOutComponents = 0;  // Bitmask of components that missed the deadline
     portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
 
     void post(OrchestrationResult r, EventBits_t timedOut = 0) {
@@ -184,6 +195,9 @@ git commit -m "step 5a: add orchestration structs, replace polling members, add 
 Add after `resetRecoveryIfOutOfError()` in `state_machine.cpp`:
 
 ```cpp
+/** @brief Commit a new observed state. Minimal version — step 6 adds logging and resetRecoveryIfOutOfError.
+ *  @param state The new observed state.
+ */
 void SupervisorV2::setObservedState(SystemState state) {
     observedState_ = state;
     hasActiveOrchestration_ = false;
@@ -388,7 +402,15 @@ Expected: FAIL — `startOrchestration` not defined yet.
 - [ ] **Step 5c.4: Add `startOrchestration()` to `orchestrator.cpp`**
 
 ```cpp
+/** @brief Begin an orchestration toward the given target state.
+ *  Computes the set of expected bits (required, non-degraded components),
+ *  clears the event group, writes all component mailboxes, and posts an
+ *  OrchestrationOrder so the worker task can begin the blocking wait.
+ *  @param target The intermediate stepping state to orchestrate toward.
+ */
 void SupervisorV2::startOrchestration(SystemState target) {
+    // Build the expected-bits mask: one bit per registered, non-degraded,
+    // required component. Optional components are excluded from the quorum.
     EventBits_t bits = 0;
     for (size_t i = 0; i < componentCount; i++) {
         if (componentMailboxes_[i] != nullptr
@@ -400,12 +422,16 @@ void SupervisorV2::startOrchestration(SystemState target) {
 
     xEventGroupClearBits(eventGroup_, 0xFFFF);
 
+    // Write the stepping target to every registered component's mailbox.
+    // Components read this on their own task loop and react accordingly.
     for (size_t i = 0; i < componentCount; i++) {
         if (componentMailboxes_[i] != nullptr) {
             postNextComponentState(static_cast<ComponentID>(i));
         }
     }
 
+    // Look up the per-state timeout. Forward if the target has a higher rank
+    // than the current observed state, backward otherwise.
     bool isForward = (getIndex(target) > getIndex(observedState_));
     uint32_t timeout = isForward
         ? timeoutConfig_.forwardTimeouts[getIndex(target)]
@@ -449,17 +475,25 @@ git commit -m "step 5c: add startOrchestration to orchestrator.cpp"
 - [ ] **Step 5d.1: Add `checkOrchestrationResponse()` to `orchestrator.cpp`**
 
 ```cpp
+/** @brief Check for a pending orchestration response from the worker task.
+ *  Reads responseMailbox_ (non-blocking, spinlock inside).
+ *  On COMPLETED: advances observedState_ to the orchestration target.
+ *  On TIMED_OUT: clears the active flag and handles overdue components.
+ */
 void SupervisorV2::checkOrchestrationResponse() {
     OrchestrationResult result;
     EventBits_t timedOut;
     if (!responseMailbox_.consume(result, timedOut)) return;
 
+    // Clear the active flag regardless of outcome — the orchestration cycle
+    // is done (either all bits arrived or the deadline elapsed).
     hasActiveOrchestration_ = false;
 
     if (result == OrchestrationResult::COMPLETED) {
         nextState_.subState = SubState::COMMITTED;
         setObservedState(nextState_.transitionTarget);
     } else {
+        // TIMED_OUT — some components never set their event group bits
         for (size_t i = 0; i < componentCount; i++) {
             if (!(timedOut & (1 << i))) continue;
             if (isRequired_[i]) {
@@ -469,6 +503,8 @@ void SupervisorV2::checkOrchestrationResponse() {
                 componentStatuses_[i] = ComponentStatus::DEGRADED;
             }
         }
+        // The posted error event will be consumed on the next run() tick,
+        // setting targetState_ to ERROR or FATAL as appropriate.
     }
 }
 ```
@@ -581,9 +617,15 @@ git commit -m "step 5d: add checkOrchestrationResponse to orchestrator.cpp"
 - [ ] **Step 5e.1: Add `orchestrationWorker()` to `orchestrator.cpp`**
 
 ```cpp
+/** @brief Orchestration worker task. Reads orders from orderMailbox_ and blocks
+ *  on xEventGroupWaitBits until all expected bits are set or the deadline expires.
+ *  Posts a result back to responseMailbox_ for the state machine to consume.
+ *  @param param Pointer to the SupervisorV2 instance (cast from void*).
+ */
 void orchestrationWorker(void* param) {
     auto* supervisor = static_cast<SupervisorV2*>(param);
     for (;;) {
+        // Wait for an order from the state machine
         EventBits_t expectedBits;
         TickType_t deadlineMs;
         SystemState target;
@@ -592,6 +634,9 @@ void orchestrationWorker(void* param) {
             continue;
         }
 
+        // Block until all bits set, OR the deadline passes. FreeRTOS handles
+        // the timeout internally — the pdTRUE flags mean clear-on-exit and
+        // wait-for-all-bits respectively.
         TickType_t waitTicks = pdMS_TO_TICKS(deadlineMs - xTaskGetTickCount());
         EventBits_t bits = xEventGroupWaitBits(supervisor->eventGroup_,
                                                 expectedBits,
@@ -602,6 +647,7 @@ void orchestrationWorker(void* param) {
         if ((bits & expectedBits) == expectedBits) {
             supervisor->responseMailbox_.post(OrchestrationResult::COMPLETED);
         } else {
+            // Timeout — find which bits are still missing
             EventBits_t missing = expectedBits & ~bits;
             supervisor->responseMailbox_.post(OrchestrationResult::TIMED_OUT, missing);
         }
