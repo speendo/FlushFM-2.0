@@ -6,7 +6,7 @@
 #include "core/config.h"
 #include "core/debug.h"
 #include "settings.h"
-#include "state_machine/supervisor.h"
+#include "supervisor/supervisor.h"
 #include "components/composition/system_components.h"
 
 namespace {

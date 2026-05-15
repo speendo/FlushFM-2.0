@@ -1,4 +1,4 @@
-#include "state_machine/supervisor_v2.h"
+#include "supervisor/supervisor_v2.h"
 
 void SupervisorV2::postNextComponentState(ComponentID id) {
     // Write the current stepping state to a component's mailbox under spinlock.

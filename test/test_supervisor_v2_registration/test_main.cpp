@@ -1,9 +1,9 @@
 #include <unity.h>
 
 #define private public
-#include "../../src/state_machine/supervisor_v2.cpp"
-#include "../../src/state_machine/orchestrator.cpp"
-#include "../../src/state_machine/state_machine.cpp"
+#include "../../src/supervisor/supervisor_v2.cpp"
+#include "../../src/supervisor/orchestrator.cpp"
+#include "../../src/supervisor/state_machine.cpp"
 #undef private
 
 namespace {

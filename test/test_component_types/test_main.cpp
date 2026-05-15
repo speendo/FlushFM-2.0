@@ -4,7 +4,7 @@
 #include <cstring>
 #include <unity.h>
 
-#include "../../src/state_machine/supervisor.h"
+#include "../../src/supervisor/supervisor.h"
 
 namespace {
 

@@ -2,7 +2,7 @@
 
 #include <unity.h>
 
-#include "../../src/state_machine/supervisor.cpp"
+#include "../../src/supervisor/supervisor.cpp"
 
 namespace {
 

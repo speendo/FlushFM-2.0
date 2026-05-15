@@ -1,4 +1,4 @@
-#include "state_machine/supervisor_v2.h"
+#include "supervisor/supervisor_v2.h"
 
 SupervisorV2::SupervisorV2() = default;
 

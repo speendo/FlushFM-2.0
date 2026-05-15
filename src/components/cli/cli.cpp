@@ -9,7 +9,7 @@
 #include "component_types.h"
 #include "core/config.h"
 #include "settings.h"
-#include "state_machine/supervisor.h"
+#include "supervisor/supervisor.h"
 #include "components/network/wifi_manager.h"
 
 // ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@
 #include "component_types.h"
 #include "core/config.h"
 #include "core/debug.h"
-#include "state_machine/supervisor.h"
+#include "supervisor/supervisor.h"
 
 // ---------------------------------------------------------------------------
 // Module-private state

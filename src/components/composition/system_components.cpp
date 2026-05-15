@@ -9,7 +9,7 @@
 #include "core/debug.h"
 #include "settings.h"
 #include "components/network/wifi_manager.h"
-#include "state_machine/supervisor.h"
+#include "supervisor/supervisor.h"
 
 namespace {
 
