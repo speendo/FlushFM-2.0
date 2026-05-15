@@ -44,10 +44,6 @@ constexpr uint32_t kCliTimeoutErrorMs = 0;
 
 BoardInfoComponent::BoardInfoComponent() : ISystemComponent(ComponentID::BoardInfo, kBoardInfoName) {}
 
-void BoardInfoComponent::registerWithController(Supervisor& controller) const {
-    (void)controller;
-}
-
 bool BoardInfoComponent::setup() {
     board_info::print();
     s_supervisorV2.registerComponent(
@@ -96,10 +92,6 @@ void BoardInfoComponent::onTransitionTimeout(uint32_t transitionId) {
 
 WiFiComponent::WiFiComponent()
     : ISystemComponent(ComponentID::WiFi, kWiFiName) {}
-
-void WiFiComponent::registerWithController(Supervisor& controller) const {
-    (void)controller;
-}
 
 bool WiFiComponent::setup() {
     s_supervisorV2.registerComponent(
@@ -221,10 +213,6 @@ void WiFiComponent::completePendingTransition(TransitionStatus status, const cha
 
 AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer& audio)
     : ISystemComponent(ComponentID::AudioRuntime, kAudioRuntimeName), audio_(audio) {}
-
-void AudioRuntimeComponent::registerWithController(Supervisor& controller) const {
-    (void)controller;
-}
 
 bool AudioRuntimeComponent::setup() {
     s_supervisorV2.registerComponent(
@@ -355,10 +343,6 @@ void AudioRuntimeComponent::completePendingTransition(TransitionStatus status, c
 
 CliComponent::CliComponent(IAudioPlayer& audio)
     : ISystemComponent(ComponentID::CLI, kCliName), audio_(audio) {}
-
-void CliComponent::registerWithController(Supervisor& controller) const {
-    (void)controller;
-}
 
 bool CliComponent::setup() {
     s_supervisorV2.registerComponent(

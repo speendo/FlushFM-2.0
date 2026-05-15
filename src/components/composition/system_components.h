@@ -37,7 +37,6 @@ inline constexpr ComponentStateMatrix kBoardInfoStateMatrix[] = {
 };
 
 class IAudioPlayer;
-class Supervisor;
 
 namespace audio_runtime {
 enum class Signal;
@@ -50,7 +49,6 @@ public:
     virtual ~ISystemComponent() = default;
     ComponentID id() const { return id_; }
     const char* name() const { return name_; }
-    virtual void registerWithController(Supervisor& controller) const = 0;
     virtual bool setup() = 0;
     virtual uint32_t setOFF(uint32_t transitionId) = 0;
     virtual uint32_t setIDLE(uint32_t transitionId) = 0;
@@ -69,7 +67,6 @@ private:
 class BoardInfoComponent final : public ISystemComponent {
 public:
     BoardInfoComponent();
-    void registerWithController(Supervisor& controller) const override;
     bool setup() override;
     uint32_t setOFF(uint32_t transitionId) override;
     uint32_t setIDLE(uint32_t transitionId) override;
@@ -87,7 +84,6 @@ class WiFiComponent final : public ISystemComponent {
 public:
     WiFiComponent();
 
-    void registerWithController(Supervisor& controller) const override;
     bool setup() override;
     uint32_t setOFF(uint32_t transitionId) override;
     uint32_t setIDLE(uint32_t transitionId) override;
@@ -116,7 +112,6 @@ class AudioRuntimeComponent final : public ISystemComponent {
 public:
     AudioRuntimeComponent(IAudioPlayer& audio);
 
-    void registerWithController(Supervisor& controller) const override;
     bool setup() override;
     uint32_t setOFF(uint32_t transitionId) override;
     uint32_t setIDLE(uint32_t transitionId) override;
@@ -144,7 +139,6 @@ class CliComponent final : public ISystemComponent {
 public:
     CliComponent(IAudioPlayer& audio);
 
-    void registerWithController(Supervisor& controller) const override;
     bool setup() override;
     uint32_t setOFF(uint32_t transitionId) override;
     uint32_t setIDLE(uint32_t transitionId) override;
