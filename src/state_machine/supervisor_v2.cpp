@@ -40,6 +40,8 @@ SystemState SupervisorV2::getTargetState() const {
 }
 
 void SupervisorV2::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
+    // Store the mailbox pointer for cross-core writes. Null means absent.
     componentMailboxes_[static_cast<int>(id)] = mailbox;
+    // Track required/optional for boot presence checks and failure handling.
     isRequired_[static_cast<int>(id)] = isRequired;
 }
