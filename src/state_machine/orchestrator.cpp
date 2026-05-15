@@ -13,10 +13,20 @@ void SupervisorV2::postNextComponentState(ComponentID id) {
 
 void SupervisorV2::completeTransition(ComponentID id, TransitionStatus status) {
     if (status == TransitionStatus::Completed) {
+        // Set this component's bit in the event group. The orchestration
+        // completes when all required, non-degraded components have set
+        // their bits — checked on each run() tick.
         xEventGroupSetBits(eventGroup_, 1 << static_cast<int>(id));
         return;
     }
 
+    // Component reported Failed. How we handle it depends on whether this
+    // component is required or optional:
+    //   - Required: post an error event which the supervisor consumes on the
+    //     next run() tick. This sets targetState_ to ERROR and aborts the
+    //     current orchestration. The recovery logic then decides what to do.
+    //   - Optional: mark as DEGRADED and exclude from the orchestration
+    //     quorum. The remaining components are expected to finish normally.
     if (isRequired_[static_cast<int>(id)]) {
         postErrorEvent("component failed", id);
     } else {
