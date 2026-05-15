@@ -6,7 +6,6 @@
 #include "core/config.h"
 #include "core/debug.h"
 #include "settings.h"
-#include "supervisor/supervisor.h"
 #include "supervisor/supervisor_v2.h"
 #include "components/composition/system_components.h"
 
@@ -21,12 +20,15 @@ constexpr const char* kLogSource = "Main";
 // ---------------------------------------------------------------------------
 static AudioPlayerESP32 s_playerImpl(I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
 static IAudioPlayer& s_audio = s_playerImpl;
-static Supervisor s_system;
+
+// ---------------------------------------------------------------------------
+// Components — no old Supervisor dependency
+// ---------------------------------------------------------------------------
+SupervisorV2 s_supervisorV2;
 static BoardInfoComponent s_boardInfo;
-static WiFiComponent s_wifi(s_system);
-static AudioRuntimeComponent s_audioRuntime(s_audio, s_system);
-static CliComponent s_cli(s_audio, s_system);
-static SupervisorV2 s_supervisorV2;
+static WiFiComponent s_wifi;
+static AudioRuntimeComponent s_audioRuntime(s_audio);
+static CliComponent s_cli(s_audio);
 
 static ISystemComponent* s_components[] = {
     &s_boardInfo,
@@ -54,7 +56,6 @@ static void stateMachineTask(void* param) {
 void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
 
-    // Wait for Serial to be ready (USB CDC on ESP32-S3 needs a moment)
     const uint32_t start = millis();
     while (!Serial && (millis() - start) < SERIAL_TIMEOUT_MS) {
         delay(10);
@@ -64,10 +65,8 @@ void setup() {
     registerAudioLibraryCallbacks();
 
     for (ISystemComponent* component : s_components) {
-        component->registerWithController(s_system);
+        component->setup();
     }
-
-    (void)s_system.setup();
 
     xTaskCreatePinnedToCore(
         stateMachineTask,
@@ -81,8 +80,6 @@ void setup() {
 }
 
 void loop() {
-    s_system.processMailbox();
-
     for (ISystemComponent* component : s_components) {
         component->loop();
     }
