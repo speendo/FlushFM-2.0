@@ -16,22 +16,25 @@ Core 0 (State Machine)                      Core 0 (Orch Worker)          Core 0
 ┌───────────────────────────┐              ┌─────────────────────┐      ┌──────────────────┐
 │ Supervisor::run()         │   order      │ orchestrationWorker │      │ WiFiComponent    │
 │ ┌───────────────────────┐ │ ──────────► │                     │      │ AudioRuntimeComp │
-│ │ Consume Mailbox       │◄┼─spinlock─    │ xEventGroupWaitBits │      │ CLI              │
-│ │ Consume ErrorEvent    │◄┼─spinlock─    │   (expectedBits,    │      │ BoardInfo        │
-│ │ Step toward target    │ │              │    pdTRUE, pdTRUE,  │      └────────┬─────────┘
-│ │ Write component mbx   ├─┼─spinlock───► │    deadlineMs)      │               │
-│ │                        │ │   response  │                      │               │
-│ │ checkOrchResponse()   │◄┼──────────── │ post response        │               │
-│ └───────────────────────┘ │              └──────────┬───────────┘               │
+│ │ ulTaskNotifyTake()    │◄┼──notify──── │ xEventGroupWaitBits │      │ CLI              │
+│ │ (blocking wait)       │ │              │   (expectedBits,    │      │ BoardInfo        │
+│ │                        │ │              │    pdTRUE, pdTRUE,  │      └────────┬─────────┘
+│ │ Consume Mailbox       │◄┼─spinlock─    │    deadlineMs)      │               │
+│ │ Consume ErrorEvent    │◄┼─spinlock─    │                      │               │
+│ │ Step toward target    │ │              │ post response        │               │
+│ │ Write component mbx   ├─┼─spinlock───► │  + notify SM        │               │
+│ │ checkOrchResponse()   │◄┼──────────── └──────────┬───────────┘               │
+│ └───────────────────────┘ │              │           │                           │
 │                            │                        │                           │
-│                         writes:                     │ xEventGroupGetBits() ←────┤
+│                         writes:                     │ xEventGroupSetBits() ←────┤
 │                         xEventGroupClearBits() ─────┤                           │
-│                         completeTransition() ───────┤ xEventGroupSetBits() ←────┤
+│                         postStateRequest() ────────►│ notify SM after write     │
+│                         postErrorEvent() ──────────►│ notify SM after write     │
 └───────────────────────────┘              └─────────────────────┘      └──────────────────┘
 ```
 
 ### Key principles
-- State machine `run()` is a FreeRTOS task pinned to Core 0. Never blocks.
+- State machine `run()` is a FreeRTOS task pinned to Core 0. Blocks on `ulTaskNotifyTake(pdTRUE, portMAX_DELAY)` — woken only by `xTaskNotifyGive` from `postStateRequest()`, `postErrorEvent()`, or the orchestration worker.
 - Orchestration worker is a separate FreeRTOS task, also pinned to Core 0. Blocks on `xEventGroupWaitBits(expectedBits, ALL, timeout)`.
 - Components run on any core and are FreeRTOS tasks.
 - `postStateRequest()` / `postErrorEvent()` are called cross-core with spinlock protection.
@@ -140,6 +143,7 @@ struct OrchestrationResponse {
 - `OrchestrationOrder orderMailbox_` — state machine writes, worker reads
 - `OrchestrationResponse responseMailbox_` — worker writes, state machine reads
 - `TaskHandle_t workerTaskHandle_` — handle for the orchestration worker task
+- `TaskHandle_t supervisorTaskHandle_` — notification handle for the state machine task; stored in setup() via `xTaskGetCurrentTaskHandle()`, used by `postStateRequest()`, `postErrorEvent()`, and the worker to wake the state machine
 
 ### Unchanged members
 - `EventGroupHandle_t eventGroup_` — still used by worker and `completeTransition()`
@@ -158,10 +162,13 @@ Used when clearing the event group before each orchestration. Auto-scales with `
 
 ## 3. The `run()` Method
 
-Called once per iteration of the FreeRTOS state machine task. Never blocks.
+Called in a loop by the FreeRTOS state machine task. Blocks on `ulTaskNotifyTake(pdTRUE, portMAX_DELAY)` until woken by a notification from `postStateRequest()`, `postErrorEvent()`, or the orchestration worker's response. No polling, no periodic ticks.
 
 ```
 void SupervisorV2::run() {
+    // Block until notified — woken by postStateRequest, postErrorEvent, or worker response
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
     // 1. Event processing — skipped in FATAL
     if (observedState_ != FATAL) {
         consumeErrorEvent();
@@ -173,7 +180,7 @@ void SupervisorV2::run() {
         if (targetState_ != observedState_ && !hasActiveOrchestration()) {
             stepTowardTarget();
         } else if (hasActiveOrchestration()) {
-            checkOrchestrationResponse();    // <- replaces polling
+            checkOrchestrationResponse();    // non-blocking, reads response mailbox
         } else if (observedState_ == ERROR) {
             SystemState recoveryTarget = determineRecoveryTarget();
             if (recoveryTarget != observedState_) {
@@ -197,16 +204,18 @@ Key change: the two `if` blocks from the old design (state stepping and state ti
 - State stepping is skipped: FATAL is absorbent, no automatic transitions out.
 - `getNextState(FATAL, X)` returns FATAL for any target — defensive catch for callers.
 
-### 3.2 Consume ErrorEvent (unchanged)
-- Called from `run()` on every non-FATAL tick
+### 3.2 Consume ErrorEvent
+- Called from `run()` on every non-FATAL tick after `ulTaskNotifyTake` returns
 - Acquires error event spinlock, then calls into `consumeErrorEvent()` logic
 - If `errorEvent_.pending`, logs error, increments recovery counter, sets FATAL if exhausted, otherwise sets ERROR
 - Clears pending and payload
+- When `postErrorEvent()` writes the error cross-core, it calls `xTaskNotifyGive(supervisorTaskHandle_)` to wake the state machine
 
-### 3.3 Consume Mailbox (unchanged)
-- Called from `run()` on every non-FATAL tick
+### 3.3 Consume Mailbox
+- Called from `run()` on every non-FATAL tick after `ulTaskNotifyTake` returns
 - Acquires mailbox spinlock
 - If `stateRequestMailbox_.pending`, reads target, clears pending, releases spinlock, calls `setTargetState()`
+- When `postStateRequest()` writes the request cross-core, it calls `xTaskNotifyGive(supervisorTaskHandle_)` to wake the state machine
 
 ### 3.4 Step Toward Target
 - Call `getNextState(observedState_, targetState_)` to get the intermediate stepping state
@@ -281,7 +290,8 @@ The `orchestrationWorker` task runs a loop:
 2. Call `xEventGroupWaitBits(eventGroup_, expectedBits, pdTRUE, pdTRUE, deadline - now)`
 3. If all bits set: post `OrchestrationResponse(COMPLETED)`
 4. If timeout: compute which bits are missing, post `OrchestrationResponse(TIMED_OUT, missingBits)`
-5. Loop back to step 1
+5. **After posting, call `xTaskNotifyGive(supervisorTaskHandle_)` to wake the state machine**
+6. Loop back to step 1
 
 ### Completion detection (state machine side)
 - `checkOrchestrationResponse()` reads `responseMailbox_` (non-blocking)
@@ -354,7 +364,15 @@ void orchestrationWorker(void* param);
 ```
 - Receives `SupervisorV2*` as parameter
 - Loops: reads `orderMailbox_`, calls `xEventGroupWaitBits()`, writes `responseMailbox_`
+- After posting a response, calls `xTaskNotifyGive(supervisorTaskHandle_)` to wake the state machine
 - Declared as `friend` in `SupervisorV2` to access private members
+
+### Updated public methods
+- `void postStateRequest(SystemState target)` — now calls `xTaskNotifyGive(supervisorTaskHandle_)` after writing the mailbox
+- `void postErrorEvent(DebugReason reason, ComponentID source)` — now calls `xTaskNotifyGive(supervisorTaskHandle_)` after writing the error event
+
+### Updated setup() behavior
+- `void setup()` — after creating the event group and loading config, stores the calling task's handle via `supervisorTaskHandle_ = xTaskGetCurrentTaskHandle()` and creates the orchestration worker task
 
 ### Removed from public API (unchanged)
 - `setComponentTransitionHooks()` — replaced by mailbox pattern
@@ -396,6 +414,7 @@ All testable on `pio test -e native` without FreeRTOS:
 - Spinlock macros stubbed for native (`portENTER_CRITICAL` → no-op)
 - Event group works with upgraded native stubs (bitmap-backed `xEventGroupSetBits`/`GetBits`)
 - Order/response mailboxes use the same embedded spinlock pattern (no-ops on native)
+- Task notifications (`xTaskNotifyGive`, `ulTaskNotifyTake`, `xTaskGetCurrentTaskHandle`) are no-ops on native — tests call `run()` synchronously without blocking
 - The `orchestrationWorker` FreeRTOS task is hardware-only
 
 ---
@@ -407,7 +426,7 @@ All testable on `pio test -e native` without FreeRTOS:
 3. Add spinlock guards to `consumeStateRequest()` and `consumeErrorEvent()` ✅ (step 3)
 4. Update `getNextState()` to explicitly return FATAL when `current == FATAL` ✅ (step 4)
 5. Split `supervisor_v2.cpp` into three `.cpp` files — `supervisor_v2.cpp` (config), `orchestrator.cpp` (cross-core I/O), `state_machine.cpp` (state logic) — **step 4.1**
-6. Add `OrchestrationOrder`/`OrchestrationResponse`/`OrchestrationResult` structs, replace polling members/methods with split-task equivalents, add native stubs, implement `startOrchestration()`, `checkOrchestrationResponse()`, `orchestrationWorker()` in `orchestrator.cpp`, wire worker task in `setup()` — **step 5**
+6. Add `OrchestrationOrder`/`OrchestrationResponse`/`OrchestrationResult` structs, replace polling members/methods with split-task equivalents, add native stubs (including task notification stubs), implement `startOrchestration()`, `checkOrchestrationResponse()`, `orchestrationWorker()`, wire task notifications into `postStateRequest()`/`postErrorEvent()` and worker response — **step 5**
 7. Implement `determineRecoveryTarget()`, and `handleFatal()`; enhance `setObservedState()` with logging and `resetRecoveryIfOutOfError()` — **step 6**
 8. Implement `run()` — the full tick sequence — **step 7**
 9. Write unit tests for remaining paths — **step 8**

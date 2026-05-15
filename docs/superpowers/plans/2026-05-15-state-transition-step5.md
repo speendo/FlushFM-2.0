@@ -114,6 +114,7 @@ Add after `hasActiveOrchestration_`:
     OrchestrationOrder orderMailbox_{};
     OrchestrationResponse responseMailbox_{};
     TaskHandle_t workerTaskHandle_{};
+    TaskHandle_t supervisorTaskHandle_{};
 ```
 
 - [x] **Step 5a.3: Replace method declarations**
@@ -178,6 +179,9 @@ inline EventBits_t xEventGroupGetBits(EventGroupHandle_t handle) {
 inline void xTaskCreatePinnedToCore(void (*task)(void*), const char*, uint32_t,
                                      void* param, uint32_t, TaskHandle_t*, int) {}
 inline TickType_t xTaskGetTickCount() { return 0; }
+inline TaskHandle_t xTaskGetCurrentTaskHandle() { return nullptr; }
+inline void xTaskNotifyGive(TaskHandle_t) {}
+inline uint32_t ulTaskNotifyTake(bool, TickType_t) { return 0; }
 ```
 
 Replace the `#if !defined(ARDUINO)` block in `supervisor_v2.h` with:
@@ -520,7 +524,7 @@ void SupervisorV2::checkOrchestrationResponse() {
         nextState_.subState = SubState::COMMITTED;
         setObservedState(nextState_.transitionTarget);
     } else {
-        // TIMED_OUT — some components never set their event group bits
+        // TIMED_OUT — some components did not set their event group bits
         EventBits_t timedOut = responseMailbox_.timedOutComponents;
         for (size_t i = 0; i < componentCount; i++) {
             if (!(timedOut & (1 << i))) continue;
@@ -676,6 +680,7 @@ void orchestrationWorker(void* param) {
             EventBits_t missing = supervisor->orderMailbox_.expectedBits & ~bits;
             supervisor->responseMailbox_.post(OrchestrationResult::TIMED_OUT, missing);
         }
+        xTaskNotifyGive(supervisor->supervisorTaskHandle_);
     }
 }
 ```
@@ -686,6 +691,8 @@ void orchestrationWorker(void* param) {
 void SupervisorV2::setup() {
     eventGroup_ = xEventGroupCreateStatic(&eventGroupBuffer_);
     loadTransitionTimeoutConfig();
+
+    supervisorTaskHandle_ = xTaskGetCurrentTaskHandle();
 
     xTaskCreatePinnedToCore(
         orchestrationWorker,
@@ -714,4 +721,52 @@ Expected: 108 succeeded (no regression — worker setup is no-op on native).
 ```bash
 git add platformio.ini src/supervisor/supervisor_v2.cpp src/supervisor/orchestrator.cpp
 git commit -m "step 5e: add orchestrationWorker + wire worker task in setup()"
+```
+
+---
+
+### Task 5f: Wire task notifications into postStateRequest and postErrorEvent
+
+- [ ] **Step 5f.1: Add `xTaskNotifyGive` to `postStateRequest()` in `orchestrator.cpp`**
+
+```cpp
+void SupervisorV2::postStateRequest(SystemState target) {
+    portENTER_CRITICAL(&stateRequestMailbox_.spinlock);
+    stateRequestMailbox_.pending = true;
+    stateRequestMailbox_.requestedTarget = target;
+    portEXIT_CRITICAL(&stateRequestMailbox_.spinlock);
+
+    xTaskNotifyGive(supervisorTaskHandle_);
+}
+```
+
+- [ ] **Step 5f.2: Add `xTaskNotifyGive` to `postErrorEvent()` in `orchestrator.cpp`**
+
+```cpp
+void SupervisorV2::postErrorEvent(DebugReason reason, ComponentID source) {
+    portENTER_CRITICAL(&errorEvent_.spinlock);
+    if (!errorEvent_.pending) {
+        errorEvent_.pending = true;
+        errorEvent_.reason = reason;
+        errorEvent_.source = source;
+    }
+    portEXIT_CRITICAL(&errorEvent_.spinlock);
+
+    xTaskNotifyGive(supervisorTaskHandle_);
+}
+```
+
+- [ ] **Step 5f.3: Run full suite**
+
+```bash
+pio test -e native
+```
+
+Expected: 108 succeeded (no regression — notification stubs are no-ops on native).
+
+- [ ] **Step 5f.4: Commit**
+
+```bash
+git add src/supervisor/orchestrator.cpp
+git commit -m "step 5f: wire xTaskNotifyGive into postStateRequest and postErrorEvent"
 ```
