@@ -2,6 +2,24 @@
 
 #include "../../src/state_machine/supervisor_v2.cpp"
 
+void test_get_index_valid_states() {
+    TEST_ASSERT_EQUAL_INT(0, getIndex(SystemState::FATAL));
+    TEST_ASSERT_EQUAL_INT(1, getIndex(SystemState::ERROR));
+    TEST_ASSERT_EQUAL_INT(2, getIndex(SystemState::SLEEP));
+    TEST_ASSERT_EQUAL_INT(3, getIndex(SystemState::BOOTING));
+    TEST_ASSERT_EQUAL_INT(4, getIndex(SystemState::CONNECTING));
+    TEST_ASSERT_EQUAL_INT(5, getIndex(SystemState::READY));
+    TEST_ASSERT_EQUAL_INT(6, getIndex(SystemState::LIVE));
+}
+
+void test_get_index_invalid_returns_negative_one() {
+    // Any uint8_t value that doesn't match a defined state
+    TEST_ASSERT_EQUAL_INT(-1, getIndex(static_cast<SystemState>(1)));
+    TEST_ASSERT_EQUAL_INT(-1, getIndex(static_cast<SystemState>(42)));
+    TEST_ASSERT_EQUAL_INT(-1, getIndex(static_cast<SystemState>(100)));
+    TEST_ASSERT_EQUAL_INT(-1, getIndex(static_cast<SystemState>(255)));
+}
+
 void test_get_next_state_fatal_absorbent() {
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::FATAL),
                       static_cast<int>(getNextState(SystemState::FATAL, SystemState::SLEEP)));
@@ -33,6 +51,8 @@ void test_get_next_state_error_to_sleep() {
 
 int main() {
     UNITY_BEGIN();
+    RUN_TEST(test_get_index_valid_states);
+    RUN_TEST(test_get_index_invalid_returns_negative_one);
     RUN_TEST(test_get_next_state_fatal_absorbent);
     RUN_TEST(test_get_next_state_fatal_to_fatal);
     RUN_TEST(test_get_next_state_fatal_to_error);
