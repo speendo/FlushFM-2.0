@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "../../src/state_machine/supervisor_v2.cpp"
+#include "../../src/state_machine/orchestrator.cpp"
 #include "../../src/state_machine/state_machine.cpp"
 
 void test_get_index_valid_states() {
