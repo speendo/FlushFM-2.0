@@ -135,3 +135,11 @@ void SupervisorV2::resetRecoveryIfOutOfError() {
         retryPolicy_.recoveryCounter = 0;
     }
 }
+
+/** @brief Commit a new observed state. Minimal version — step 6 adds logging and resetRecoveryIfOutOfError.
+ *  @param state The new observed state.
+ */
+void SupervisorV2::setObservedState(SystemState state) {
+    observedState_ = state;
+    hasActiveOrchestration_ = false;
+}

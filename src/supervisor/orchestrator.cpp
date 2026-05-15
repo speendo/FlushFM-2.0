@@ -31,6 +31,7 @@ void SupervisorV2::completeTransition(ComponentID id, TransitionStatus status) {
         postErrorEvent("component failed", id);
     } else {
         componentStatuses_[static_cast<int>(id)] = ComponentStatus::DEGRADED;
+        xEventGroupSetBits(eventGroup_, 1 << static_cast<int>(id));
     }
 }
 
