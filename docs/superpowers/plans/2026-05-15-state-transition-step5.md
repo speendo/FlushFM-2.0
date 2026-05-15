@@ -133,7 +133,7 @@ Before closing `};` of class `SupervisorV2`:
     friend void orchestrationWorker(void* param);
 ```
 
-- [ ] **Step 5a.5: Create `src/supervisor/native_stubs.h` with bitmap-backed event group stubs**
+- [x] **Step 5a.5: Create `src/supervisor/native_stubs.h` with bitmap-backed event group stubs**
 
 The current stubs in supervisor_v2.h's `#if !defined(ARDUINO)` block are no-op inline functions
 that return 0/nullptr. Extract them into a dedicated file with functional bitmap-backed
@@ -195,7 +195,7 @@ Replace the `#if !defined(ARDUINO)` block in `supervisor_v2.h` with:
 #endif
 ```
 
-- [ ] **Step 5a.6: Run full suite**
+- [x] **Step 5a.6: Run full suite**
 
 ```bash
 pio test -e native
@@ -203,7 +203,7 @@ pio test -e native
 
 Expected: 97 succeeded. 4 pre-existing errors unchanged. No regressions from structural changes.
 
-- [ ] **Step 5a.7: Commit**
+- [x] **Step 5a.7: Commit**
 
 ```bash
 git add src/supervisor/supervisor_v2.h src/supervisor/native_stubs.h
@@ -214,7 +214,7 @@ git commit -m "step 5a: add orchestration structs, replace polling members, add 
 
 ### Task 5b: Minimal setObservedState + completeTransition optional failure fix
 
-- [ ] **Step 5b.1: Add minimal `setObservedState()` to `supervisor_v2.cpp`**
+  - [x] **Step 5b.1: Add minimal `setObservedState()` to `supervisor_v2.cpp`**
 
 Add after `resetRecoveryIfOutOfError()` in `state_machine.cpp`:
 
@@ -230,7 +230,7 @@ void SupervisorV2::setObservedState(SystemState state) {
 
 (Full version with logging and `resetRecoveryIfOutOfError` comes in step 6.)
 
-- [ ] **Step 5b.2: Update `completeTransition()` optional failure path**
+  - [x] **Step 5b.2: Update `completeTransition()` optional failure path**
 
 In `orchestrator.cpp`, change:
 ```cpp
@@ -247,7 +247,7 @@ To:
     }
 ```
 
-- [ ] **Step 5b.3: Run full suite**
+  - [x] **Step 5b.3: Run full suite**
 
 ```bash
 pio test -e native
@@ -255,7 +255,7 @@ pio test -e native
 
 Expected: 97 succeeded. 4 pre-existing errors unchanged. No regressions.
 
-- [ ] **Step 5b.4: Commit**
+  - [x] **Step 5b.4: Commit**
 
 ```bash
 git add src/supervisor/state_machine.cpp src/supervisor/orchestrator.cpp
@@ -266,14 +266,14 @@ git commit -m "step 5b: add minimal setObservedState, update completeTransition 
 
 ### Task 5c: Implement startOrchestration + 7 tests
 
-- [ ] **Step 5c.1: Add test_ignore**
+- [x] **Step 5c.1: Add test_ignore**
 
 ```ini
 test_framework = unity
 test_ignore = test_supervisor_v2_orchestration
 ```
 
-- [ ] **Step 5c.2: Create `test/test_supervisor_v2_orchestration/test_main.cpp`**
+- [x] **Step 5c.2: Create `test/test_supervisor_v2_orchestration/test_main.cpp`**
 
 Includes all three `.cpp` files:
 
@@ -417,7 +417,7 @@ int main() {
 }
 ```
 
-- [ ] **Step 5c.3: Run tests — expect compile failure**
+- [x] **Step 5c.3: Run tests — expect compile failure**
 
 ```bash
 pio test -e native --filter test_supervisor_v2_orchestration
@@ -425,7 +425,7 @@ pio test -e native --filter test_supervisor_v2_orchestration
 
 Expected: FAIL — `startOrchestration` not defined yet.
 
-- [ ] **Step 5c.4: Add `kAllComponentBits` constant to `supervisor_v2.h` and `startOrchestration()` to `orchestrator.cpp`**
+- [x] **Step 5c.4: Add `kAllComponentBits` constant to `supervisor_v2.h` and `startOrchestration()` to `orchestrator.cpp`**
 
 Add after `componentCount` definition in `supervisor_v2.h`:
 
@@ -478,7 +478,7 @@ void SupervisorV2::startOrchestration(SystemState target) {
 }
 ```
 
-- [ ] **Step 5c.5: Run tests**
+- [x] **Step 5c.5: Run tests**
 
 ```bash
 pio test -e native --filter test_supervisor_v2_orchestration
@@ -486,7 +486,7 @@ pio test -e native --filter test_supervisor_v2_orchestration
 
 Expected: 7 tests PASS.
 
-- [ ] **Step 5c.6: Run full suite**
+- [x] **Step 5c.6: Run full suite**
 
 ```bash
 pio test -e native
@@ -494,7 +494,7 @@ pio test -e native
 
 Expected: 104 succeeded (97 baseline + 7 new). 4 pre-existing errors.
 
-- [ ] **Step 5c.7: Commit**
+- [x] **Step 5c.7: Commit**
 
 ```bash
 git add src/supervisor/supervisor_v2.h src/supervisor/orchestrator.cpp test/test_supervisor_v2_orchestration/
