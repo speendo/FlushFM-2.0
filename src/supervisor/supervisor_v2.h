@@ -413,6 +413,7 @@ private:
 	OrchestrationOrder orderMailbox_{};
 	OrchestrationResponse responseMailbox_{};
 	TaskHandle_t workerTaskHandle_{};
+	TaskHandle_t supervisorTaskHandle_{};
 
 	TickType_t fatalDeadlineMs_{};
 
