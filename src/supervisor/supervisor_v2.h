@@ -81,6 +81,8 @@ inline constexpr int getIndex(SystemState state) {
 
 constexpr size_t componentCount = static_cast<size_t>(ComponentID::Count);
 
+static_assert(componentCount < 32, "componentCount must be < 32 for event-group bitmask safety");
+
 /** @brief Bitmask covering all component event-group bits. Auto-scales with componentCount. */
 constexpr EventBits_t kAllComponentBits = (1U << componentCount) - 1;
 
@@ -138,8 +140,6 @@ enum class ComponentStatus : uint8_t {
 	FAILED,
 	DEGRADED
 };
-
-using ComponentStatusMap = std::array<ComponentStatus, componentCount>;
 
 struct TransitionTimeoutConfig {
 	std::array<uint32_t, stateCount> forwardTimeouts{};   // Per-state timeout (ms) for forward transitions
@@ -333,7 +333,7 @@ private:
 	Mailbox stateRequestMailbox_{};
 	ErrorEvent errorEvent_{};
 	RetryPolicy retryPolicy_{};
-	ComponentStatusMap componentStatuses_{};
+	std::array<ComponentStatus, componentCount> componentStatuses_{};
 	TransitionTimeoutConfig timeoutConfig_{};
 
 	StaticEventGroup_t eventGroupBuffer_{};
@@ -362,5 +362,3 @@ private:
 
     friend void orchestrationWorker(void* param);
 };
-
-#undef SYSTEM_STATE_X

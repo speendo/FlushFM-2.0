@@ -63,41 +63,31 @@ void SupervisorV2::postErrorEvent(DebugReason reason, ComponentID source) {
  *  @param target The intermediate stepping state to orchestrate toward.
  */
 void SupervisorV2::startOrchestration(SystemState target) {
-    // Build the expected-bits mask: one bit per registered, non-degraded
-    // component. Both required and optional components participate in the
-    // quorum — optional components are only excluded after they time out or
-    // explicitly fail (at which point they become DEGRADED).
-    EventBits_t bits = 0;
-    for (size_t i = 0; i < componentCount; i++) {
-        if (componentMailboxes_[i] != nullptr
-            && componentStatuses_[i] != ComponentStatus::DEGRADED) {
-            bits |= (1 << i);
-        }
-    }
-
-    xEventGroupClearBits(eventGroup_, kAllComponentBits);
-
     // Set the transition target before writing mailboxes — postNextComponentState
     // reads nextState_.transitionTarget to know what to write.
     nextState_.transitionTarget = target;
 
-    // Write the stepping target to every registered component's mailbox.
-    // Components read this on their own task loop and react accordingly.
+    // Build expected-bits mask and write mailboxes in a single pass.
+    // Unregistered components (nullptr) are skipped entirely.
+    // DEGRADED components get a mailbox write but no event-group bit.
+    EventBits_t bits = 0;
     for (size_t i = 0; i < componentCount; i++) {
-        if (componentMailboxes_[i] != nullptr) {
-            postNextComponentState(static_cast<ComponentID>(i));
+        if (componentMailboxes_[i] == nullptr) continue;  // unregistered
+
+        if (componentStatuses_[i] != ComponentStatus::DEGRADED) {
+            bits |= (1 << i);                              // part of quorum
         }
+
+        postNextComponentState(static_cast<ComponentID>(i)); // always write mailbox
     }
 
-    // Look up the per-state timeout. Forward if the target has a higher rank
-    // than the current observed state, backward otherwise.
-    bool isForward = (getIndex(target) > getIndex(observedState_));
-    uint32_t timeout = getTransitionTimeout(target, isForward);
-
-    orderMailbox_.post(bits, xTaskGetTickCount() + timeout, target);
+    xEventGroupClearBits(eventGroup_, kAllComponentBits);
 
     nextState_.subState = SubState::PENDING;
     hasActiveOrchestration_ = true;
+
+    orderMailbox_.post(bits, xTaskGetTickCount() + getTransitionTimeout(target,
+        getIndex(target) > getIndex(observedState_)), target);
 }
 
 /** @brief Check for a pending orchestration response from the worker task.

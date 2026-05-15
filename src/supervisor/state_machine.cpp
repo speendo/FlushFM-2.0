@@ -8,6 +8,8 @@ constexpr const char* kLogSource = "Supervisor";
 
 }  // namespace
 
+constexpr TickType_t kFatalDwellMs = 60000;
+
 /** @brief Get the next system state based on the current and target states.
  *  @param current The current system state.
  *  @param target The target system state.
@@ -111,9 +113,7 @@ void SupervisorV2::run() {
     if (observedState_ != SystemState::FATAL) {
         consumeErrorEvent();
         consumeStateRequest();
-    }
 
-    if (observedState_ != SystemState::FATAL) {
         if (targetState_ != observedState_ && !hasActiveOrchestration_) {
             stepTowardTarget();
         } else if (hasActiveOrchestration_) {
@@ -205,8 +205,7 @@ void SupervisorV2::setObservedState(SystemState state) {
              stateToString(observedState_), stateToString(state));
 
     observedState_ = state;
-    hasActiveOrchestration_ = false;
-
+    // hasActiveOrchestration_ already cleared by checkOrchestrationResponse()
     resetRecoveryIfOutOfError();
 }
 
@@ -229,14 +228,14 @@ SystemState SupervisorV2::determineRecoveryTarget() {
 void SupervisorV2::handleFatal() {
     if (!fatalEntered_) {
         fatalEntered_ = true;
-        fatalDeadlineMs_ = xTaskGetTickCount() + pdMS_TO_TICKS(60000);
+        fatalDeadlineMs_ = xTaskGetTickCount() + pdMS_TO_TICKS(kFatalDwellMs);
         return;
     }
 
     if (xTaskGetTickCount() >= fatalDeadlineMs_) {
         fatalDeadlineElapsed_ = true;
 #if defined(ARDUINO)
-        // esp_deep_sleep_start();
+        esp_deep_sleep_start();
 #endif
     }
 }

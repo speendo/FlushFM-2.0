@@ -58,7 +58,7 @@ void test_set_target_non_error_does_not_snapshot() {
 void test_set_observed_state_logs_and_resets_recovery() {
     SupervisorV2 supervisor;
     supervisor.retryPolicy_.recoveryCounter = 2;
-    supervisor.hasActiveOrchestration_ = true;
+    supervisor.hasActiveOrchestration_ = false;
 
     supervisor.setObservedState(SystemState::READY);
 
@@ -88,15 +88,6 @@ void test_set_observed_state_during_fatal_does_not_reset_recovery() {
     TEST_ASSERT_EQUAL(3, supervisor.retryPolicy_.recoveryCounter);
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::FATAL),
                       static_cast<int>(supervisor.observedState_));
-}
-
-void test_set_observed_state_clears_active_orchestration() {
-    SupervisorV2 supervisor;
-    supervisor.hasActiveOrchestration_ = true;
-
-    supervisor.setObservedState(SystemState::CONNECTING);
-
-    TEST_ASSERT_FALSE(supervisor.hasActiveOrchestration_);
 }
 
 // --- determineRecoveryTarget tests ---
@@ -163,7 +154,6 @@ int main() {
     RUN_TEST(test_set_observed_state_logs_and_resets_recovery);
     RUN_TEST(test_set_observed_state_during_error_does_not_reset_recovery);
     RUN_TEST(test_set_observed_state_during_fatal_does_not_reset_recovery);
-    RUN_TEST(test_set_observed_state_clears_active_orchestration);
     RUN_TEST(test_determine_recovery_target_returns_saved_target);
     RUN_TEST(test_determine_recovery_target_after_booting);
     RUN_TEST(test_handle_fatal_sets_deadline_on_first_call);
