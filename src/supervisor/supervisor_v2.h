@@ -419,6 +419,7 @@ private:
 
 	TickType_t fatalDeadlineMs_{};
 	bool fatalDeadlineElapsed_{};
+	bool fatalEntered_{};
 
 	/** @brief Saved target for ERROR recovery placeholder.
 	 *  Auto-snapshotted by setTargetState() when transitioning to ERROR.

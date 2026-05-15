@@ -144,6 +144,7 @@ void test_handle_fatal_no_elapsed_before_deadline() {
 
 void test_handle_fatal_detects_elapsed_deadline() {
     SupervisorV2 supervisor;
+    supervisor.fatalEntered_ = true;
     supervisor.fatalDeadlineMs_ = 0;
 
     supervisor.handleFatal();

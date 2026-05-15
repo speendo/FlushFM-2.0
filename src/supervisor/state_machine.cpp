@@ -154,3 +154,34 @@ void SupervisorV2::setObservedState(SystemState state) {
 
     resetRecoveryIfOutOfError();
 }
+
+/** @brief Determine the target state to aim for after ERROR recovery.
+ *  Placeholder: returns the pre-error target snapshot captured by
+ *  setTargetState() when the target entered ERROR or FATAL. This will
+ *  be replaced with real logic once recovery policies are defined.
+ *  @return The recovery target state.
+ */
+SystemState SupervisorV2::determineRecoveryTarget() {
+    return lastTargetBeforeError_;
+}
+
+/** @brief Manage the deep sleep shutdown after FATAL.
+ *  On first call, records the deadline 60 seconds from now. On subsequent
+ *  calls, checks whether the deadline has elapsed. When it has, sets the
+ *  fatalDeadlineElapsed_ flag so tests can observe the state. On actual
+ *  hardware, this would also trigger esp_deep_sleep_start().
+ */
+void SupervisorV2::handleFatal() {
+    if (!fatalEntered_) {
+        fatalEntered_ = true;
+        fatalDeadlineMs_ = xTaskGetTickCount() + pdMS_TO_TICKS(60000);
+        return;
+    }
+
+    if (xTaskGetTickCount() >= fatalDeadlineMs_) {
+        fatalDeadlineElapsed_ = true;
+#if defined(ARDUINO)
+        // esp_deep_sleep_start();
+#endif
+    }
+}
