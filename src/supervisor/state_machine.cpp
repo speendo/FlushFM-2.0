@@ -126,6 +126,10 @@ void SupervisorV2::consumeErrorEvent() {
 }
 
 void SupervisorV2::setTargetState(SystemState target) {
+    if (isErrorState(target) && !isErrorState(targetState_)) {
+        lastTargetBeforeError_ = targetState_;
+    }
+
     PROD_LOG(kLogSource, "Setting target state to %s", stateToString(target));
     targetState_ = target;
 }

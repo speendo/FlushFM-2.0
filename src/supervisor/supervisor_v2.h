@@ -418,6 +418,7 @@ private:
 	TaskHandle_t supervisorTaskHandle_{};
 
 	TickType_t fatalDeadlineMs_{};
+	bool fatalDeadlineElapsed_{};
 
 	/** @brief Saved target for ERROR recovery placeholder.
 	 *  Auto-snapshotted by setTargetState() when transitioning to ERROR.
