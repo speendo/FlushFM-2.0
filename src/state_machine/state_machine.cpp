@@ -25,17 +25,29 @@ bool isErrorState(SystemState state) {
     return state == SystemState::ERROR || state == SystemState::FATAL;
 }
 
+/** @brief Get the next system state based on the current and target states.
+ *  @param current The current system state.
+ *  @param target The target system state.
+ *  @return The next system state.
+ */
 SystemState getNextState(SystemState current, SystemState target) {
+    // FATAL is absorbent — no state transitions out of FATAL.
     if (current == SystemState::FATAL) return SystemState::FATAL;
 
+    // ERROR and FATAL as target are immediate — no stepping needed.
     if (isErrorState(target)) {
         return target;
     }
 
+    // Recovery from ERROR jumps directly to BOOTING, skipping SLEEP.
+    // Only applies when the target is not SLEEP itself.
     if (isErrorState(current) && target != SystemState::SLEEP) {
         return SystemState::BOOTING;
     }
 
+    // For all other combinations, step through the route based on rank comparison.
+    // Lower rank = less active (FATAL=0, ERROR=10, SLEEP=20, BOOTING=30,
+    // CONNECTING=40, READY=50, LIVE=60). Step up or down one rank at a time.
     int currentIndex = getIndex(current);
     int targetIndex = getIndex(target);
 
@@ -46,12 +58,12 @@ SystemState getNextState(SystemState current, SystemState target) {
     }
 
     if (currentIndex < targetIndex) {
-        return stateRoute[currentIndex + 1];
+        return stateRoute[currentIndex + 1]; // Step up toward target
     }
     if (currentIndex > targetIndex) {
-        return stateRoute[currentIndex - 1];
+        return stateRoute[currentIndex - 1]; // Step down toward target
     }
-    return current;
+    return current; // Already at target
 }
 
 void SupervisorV2::checkComponentPresence() {
