@@ -9,7 +9,7 @@
 #include "component_types.h"
 #include "core/config.h"
 #include "settings.h"
-#include "supervisor/supervisor.h"
+#include "supervisor/supervisor_v2.h"
 #include "components/network/wifi_manager.h"
 
 // ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@
 // Module-private state
 // ---------------------------------------------------------------------------
 static IAudioPlayer* s_audio = nullptr;
-static Supervisor* s_controller = nullptr;
+static SupervisorV2* s_supervisorV2 = nullptr;
 
 namespace {
 
@@ -99,89 +99,6 @@ public:
 
 CliEnvironment s_env;
 
-const char* lifecycleLabel(ComponentLifecycleStatus status) {
-    switch (status) {
-        case ComponentLifecycleStatus::Ready:
-            return "OK";
-        case ComponentLifecycleStatus::Failed:
-            return "FAILED";
-        case ComponentLifecycleStatus::Disabled:
-            return "DISABLED";
-        case ComponentLifecycleStatus::Unknown:
-            return "UNKNOWN";
-    }
-
-    return "UNKNOWN";
-}
-
-const char* wifiModeLabel() {
-    switch (wifi_manager::state()) {
-        case wifi_manager::WiFiState::CONNECTED:
-            return "connected";
-        case wifi_manager::WiFiState::CONNECTING:
-            return "connecting";
-        case wifi_manager::WiFiState::DISCONNECTED:
-            return "disconnected";
-        case wifi_manager::WiFiState::ERROR:
-            return "error";
-    }
-
-    return "unknown";
-}
-
-const char* audioModeLabel() {
-    if (!s_audio) {
-        return "unknown";
-    }
-
-    switch (s_audio->runtimeState()) {
-        case IAudioPlayer::RuntimeState::SLEEP:
-            return "sleep";
-        case IAudioPlayer::RuntimeState::CONNECTING:
-            return "connecting";
-        case IAudioPlayer::RuntimeState::LIVE:
-            return "live";
-        case IAudioPlayer::RuntimeState::ERROR:
-            return "error";
-    }
-
-    return "unknown";
-}
-
-const char* componentModeLabel(const char* name) {
-    if (strcmp(name, "WiFi") == 0) {
-        return wifiModeLabel();
-    }
-    if (strcmp(name, "AudioRuntime") == 0) {
-        return audioModeLabel();
-    }
-    if (strcmp(name, "CLI") == 0) {
-        return "active";
-    }
-    if (strcmp(name, "BoardInfo") == 0) {
-        return "active";
-    }
-
-    return "n/a";
-}
-
-void printComponentStatusSummary(const Supervisor& controller) {
-    const ComponentID ids[] = {ComponentID::WiFi, ComponentID::AudioRuntime, ComponentID::CLI, ComponentID::BoardInfo};
-
-    Serial.printf("System:     %s\r\n", toString(controller.state()));
-    Serial.println("Components:");
-    for (const ComponentID id : ids) {
-        const ComponentLifecycleStatus status = controller.getComponentStatus(id);
-        const bool required = controller.isComponentRequired(id);
-        Serial.printf("  %-12s %-8s mode=%-12s (%s)\r\n",
-                      componentName(id),
-                      lifecycleLabel(status),
-                      componentModeLabel(componentName(id)),
-                      required ? "required" : "optional");
-    }
-    Serial.println();
-}
-
 } // namespace
 
 static void printDebugHelp() {
@@ -193,11 +110,11 @@ static void printDebugHelp() {
 // ---------------------------------------------------------------------------
 namespace cli {
 
-void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, Supervisor* controller) {
+void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, SupervisorV2* supervisorV2) {
     s_audio = &audio;
-    s_controller = controller;
+    s_supervisorV2 = supervisorV2;
 #ifdef DEBUG_ENABLED
-    debug_cli::init(audioTaskHandle, controller);
+    debug_cli::init(audioTaskHandle, supervisorV2);
 #else
     (void)audioTaskHandle;
 #endif
@@ -243,19 +160,13 @@ void process(const char* line) {
         s_env,
         AUDIO_VOLUME_STEPS);
 
-    if (s_controller) {
+    if (s_supervisorV2) {
         if (strcmp(cmd, "play") == 0 && result.key == cli_output::MessageKey::CONNECTING_STREAM) {
-            (void)s_controller->postEvent(SystemEvent::STATE_REQUESTED,
-                                            SystemReason::USER_REQUEST,
-                                            SystemState::LIVE);
+            (void)s_supervisorV2->postStateRequest(SystemState::LIVE);
         } else if (strcmp(cmd, "stop") == 0 && result.key == cli_output::MessageKey::STREAM_STOPPED) {
-            (void)s_controller->postEvent(SystemEvent::STATE_REQUESTED,
-                                            SystemReason::USER_REQUEST,
-                                            SystemState::READY);
+            (void)s_supervisorV2->postStateRequest(SystemState::READY);
         } else if (strcmp(cmd, "reset") == 0 && result.key == cli_output::MessageKey::SESSION_RESET) {
-            (void)s_controller->postEvent(SystemEvent::STATE_REQUESTED,
-                                            SystemReason::USER_REQUEST,
-                                            SystemState::READY);
+            (void)s_supervisorV2->postStateRequest(SystemState::READY);
         }
     }
 
@@ -267,8 +178,8 @@ void process(const char* line) {
 
     cli_output::render(result, &printDebugHelp);
 
-    if (result.key == cli_output::MessageKey::STATUS && s_controller) {
-        printComponentStatusSummary(*s_controller);
+    if (result.key == cli_output::MessageKey::STATUS && s_supervisorV2) {
+        printComponentStatusSummary(*s_supervisorV2);
     }
 }
 

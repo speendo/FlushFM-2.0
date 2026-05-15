@@ -12,14 +12,14 @@
 #include "component_types.h"
 #include "core/config.h"
 #include "core/debug.h"
-#include "supervisor/supervisor.h"
+#include "supervisor/supervisor_v2.h"
 
 // ---------------------------------------------------------------------------
 // Module-private state
 // ---------------------------------------------------------------------------
 static constexpr const char* kLogSource = "DebugCLI";
 static TaskHandle_t* s_audioTaskHandle = nullptr;
-static Supervisor* s_controller = nullptr;
+static SupervisorV2* s_supervisorV2 = nullptr;
 
 // ---------------------------------------------------------------------------
 // Forward declarations
@@ -34,7 +34,7 @@ static void loadtestTask(void* param);
 namespace debug_cli {
 
 static bool postManualTransition(const char* targetState) {
-    if (!s_controller) {
+    if (!s_supervisorV2) {
         ERROR_LOG(kLogSource, "Supervisor not available for transition command");
         return true;
     }
@@ -45,27 +45,25 @@ static bool postManualTransition(const char* targetState) {
     }
 
     if (strcmp(targetState, "idle") == 0 || strcmp(targetState, "ready") == 0) {
-        (void)s_controller->postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::READY);
+        (void)s_supervisorV2->postStateRequest(SystemState::READY);
         PROD_LOG(kLogSource, "Transition request posted: ready");
         return true;
     }
 
     if (strcmp(targetState, "streaming") == 0 || strcmp(targetState, "live") == 0) {
-        // Keep UX aligned with production command handling by reusing 'play'.
-        // cli::process("play") performs the same validation and posts the transition event on success.
         cli::process("play");
         PROD_LOG(kLogSource, "Transition request posted: live");
         return true;
     }
 
     if (strcmp(targetState, "sleep") == 0) {
-        (void)s_controller->postEvent(SystemEvent::STATE_REQUESTED, SystemReason::USER_REQUEST, SystemState::SLEEP);
+        (void)s_supervisorV2->postStateRequest(SystemState::SLEEP);
         PROD_LOG(kLogSource, "Transition request posted: sleep");
         return true;
     }
 
     if (strcmp(targetState, "error") == 0) {
-        (void)s_controller->postEvent(SystemEvent::COMPONENT_SETUP_FAILED, SystemReason::USER_REQUEST);
+        (void)s_supervisorV2->postStateRequest(SystemState::ERROR);
         PROD_LOG(kLogSource, "Transition request posted: error");
         return true;
     }
@@ -75,9 +73,9 @@ static bool postManualTransition(const char* targetState) {
     return true;
 }
 
-void init(TaskHandle_t* audioTaskHandle, Supervisor* controller) {
+void init(TaskHandle_t* audioTaskHandle, SupervisorV2* supervisorV2) {
     s_audioTaskHandle = audioTaskHandle;
-    s_controller = controller;
+    s_supervisorV2 = supervisorV2;
 }
 
 bool process(const char* cmd, const char* arg) {
@@ -161,44 +159,14 @@ static void printTaskList() {
 }
 
 static void printTransitionStatus() {
-    if (!s_controller) {
+    if (!s_supervisorV2) {
         ERROR_LOG(kLogSource, "Supervisor not available");
         return;
     }
 
     Serial.println();
-    Serial.printf("SM state:        %s\r\n", toString(s_controller->state()));
-    Serial.printf("Orchestration:   %s\r\n", s_controller->isOrchestrationActive() ? "active" : "inactive");
-    Serial.printf("Waiting count:   %u\r\n", static_cast<unsigned>(s_controller->componentsWaitingForCompletion()));
-
-    if (s_controller->hasActiveTransition()) {
-        Serial.printf("Active trans:    id=%lu %s -> %s\r\n",
-                      static_cast<unsigned long>(s_controller->activeTransitionId()),
-                      toString(s_controller->activeTransitionFrom()),
-                      toString(s_controller->activeTransitionTarget()));
-    } else {
-        Serial.println("Active trans:    none");
-    }
-
-    if (s_controller->hasQueuedTransition()) {
-        Serial.printf("Queued trans:    id=%lu %s -> %s\r\n",
-                      static_cast<unsigned long>(s_controller->queuedTransitionId()),
-                      toString(s_controller->queuedTransitionFrom()),
-                      toString(s_controller->queuedTransitionTarget()));
-    } else {
-        Serial.println("Queued trans:    none");
-    }
-
-    const ComponentID ids[] = {ComponentID::WiFi, ComponentID::AudioRuntime, ComponentID::CLI, ComponentID::BoardInfo};
-    Serial.println("Components:");
-    for (const ComponentID id : ids) {
-        const ComponentLifecycleStatus status = s_controller->getComponentStatus(id);
-        const bool required = s_controller->isComponentRequired(id);
-        Serial.printf("  %-12s required=%s status=%s\r\n",
-                      componentName(id),
-                      required ? "true" : "false",
-                      toString(status));
-    }
+    Serial.printf("SM state:        %s\r\n", stateToString(s_supervisorV2->getObservedState()));
+    Serial.printf("Target:          %s\r\n", stateToString(s_supervisorV2->getTargetState()));
     Serial.println();
 }
 
