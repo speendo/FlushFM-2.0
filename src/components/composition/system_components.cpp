@@ -1,7 +1,5 @@
 #include "components/composition/system_components.h"
 
-#include <string.h>
-
 #include "components/audio/audio_runtime.h"
 #include "components/board/board_info.h"
 #include "components/cli/cli.h"

@@ -1,5 +1,7 @@
 #pragma once
 
+#ifndef PRODUCTION_BUILD
+
 #include <functional>
 #include <vector>
 #include <array>
@@ -509,3 +511,5 @@ private:
     /** Context for the currently active orchestration, if any. */
     OrchestrationContext orchestration_{};
 };
+
+#endif // PRODUCTION_BUILD

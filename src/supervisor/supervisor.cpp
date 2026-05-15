@@ -1,5 +1,7 @@
 #include "supervisor/supervisor.h"
 
+#ifndef PRODUCTION_BUILD
+
 #include <utility>
 
 #if !defined(ARDUINO)
@@ -895,3 +897,5 @@ void Supervisor::setObservedStateImmediate(SystemState next, SystemEvent trigger
         targetMode_ = SystemState::SLEEP;
     }
 }
+
+#endif // PRODUCTION_BUILD
