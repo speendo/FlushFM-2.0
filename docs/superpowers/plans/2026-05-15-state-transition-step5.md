@@ -715,13 +715,13 @@ void SupervisorV2::setup() {
     supervisorTaskHandle_ = xTaskGetCurrentTaskHandle();
 
     xTaskCreatePinnedToCore(
-        orchestrationWorker,
-        "OrchWorker",
-        4096,
-        this,
-        1,
-        &workerTaskHandle_,
-        0
+        orchestrationWorker,            // entry point: the function the task runs
+        "OrchWorker",                   // human-readable name (visible in debugger/FreeRTOS tracing)
+        4096,                           // stack size in bytes; 4KB for the wait loop + mailbox access
+        this,                           // argument passed to orchestrationWorker() as void*
+        1,                              // priority: 1 = below default 2, yields to state machine
+        &workerTaskHandle_,             // out parameter: receives the task handle for notifications
+        0                               // core affinity: 0 = Core 0, same as state machine
     );
 }
 ```
