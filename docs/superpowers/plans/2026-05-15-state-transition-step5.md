@@ -58,12 +58,12 @@ struct OrchestrationOrder {
         portEXIT_CRITICAL(&spinlock);
     }
 
-    bool consume(EventBits_t& outBits, TickType_t& outDeadline, SystemState& outTarget) {
+    /** @brief Clear the pending flag under spinlock. Caller reads members directly after.
+     *  @return true if an order was pending and was consumed.
+     */
+    bool consume() {
         portENTER_CRITICAL(&spinlock);
         if (!pending) { portEXIT_CRITICAL(&spinlock); return false; }
-        outBits = expectedBits;
-        outDeadline = deadlineMs;
-        outTarget = transitionTarget;
         pending = false;
         portEXIT_CRITICAL(&spinlock);
         return true;
@@ -87,11 +87,12 @@ struct OrchestrationResponse {
         portEXIT_CRITICAL(&spinlock);
     }
 
-    bool consume(OrchestrationResult& outResult, EventBits_t& outTimedOut) {
+    /** @brief Clear the pending flag under spinlock. Caller reads members directly after.
+     *  @return true if a response was pending and was consumed.
+     */
+    bool consume() {
         portENTER_CRITICAL(&spinlock);
         if (!pending) { portEXIT_CRITICAL(&spinlock); return false; }
-        outResult = result;
-        outTimedOut = timedOutComponents;
         pending = false;
         portEXIT_CRITICAL(&spinlock);
         return true;
@@ -481,19 +482,18 @@ git commit -m "step 5c: add startOrchestration to orchestrator.cpp"
  *  On TIMED_OUT: clears the active flag and handles overdue components.
  */
 void SupervisorV2::checkOrchestrationResponse() {
-    OrchestrationResult result;
-    EventBits_t timedOut;
-    if (!responseMailbox_.consume(result, timedOut)) return;
+    if (!responseMailbox_.consume()) return;
 
     // Clear the active flag regardless of outcome — the orchestration cycle
     // is done (either all bits arrived or the deadline elapsed).
     hasActiveOrchestration_ = false;
 
-    if (result == OrchestrationResult::COMPLETED) {
+    if (responseMailbox_.result == OrchestrationResult::COMPLETED) {
         nextState_.subState = SubState::COMMITTED;
         setObservedState(nextState_.transitionTarget);
     } else {
         // TIMED_OUT — some components never set their event group bits
+        EventBits_t timedOut = responseMailbox_.timedOutComponents;
         for (size_t i = 0; i < componentCount; i++) {
             if (!(timedOut & (1 << i))) continue;
             if (isRequired_[i]) {
@@ -626,10 +626,7 @@ void orchestrationWorker(void* param) {
     auto* supervisor = static_cast<SupervisorV2*>(param);
     for (;;) {
         // Wait for an order from the state machine
-        EventBits_t expectedBits;
-        TickType_t deadlineMs;
-        SystemState target;
-        if (!supervisor->orderMailbox_.consume(expectedBits, deadlineMs, target)) {
+        if (!supervisor->orderMailbox_.consume()) {
             vTaskDelay(pdMS_TO_TICKS(10));
             continue;
         }
@@ -637,18 +634,18 @@ void orchestrationWorker(void* param) {
         // Block until all bits set, OR the deadline passes. FreeRTOS handles
         // the timeout internally — the pdTRUE flags mean clear-on-exit and
         // wait-for-all-bits respectively.
-        TickType_t waitTicks = pdMS_TO_TICKS(deadlineMs - xTaskGetTickCount());
+        TickType_t waitTicks = pdMS_TO_TICKS(supervisor->orderMailbox_.deadlineMs - xTaskGetTickCount());
         EventBits_t bits = xEventGroupWaitBits(supervisor->eventGroup_,
-                                                expectedBits,
+                                                supervisor->orderMailbox_.expectedBits,
                                                 pdTRUE,
                                                 pdTRUE,
                                                 waitTicks);
 
-        if ((bits & expectedBits) == expectedBits) {
+        if ((bits & supervisor->orderMailbox_.expectedBits) == supervisor->orderMailbox_.expectedBits) {
             supervisor->responseMailbox_.post(OrchestrationResult::COMPLETED, 0);
         } else {
             // Timeout — find which bits are still missing
-            EventBits_t missing = expectedBits & ~bits;
+            EventBits_t missing = supervisor->orderMailbox_.expectedBits & ~bits;
             supervisor->responseMailbox_.post(OrchestrationResult::TIMED_OUT, missing);
         }
     }
