@@ -76,13 +76,16 @@ public:
     uint32_t setSTREAMING(uint32_t transitionId) override;
     uint32_t setERROR(uint32_t transitionId) override;
     void onTransitionTimeout(uint32_t transitionId) override;
+    void loop() override;
     const ComponentStateMatrix* getStateMatrix() const override { return kBoardInfoStateMatrix; }
     size_t getStateMatrixSize() const override { return std::size(kBoardInfoStateMatrix); }
+
+    ComponentMailbox supervisorV2Mailbox;
 };
 
 class WiFiComponent final : public ISystemComponent {
 public:
-    explicit WiFiComponent(Supervisor& system);
+    WiFiComponent();
 
     void registerWithController(Supervisor& controller) const override;
     bool setup() override;
@@ -102,7 +105,7 @@ private:
     void startPendingTransition(bool streamingTarget, uint32_t transitionId);
     void completePendingTransition(TransitionStatus status, const char* reason);
 
-    Supervisor& system_;
+    ComponentMailbox supervisorV2Mailbox;
     bool bootAutoConnectSucceeded_ = false;
     bool transitionPending_ = false;
     bool pendingStreamingTarget_ = false;
@@ -111,7 +114,7 @@ private:
 
 class AudioRuntimeComponent final : public ISystemComponent {
 public:
-    AudioRuntimeComponent(IAudioPlayer& audio, Supervisor& system);
+    AudioRuntimeComponent(IAudioPlayer& audio);
 
     void registerWithController(Supervisor& controller) const override;
     bool setup() override;
@@ -130,7 +133,7 @@ private:
     void completePendingTransition(TransitionStatus status, const char* reason);
 
     IAudioPlayer& audio_;
-    Supervisor& system_;
+    ComponentMailbox supervisorV2Mailbox;
     bool transitionPending_ = false;
     bool pendingStreamingTarget_ = false;
     uint32_t pendingTransitionId_ = 0;
@@ -139,7 +142,7 @@ private:
 
 class CliComponent final : public ISystemComponent {
 public:
-    CliComponent(IAudioPlayer& audio, Supervisor& system);
+    CliComponent(IAudioPlayer& audio);
 
     void registerWithController(Supervisor& controller) const override;
     bool setup() override;
@@ -154,5 +157,5 @@ public:
 
 private:
     IAudioPlayer& audio_;
-    Supervisor& system_;
+    ComponentMailbox supervisorV2Mailbox;
 };
