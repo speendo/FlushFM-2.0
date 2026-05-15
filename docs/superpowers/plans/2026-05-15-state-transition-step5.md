@@ -419,7 +419,15 @@ pio test -e native --filter test_supervisor_v2_orchestration
 
 Expected: FAIL — `startOrchestration` not defined yet.
 
-- [ ] **Step 5c.4: Add `startOrchestration()` to `orchestrator.cpp`**
+- [ ] **Step 5c.4: Add `kAllComponentBits` constant to `supervisor_v2.h` and `startOrchestration()` to `orchestrator.cpp`**
+
+Add after `componentCount` definition in `supervisor_v2.h`:
+
+```cpp
+constexpr EventBits_t kAllComponentBits = (1U << componentCount) - 1;
+```
+
+Then add `startOrchestration()` to `orchestrator.cpp`:
 
 ```cpp
 /** @brief Begin an orchestration toward the given target state.
@@ -441,7 +449,7 @@ void SupervisorV2::startOrchestration(SystemState target) {
         }
     }
 
-    xEventGroupClearBits(eventGroup_, 0xFFFF);
+    xEventGroupClearBits(eventGroup_, kAllComponentBits);
 
     // Write the stepping target to every registered component's mailbox.
     // Components read this on their own task loop and react accordingly.
@@ -485,8 +493,8 @@ Expected: 104 succeeded (97 baseline + 7 new). 4 pre-existing errors.
 - [ ] **Step 5c.7: Commit**
 
 ```bash
-git add src/supervisor/orchestrator.cpp test/test_supervisor_v2_orchestration/
-git commit -m "step 5c: add startOrchestration to orchestrator.cpp"
+git add src/supervisor/supervisor_v2.h src/supervisor/orchestrator.cpp test/test_supervisor_v2_orchestration/
+git commit -m "step 5c: add kAllComponentBits constant, add startOrchestration to orchestrator.cpp"
 ```
 
 ---

@@ -148,6 +148,12 @@ struct OrchestrationResponse {
 - `fatalDeadlineMs_` — absolute deadline for deep sleep after FATAL
 - `lastTargetBeforeError_` — saved target for ERROR recovery placeholder
 
+### New compile-time constant (in supervisor_v2.h)
+```cpp
+constexpr EventBits_t kAllComponentBits = (1U << componentCount) - 1;
+```
+Used when clearing the event group before each orchestration. Auto-scales with `componentCount` — no magic numbers.
+
 ---
 
 ## 3. The `run()` Method
@@ -263,7 +269,7 @@ The discovery window ends when the first orchestration starts (BOOTING → CONNE
 
 ### Starting an orchestration (state machine side)
 1. Determine `expectedBits`: OR of `(1 << id)` for each non-degraded component
-2. `xEventGroupClearBits(eventGroup_, 0xFFFF)` — clear all bits
+2. `xEventGroupClearBits(eventGroup_, kAllComponentBits)` — clear all component bits (mask auto-scales with componentCount)
 3. Write each component's mailbox with the target state
 4. Look up the per-state timeout, compute `deadline = now + timeout`
 5. Post `OrchestrationOrder(expectedBits, deadline, target)` to `orderMailbox_`
