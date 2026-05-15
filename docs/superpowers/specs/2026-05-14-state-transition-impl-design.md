@@ -12,7 +12,7 @@ Implement the active state transition loop (`run()`) for SupervisorV2 with a spl
 ## 1. Architecture
 
 ```
-Core 0 (State Machine)                      Core 0/1 (Orch Worker)       Core 0/1 (Components)
+Core 0 (State Machine)                      Core 0 (Orch Worker)          Core 0/1 (Components)
 ┌───────────────────────────┐              ┌─────────────────────┐      ┌──────────────────┐
 │ Supervisor::run()         │   order      │ orchestrationWorker │      │ WiFiComponent    │
 │ ┌───────────────────────┐ │ ──────────► │                     │      │ AudioRuntimeComp │
@@ -32,7 +32,7 @@ Core 0 (State Machine)                      Core 0/1 (Orch Worker)       Core 0/
 
 ### Key principles
 - State machine `run()` is a FreeRTOS task pinned to Core 0. Never blocks.
-- Orchestration worker is a separate FreeRTOS task. Blocks on `xEventGroupWaitBits(expectedBits, ALL, timeout)`.
+- Orchestration worker is a separate FreeRTOS task, also pinned to Core 0. Blocks on `xEventGroupWaitBits(expectedBits, ALL, timeout)`.
 - Components run on any core and are FreeRTOS tasks.
 - `postStateRequest()` / `postErrorEvent()` are called cross-core with spinlock protection.
 - Component completion is signaled via a FreeRTOS event group (safe from any core).
