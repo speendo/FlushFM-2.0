@@ -1,6 +1,8 @@
 #include "state_machine/supervisor_v2.h"
 
 void SupervisorV2::postNextComponentState(ComponentID id) {
+    // Write the current stepping state to a component's mailbox under spinlock.
+    // The component will read this in its own loop and react.
     ComponentMailbox* mailbox = componentMailboxes_[static_cast<int>(id)];
     if (mailbox == nullptr) return;
     portENTER_CRITICAL(&mailbox->spinlock);
