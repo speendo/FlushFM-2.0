@@ -8,15 +8,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
 #else
-#include <cstring>
-using EventGroupHandle_t = void*;
-struct StaticEventGroup_t { uint8_t data[32]; };
-using TickType_t = uint32_t;
-using EventBits_t = uint32_t;
-inline EventGroupHandle_t xEventGroupCreateStatic(StaticEventGroup_t*) { return nullptr; }
-inline EventBits_t xEventGroupClearBits(EventGroupHandle_t, EventBits_t) { return 0; }
-inline EventBits_t xEventGroupSetBits(EventGroupHandle_t, EventBits_t) { return 0; }
-inline EventBits_t xEventGroupGetBits(EventGroupHandle_t) { return 0; }
+#include "native_stubs.h"
 #endif
 
 #include "component_types.h"
@@ -133,6 +125,76 @@ struct ErrorEvent {
 	DebugReason reason = nullptr;
 	ComponentID source = ComponentID::Count;
 	portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
+};
+
+/** @brief Result of an orchestration attempt.
+ *  COMPLETED: all required bits were set before the deadline.
+ *  TIMED_OUT: the deadline elapsed with bits still missing.
+ */
+enum class OrchestrationResult : uint8_t {
+    COMPLETED,
+    TIMED_OUT
+};
+
+/** @brief Order posted by the state machine to the orchestration worker.
+ *  Single-slot, spinlock-guarded. Last-write-wins.
+ *  The worker reads this via consume() then begins waiting on the event group.
+ */
+struct OrchestrationOrder {
+    bool pending = false;
+    EventBits_t expectedBits = 0;
+    TickType_t deadlineMs = 0;
+    SystemState transitionTarget;
+    portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
+
+    void post(EventBits_t bits, TickType_t deadline, SystemState target) {
+        portENTER_CRITICAL(&spinlock);
+        expectedBits = bits;
+        deadlineMs = deadline;
+        transitionTarget = target;
+        pending = true;
+        portEXIT_CRITICAL(&spinlock);
+    }
+
+    /** @brief Clear the pending flag under spinlock. Caller reads members directly after.
+     *  @return true if an order was pending and was consumed.
+     */
+    bool consume() {
+        portENTER_CRITICAL(&spinlock);
+        if (!pending) { portEXIT_CRITICAL(&spinlock); return false; }
+        pending = false;
+        portEXIT_CRITICAL(&spinlock);
+        return true;
+    }
+};
+
+/** @brief Response posted by the orchestration worker to the state machine.
+ *  Single-slot, spinlock-guarded. The state machine reads this on each run() tick.
+ */
+struct OrchestrationResponse {
+    bool pending = false;
+    OrchestrationResult result = OrchestrationResult::COMPLETED;
+    EventBits_t timedOutComponents = 0;
+    portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
+
+    void post(OrchestrationResult r, EventBits_t timedOut) {
+        portENTER_CRITICAL(&spinlock);
+        result = r;
+        timedOutComponents = timedOut;
+        pending = true;
+        portEXIT_CRITICAL(&spinlock);
+    }
+
+    /** @brief Clear the pending flag under spinlock. Caller reads members directly after.
+     *  @return true if a response was pending and was consumed.
+     */
+    bool consume() {
+        portENTER_CRITICAL(&spinlock);
+        if (!pending) { portEXIT_CRITICAL(&spinlock); return false; }
+        pending = false;
+        portEXIT_CRITICAL(&spinlock);
+        return true;
+    }
 };
 
 /** @brief Recovery attempt tracking.
@@ -289,15 +351,12 @@ private:
 	 */
 	void startOrchestration(SystemState target);
 
-	/** @brief Check if all expected event group bits are set.
-	 *  If complete, advances observedState_ via setObservedState().
+	/** @brief Check for a pending orchestration response from the worker task.
+	 *  Reads responseMailbox_ (non-blocking, spinlock inside).
+	 *  On COMPLETED: advances observedState_ via setObservedState().
+	 *  On TIMED_OUT: marks timed-out components, posts error events.
 	 */
-	void checkOrchestrationCompletion();
-
-	/** @brief Check whether the current orchestration has timed out.
-	 *  Marks overdue components as FAILED and handles consequences.
-	 */
-	void checkStateTimeout();
+	void checkOrchestrationResponse();
 
 	/** @brief Commit a new observed state.
 	 *  Logs the transition, clears active orchestration flags,
@@ -347,9 +406,10 @@ private:
 	std::array<ComponentMailbox*, componentCount> componentMailboxes_{};
 	std::array<bool, componentCount> isRequired_{};
 
-	TickType_t orchestrationDeadlineMs_{};
 	bool hasActiveOrchestration_{};
-	EventBits_t expectedBits_{};
+	OrchestrationOrder orderMailbox_{};
+	OrchestrationResponse responseMailbox_{};
+	TaskHandle_t workerTaskHandle_{};
 
 	TickType_t fatalDeadlineMs_{};
 
@@ -360,6 +420,8 @@ private:
 	SystemState lastTargetBeforeError_;
 
 	void setTargetState(SystemState target);
+
+    friend void orchestrationWorker(void* param);
 };
 
 #undef SYSTEM_STATE_X
