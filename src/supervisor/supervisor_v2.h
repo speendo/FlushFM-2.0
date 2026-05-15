@@ -363,6 +363,22 @@ private:
 	 */
 	void checkOrchestrationResponse();
 
+	/** @brief Compute the next stepping state and begin orchestration.
+	 *
+	 *  Called by run() when targetState_ differs from observedState_ and
+	 *  no orchestration is in flight. Delegates to getNextState() which
+	 *  uses the state rank table (multiples of 10: FATAL=0, ERROR=10,
+	 *  SLEEP=20, ... LIVE=60) to determine the single-step intermediate.
+	 *
+	 *  If the intermediate equals the current observed state (meaning we
+	 *  are already at the target), this is a no-op.
+	 *
+	 *  Otherwise, calls startOrchestration() which clears the event group,
+	 *  writes all component mailboxes, computes the timeout deadline, and
+	 *  posts an OrchestrationOrder to the worker task on Core 0.
+	 */
+	void stepTowardTarget();
+
 	/** @brief Commit a new observed state.
 	 *  Logs the transition, clears active orchestration flags,
 	 *  calls resetRecoveryIfOutOfError().

@@ -11,6 +11,7 @@ using TaskHandle_t = void*;
 inline constexpr TickType_t pdMS_TO_TICKS(TickType_t ms) { return ms; }
 inline void vTaskDelay(TickType_t) {}
 inline constexpr int pdTRUE = 1;
+inline constexpr TickType_t portMAX_DELAY = 0xffffffffUL;
 
 inline EventGroupHandle_t xEventGroupCreateStatic(StaticEventGroup_t* buffer) {
     std::memset(buffer, 0, sizeof(StaticEventGroup_t));
