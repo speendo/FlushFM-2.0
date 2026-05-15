@@ -218,6 +218,7 @@ void test_run_error_recovery_posts_state_request() {
     SupervisorV2 supervisor;
 
     supervisor.observedState_ = SystemState::ERROR;
+    supervisor.targetState_ = SystemState::ERROR;
     supervisor.hasActiveOrchestration_ = false;
     supervisor.lastTargetBeforeError_ = SystemState::LIVE;
 
@@ -232,6 +233,7 @@ void test_run_error_recovery_noop_when_target_matches() {
     SupervisorV2 supervisor;
 
     supervisor.observedState_ = SystemState::ERROR;
+    supervisor.targetState_ = SystemState::ERROR;
     supervisor.hasActiveOrchestration_ = false;
     supervisor.lastTargetBeforeError_ = SystemState::ERROR;
 

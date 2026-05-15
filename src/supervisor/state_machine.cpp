@@ -67,12 +67,84 @@ SystemState getNextState(SystemState current, SystemState target) {
 }
 
 void SupervisorV2::checkComponentPresence() {
-    // Scan all registered components. Post an error for any required
-    // component that never called registerComponent (null mailbox pointer).
     for (size_t i = 0; i < componentCount; i++) {
         if (componentMailboxes_[i] == nullptr && isRequired_[i]) {
             postErrorEvent("component absent", static_cast<ComponentID>(i));
         }
+    }
+}
+
+/** @brief Compute the next stepping state and begin an orchestration.
+ *  Delegates to getNextState() which uses the state rank table to determine
+ *  the next intermediate state along the path from observedState_ toward
+ *  targetState_. If already at the target (getNextState returns the same
+ *  value as observedState_), this is a no-op — no orchestration is started,
+ *  no component mailboxes are written, and the event group is left alone.
+ *
+ *  Called by run() when targetState_ != observedState_ and no orchestration
+ *  is currently in flight (hasActiveOrchestration_ == false).
+ */
+void SupervisorV2::stepTowardTarget() {
+    SystemState nextSteppingState = getNextState(observedState_, targetState_);
+    if (nextSteppingState == observedState_) return;
+    startOrchestration(nextSteppingState);
+}
+
+/** @brief Execute one tick of the supervisor state machine loop.
+ *
+ *  This is the top-level entry point called by the FreeRTOS state machine
+ *  task. It implements a four-phase processing pipeline:
+ *
+ *  Phase 1 — Wait for wake signal:
+ *    Calls ulTaskNotifyTake(pdTRUE, portMAX_DELAY) which blocks the task
+ *    until another task or ISR calls xTaskNotifyGive() on its handle.
+ *    Three wake sources exist:
+ *      - postStateRequest()  — external component requests a new target state
+ *      - postErrorEvent()    — component reports a failure
+ *      - orchestrationWorker — reports COMPLETED or TIMED_OUT via responseMailbox_
+ *    On native builds ulTaskNotifyTake is a no-op stub that returns 0,
+ *    so run() executes synchronously in tests.
+ *
+ *  Phase 2 — Drain pending events (skipped in FATAL):
+ *    consumeErrorEvent() and consumeStateRequest() drain the two
+ *    single-slot mailboxes. Errors are consumed FIRST so they can override
+ *    any stale state request that arrived before the error.
+ *
+ *  Phase 3 — State stepping (skipped in FATAL):
+ *    Three mutually exclusive branches based on current conditions:
+ *    A. Need to move: targetState_ != observedState_ with no active
+ *       orchestration → stepTowardTarget()
+ *    B. Active orchestration in flight → checkOrchestrationResponse()
+ *    C. Idle in ERROR → determineRecoveryTarget() + postStateRequest()
+ *
+ *  Phase 4 — FATAL housekeeping:
+ *    If observedState_ == FATAL, calls handleFatal() which arms a 60-second
+ *    dwell timer on first entry and triggers deep sleep once the timer
+ *    expires. FATAL is absorbent: no state transitions can exit it.
+ */
+void SupervisorV2::run() {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    if (observedState_ != SystemState::FATAL) {
+        consumeErrorEvent();
+        consumeStateRequest();
+    }
+
+    if (observedState_ != SystemState::FATAL) {
+        if (targetState_ != observedState_ && !hasActiveOrchestration_) {
+            stepTowardTarget();
+        } else if (hasActiveOrchestration_) {
+            checkOrchestrationResponse();
+        } else if (observedState_ == SystemState::ERROR) {
+            SystemState recoveryTarget = determineRecoveryTarget();
+            if (recoveryTarget != observedState_) {
+                postStateRequest(recoveryTarget);
+            }
+        }
+    }
+
+    if (observedState_ == SystemState::FATAL) {
+        handleFatal();
     }
 }
 
