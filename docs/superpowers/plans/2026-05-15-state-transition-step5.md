@@ -14,9 +14,9 @@
 
 ### File Structure
 
-- **Modify:** `src/state_machine/supervisor_v2.h` — add `OrchestrationResult`, `OrchestrationOrder`, `OrchestrationResponse`; remove `expectedBits_`/`orchestrationDeadlineMs_`; add `orderMailbox_`/`responseMailbox_`/`workerTaskHandle_`; replace method declarations; add friend; add native stubs
-- **Modify:** `src/state_machine/supervisor_v2.cpp` — add minimal `setObservedState()`, update `completeTransition` optional failure, update `setup()` to create worker task
-- **Modify:** `src/state_machine/orchestrator.cpp` — add `startOrchestration()`, `checkOrchestrationResponse()`, `orchestrationWorker()`
+- **Modify:** `src/supervisor/supervisor_v2.h` — add `OrchestrationResult`, `OrchestrationOrder`, `OrchestrationResponse`; remove `expectedBits_`/`orchestrationDeadlineMs_`; add `orderMailbox_`/`responseMailbox_`/`workerTaskHandle_`; replace method declarations; add friend; add native stubs
+- **Modify:** `src/supervisor/supervisor_v2.cpp` — add minimal `setObservedState()`, update `completeTransition` optional failure, update `setup()` to create worker task
+- **Modify:** `src/supervisor/orchestrator.cpp` — add `startOrchestration()`, `checkOrchestrationResponse()`, `orchestrationWorker()`
 - **Create:** `test/test_supervisor_v2_orchestration/test_main.cpp` — 11 tests
 - **Modify:** `platformio.ini` — test_ignore during development, remove at end
 
@@ -119,15 +119,45 @@ Before closing `};` of class `SupervisorV2`:
     friend void orchestrationWorker(void* param);
 ```
 
-- [ ] **Step 5a.5: Add native stubs to `#if !defined(ARDUINO)` block**
+- [ ] **Step 5a.5: Upgrade native event group stubs and add task stubs to `#if !defined(ARDUINO)` block**
 
-After existing `using` lines:
+The current no-op event group stubs return 0 regardless of what bits were set, which breaks tests that call `xEventGroupSetBits` followed by `xEventGroupGetBits`. Replace the entire `#if !defined(ARDUINO)` block with functional bitmap-backed stubs plus the new task stubs:
+
 ```cpp
+#else
+#include <cstring>
+using EventGroupHandle_t = void*;
+struct StaticEventGroup_t { uint8_t data[32]; };
+using TickType_t = uint32_t;
+using EventBits_t = uint32_t;
 using TaskHandle_t = void*;
-inline void xTaskCreatePinnedToCore(void (*task)(void*), const char*, uint32_t,
-                                     void* param, uint32_t, TaskHandle_t*, int) {}
+
 inline constexpr TickType_t pdMS_TO_TICKS(TickType_t ms) { return ms; }
 inline void vTaskDelay(TickType_t) {}
+
+inline EventGroupHandle_t xEventGroupCreateStatic(StaticEventGroup_t* buffer) {
+    std::memset(buffer, 0, sizeof(StaticEventGroup_t));
+    return buffer;
+}
+inline EventBits_t xEventGroupClearBits(EventGroupHandle_t handle, EventBits_t bitsToClear) {
+    if (handle == nullptr) return 0;
+    auto* bits = reinterpret_cast<uint32_t*>(handle);
+    *bits &= ~bitsToClear;
+    return *bits;
+}
+inline EventBits_t xEventGroupSetBits(EventGroupHandle_t handle, EventBits_t bitsToSet) {
+    if (handle == nullptr) return 0;
+    auto* bits = reinterpret_cast<uint32_t*>(handle);
+    *bits |= bitsToSet;
+    return *bits;
+}
+inline EventBits_t xEventGroupGetBits(EventGroupHandle_t handle) {
+    if (handle == nullptr) return 0;
+    return *reinterpret_cast<uint32_t*>(handle);
+}
+inline void xTaskCreatePinnedToCore(void (*task)(void*), const char*, uint32_t,
+                                     void* param, uint32_t, TaskHandle_t*, int) {}
+#endif
 ```
 
 - [ ] **Step 5a.6: Run full suite**
@@ -136,12 +166,12 @@ inline void vTaskDelay(TickType_t) {}
 pio test -e native
 ```
 
-Expected: 95 succeeded. 4 pre-existing errors unchanged.
+Expected: 97 succeeded. 4 pre-existing errors unchanged. No regressions from structural changes.
 
 - [ ] **Step 5a.7: Commit**
 
 ```bash
-git add src/state_machine/supervisor_v2.h
+git add src/supervisor/supervisor_v2.h
 git commit -m "step 5a: add orchestration structs, replace polling members, add friend and native stubs"
 ```
 
@@ -185,12 +215,12 @@ To:
 pio test -e native
 ```
 
-Expected: 95 succeeded. 4 pre-existing errors unchanged.
+Expected: 97 succeeded. 4 pre-existing errors unchanged. No regressions.
 
 - [ ] **Step 5b.4: Commit**
 
 ```bash
-git add src/state_machine/state_machine.cpp src/state_machine/orchestrator.cpp
+git add src/supervisor/state_machine.cpp src/supervisor/orchestrator.cpp
 git commit -m "step 5b: add minimal setObservedState, update completeTransition optional failure to set event bit"
 ```
 
@@ -213,9 +243,9 @@ Includes all three `.cpp` files:
 #include <unity.h>
 
 #define private public
-#include "../../src/state_machine/supervisor_v2.cpp"
-#include "../../src/state_machine/orchestrator.cpp"
-#include "../../src/state_machine/state_machine.cpp"
+#include "../../src/supervisor/supervisor_v2.cpp"
+#include "../../src/supervisor/orchestrator.cpp"
+#include "../../src/supervisor/state_machine.cpp"
 #undef private
 
 namespace {
@@ -403,12 +433,12 @@ Expected: 7 tests PASS.
 pio test -e native
 ```
 
-Expected: 97 succeeded (90 baseline + 7 new). 4 pre-existing errors.
+Expected: 104 succeeded (97 baseline + 7 new). 4 pre-existing errors.
 
 - [ ] **Step 5c.7: Commit**
 
 ```bash
-git add src/state_machine/orchestrator.cpp test/test_supervisor_v2_orchestration/
+git add src/supervisor/orchestrator.cpp test/test_supervisor_v2_orchestration/
 git commit -m "step 5c: add startOrchestration to orchestrator.cpp"
 ```
 
@@ -535,12 +565,12 @@ Expected: 11 tests PASS.
 pio test -e native
 ```
 
-Expected: 101 succeeded (90 baseline + 11 new). 4 pre-existing errors.
+Expected: 108 succeeded (97 baseline + 11 new). 4 pre-existing errors.
 
 - [ ] **Step 5d.5: Commit**
 
 ```bash
-git add src/state_machine/orchestrator.cpp test/test_supervisor_v2_orchestration/test_main.cpp
+git add src/supervisor/orchestrator.cpp test/test_supervisor_v2_orchestration/test_main.cpp
 git commit -m "step 5d: add checkOrchestrationResponse to orchestrator.cpp"
 ```
 
@@ -604,13 +634,13 @@ void SupervisorV2::setup() {
 pio test -e native
 ```
 
-Expected: 101 succeeded (no regression — worker setup is no-op on native).
+Expected: 108 succeeded (no regression — worker setup is no-op on native).
 
 - [ ] **Step 5e.4: Remove test_ignore**
 
 - [ ] **Step 5e.5: Commit**
 
 ```bash
-git add platformio.ini src/state_machine/supervisor_v2.cpp src/state_machine/orchestrator.cpp
+git add platformio.ini src/supervisor/supervisor_v2.cpp src/supervisor/orchestrator.cpp
 git commit -m "step 5e: add orchestrationWorker + wire worker task in setup()"
 ```

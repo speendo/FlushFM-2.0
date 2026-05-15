@@ -13,13 +13,13 @@
 ### File Structure
 
 ```
-src/state_machine/
+src/supervisor/
 ├── supervisor_v2.h          — unchanged (all declarations stay)
 ├── supervisor_v2.cpp        — thin: constructor, setup(), getters, config, registerComponent()
-├── orchestrator.h           — thin wrapper: #pragma once + #include "state_machine/supervisor_v2.h"
+├── orchestrator.h           — thin wrapper: #pragma once + #include "supervisor/supervisor_v2.h"
 ├── orchestrator.cpp         — cross-core I/O: postNextComponentState, completeTransition,
 │                               postStateRequest, postErrorEvent
-├── state_machine.h          — thin wrapper: #pragma once + #include "state_machine/supervisor_v2.h"
+├── state_machine.h          — thin wrapper: #pragma once + #include "supervisor/supervisor_v2.h"
 ├── state_machine.cpp        — state logic + free functions: getNextState, stateToString,
 │                               isErrorState, consumeStateRequest, consumeErrorEvent,
 │                               setTargetState, resetRecoveryIfOutOfError, checkComponentPresence
@@ -70,23 +70,23 @@ Three existing tests include `supervisor_v2.cpp` and must be updated:
 
 | Test file | Before | After |
 |-----------|--------|-------|
-| `test_supervisor_v2_registration/test_main.cpp:4` | `#include "../../src/state_machine/supervisor_v2.cpp"` | + `orchestrator.cpp` + `state_machine.cpp` |
+| `test_supervisor_v2_registration/test_main.cpp:4` | `#include "../../src/supervisor/supervisor_v2.cpp"` | + `orchestrator.cpp` + `state_machine.cpp` |
 | `test_supervisor_v2_mailbox_spinlock/test_main.cpp:4` | same | + `orchestrator.cpp` + `state_machine.cpp` |
 | `test_supervisor_v2_get_next_state/test_main.cpp:3` | same | + `state_machine.cpp` |
 
 Pattern for the first two:
 ```cpp
 #define private public
-#include "../../src/state_machine/supervisor_v2.cpp"
-#include "../../src/state_machine/orchestrator.cpp"
-#include "../../src/state_machine/state_machine.cpp"
+#include "../../src/supervisor/supervisor_v2.cpp"
+#include "../../src/supervisor/orchestrator.cpp"
+#include "../../src/supervisor/state_machine.cpp"
 #undef private
 ```
 
 Pattern for get_next_state (no `#define private public`):
 ```cpp
-#include "../../src/state_machine/supervisor_v2.cpp"
-#include "../../src/state_machine/state_machine.cpp"
+#include "../../src/supervisor/supervisor_v2.cpp"
+#include "../../src/supervisor/state_machine.cpp"
 ```
 
 ---
@@ -94,16 +94,16 @@ Pattern for get_next_state (no `#define private public`):
 ### Task 4.1a: Create state_machine.cpp + update tests
 
 **Files:**
-- Create: `src/state_machine/state_machine.cpp`
-- Modify: `src/state_machine/supervisor_v2.cpp` — remove the 8 moved items
+- Create: `src/supervisor/state_machine.cpp`
+- Modify: `src/supervisor/supervisor_v2.cpp` — remove the 8 moved items
 - Modify: `test/test_supervisor_v2_registration/test_main.cpp` — add include
 - Modify: `test/test_supervisor_v2_mailbox_spinlock/test_main.cpp` — add include
 - Modify: `test/test_supervisor_v2_get_next_state/test_main.cpp` — add include
 
-- [ ] **Step 4.1a.1: Create `src/state_machine/state_machine.cpp`**
+- [ ] **Step 4.1a.1: Create `src/supervisor/state_machine.cpp`**
 
 ```cpp
-#include "state_machine/supervisor_v2.h"
+#include "supervisor/supervisor_v2.h"
 
 #include "core/debug.h"
 
@@ -228,10 +228,10 @@ void SupervisorV2::resetRecoveryIfOutOfError() {
 }
 ```
 
-- [ ] **Step 4.1a.2: Trim `src/state_machine/supervisor_v2.cpp`** — remove lines 5-9 (anonymous namespace), 13-69 (free functions), 78-86 (checkComponentPresence), 178-236 (consume/setTarget/resetRecovery). Remove `#include "core/debug.h"` (line 3). The result:
+- [ ] **Step 4.1a.2: Trim `src/supervisor/supervisor_v2.cpp`** — remove lines 5-9 (anonymous namespace), 13-69 (free functions), 78-86 (checkComponentPresence), 178-236 (consume/setTarget/resetRecovery). Remove `#include "core/debug.h"` (line 3). The result:
 
 ```cpp
-#include "state_machine/supervisor_v2.h"
+#include "supervisor/supervisor_v2.h"
 
 SupervisorV2::SupervisorV2() = default;
 
@@ -283,9 +283,9 @@ void SupervisorV2::registerComponent(ComponentID id, ComponentMailbox* mailbox, 
 `test/test_supervisor_v2_registration/test_main.cpp` — change lines 3-5:
 ```cpp
 #define private public
-#include "../../src/state_machine/supervisor_v2.cpp"
-#include "../../src/state_machine/orchestrator.cpp"
-#include "../../src/state_machine/state_machine.cpp"
+#include "../../src/supervisor/supervisor_v2.cpp"
+#include "../../src/supervisor/orchestrator.cpp"
+#include "../../src/supervisor/state_machine.cpp"
 #undef private
 ```
 
@@ -307,23 +307,23 @@ I don't need orchestrator.cpp includes until 4.1b.
 `test/test_supervisor_v2_registration/test_main.cpp` lines 3-5 →:
 ```cpp
 #define private public
-#include "../../src/state_machine/supervisor_v2.cpp"
-#include "../../src/state_machine/state_machine.cpp"
+#include "../../src/supervisor/supervisor_v2.cpp"
+#include "../../src/supervisor/state_machine.cpp"
 #undef private
 ```
 
 `test/test_supervisor_v2_mailbox_spinlock/test_main.cpp` lines 3-5 →:
 ```cpp
 #define private public
-#include "../../src/state_machine/supervisor_v2.cpp"
-#include "../../src/state_machine/state_machine.cpp"
+#include "../../src/supervisor/supervisor_v2.cpp"
+#include "../../src/supervisor/state_machine.cpp"
 #undef private
 ```
 
 `test/test_supervisor_v2_get_next_state/test_main.cpp` line 3 →:
 ```cpp
-#include "../../src/state_machine/supervisor_v2.cpp"
-#include "../../src/state_machine/state_machine.cpp"
+#include "../../src/supervisor/supervisor_v2.cpp"
+#include "../../src/supervisor/state_machine.cpp"
 ```
 
 - [ ] **Step 4.1a.4: Run full suite**
@@ -337,7 +337,7 @@ Expected: 95 succeeded. 4 pre-existing errors unchanged. No regressions.
 - [ ] **Step 4.1a.5: Commit**
 
 ```bash
-git add src/state_machine/supervisor_v2.cpp src/state_machine/state_machine.cpp test/test_supervisor_v2_registration/test_main.cpp test/test_supervisor_v2_mailbox_spinlock/test_main.cpp test/test_supervisor_v2_get_next_state/test_main.cpp
+git add src/supervisor/supervisor_v2.cpp src/supervisor/state_machine.cpp test/test_supervisor_v2_registration/test_main.cpp test/test_supervisor_v2_mailbox_spinlock/test_main.cpp test/test_supervisor_v2_get_next_state/test_main.cpp
 git commit -m "step 4.1a: extract state_machine.cpp from supervisor_v2.cpp"
 ```
 
@@ -346,15 +346,15 @@ git commit -m "step 4.1a: extract state_machine.cpp from supervisor_v2.cpp"
 ### Task 4.1b: Create orchestrator.cpp + update tests
 
 **Files:**
-- Create: `src/state_machine/orchestrator.cpp`
-- Modify: `src/state_machine/supervisor_v2.cpp` — remove the 4 moved methods
+- Create: `src/supervisor/orchestrator.cpp`
+- Modify: `src/supervisor/supervisor_v2.cpp` — remove the 4 moved methods
 - Modify: `test/test_supervisor_v2_registration/test_main.cpp` — add `orchestrator.cpp` include
 - Modify: `test/test_supervisor_v2_mailbox_spinlock/test_main.cpp` — add `orchestrator.cpp` include
 
-- [ ] **Step 4.1b.1: Create `src/state_machine/orchestrator.cpp`**
+- [ ] **Step 4.1b.1: Create `src/supervisor/orchestrator.cpp`**
 
 ```cpp
-#include "state_machine/supervisor_v2.h"
+#include "supervisor/supervisor_v2.h"
 
 void SupervisorV2::postNextComponentState(ComponentID id) {
     ComponentMailbox* mailbox = componentMailboxes_[static_cast<int>(id)];
@@ -405,18 +405,18 @@ Remove lines 127-176 (`postNextComponentState`, `completeTransition`, `postState
 `test/test_supervisor_v2_registration/test_main.cpp` — add orchestrator.cpp:
 ```cpp
 #define private public
-#include "../../src/state_machine/supervisor_v2.cpp"
-#include "../../src/state_machine/orchestrator.cpp"
-#include "../../src/state_machine/state_machine.cpp"
+#include "../../src/supervisor/supervisor_v2.cpp"
+#include "../../src/supervisor/orchestrator.cpp"
+#include "../../src/supervisor/state_machine.cpp"
 #undef private
 ```
 
 `test/test_supervisor_v2_mailbox_spinlock/test_main.cpp` — add orchestrator.cpp:
 ```cpp
 #define private public
-#include "../../src/state_machine/supervisor_v2.cpp"
-#include "../../src/state_machine/orchestrator.cpp"
-#include "../../src/state_machine/state_machine.cpp"
+#include "../../src/supervisor/supervisor_v2.cpp"
+#include "../../src/supervisor/orchestrator.cpp"
+#include "../../src/supervisor/state_machine.cpp"
 #undef private
 ```
 
@@ -431,7 +431,7 @@ Expected: 95 succeeded. 4 pre-existing errors unchanged.
 - [ ] **Step 4.1b.5: Commit**
 
 ```bash
-git add src/state_machine/supervisor_v2.cpp src/state_machine/orchestrator.cpp test/test_supervisor_v2_registration/test_main.cpp test/test_supervisor_v2_mailbox_spinlock/test_main.cpp
+git add src/supervisor/supervisor_v2.cpp src/supervisor/orchestrator.cpp test/test_supervisor_v2_registration/test_main.cpp test/test_supervisor_v2_mailbox_spinlock/test_main.cpp
 git commit -m "step 4.1b: extract orchestrator.cpp from supervisor_v2.cpp"
 ```
 
@@ -440,23 +440,23 @@ git commit -m "step 4.1b: extract orchestrator.cpp from supervisor_v2.cpp"
 ### Task 4.1c: Create header wrappers
 
 **Files:**
-- Create: `src/state_machine/orchestrator.h`
-- Create: `src/state_machine/state_machine.h`
+- Create: `src/supervisor/orchestrator.h`
+- Create: `src/supervisor/state_machine.h`
 
-- [ ] **Step 4.1c.1: Create `src/state_machine/orchestrator.h`**
+- [ ] **Step 4.1c.1: Create `src/supervisor/orchestrator.h`**
 
 ```cpp
 #pragma once
 
-#include "state_machine/supervisor_v2.h"
+#include "supervisor/supervisor_v2.h"
 ```
 
-- [ ] **Step 4.1c.2: Create `src/state_machine/state_machine.h`**
+- [ ] **Step 4.1c.2: Create `src/supervisor/state_machine.h`**
 
 ```cpp
 #pragma once
 
-#include "state_machine/supervisor_v2.h"
+#include "supervisor/supervisor_v2.h"
 ```
 
 - [ ] **Step 4.1c.3: Run full suite** (headers are unused at this point, but verify no breakage)
@@ -470,6 +470,6 @@ Expected: 95 succeeded. 4 pre-existing errors unchanged.
 - [ ] **Step 4.1c.4: Commit**
 
 ```bash
-git add src/state_machine/orchestrator.h src/state_machine/state_machine.h
+git add src/supervisor/orchestrator.h src/supervisor/state_machine.h
 git commit -m "step 4.1c: add orchestrator.h and state_machine.h header wrappers"
 ```
