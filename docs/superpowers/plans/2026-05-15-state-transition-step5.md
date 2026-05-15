@@ -14,7 +14,8 @@
 
 ### File Structure
 
-- **Modify:** `src/supervisor/supervisor_v2.h` — add `OrchestrationResult`, `OrchestrationOrder`, `OrchestrationResponse`; remove `expectedBits_`/`orchestrationDeadlineMs_`; add `orderMailbox_`/`responseMailbox_`/`workerTaskHandle_`; replace method declarations; add friend; add native stubs
+- **Modify:** `src/supervisor/supervisor_v2.h` — add `OrchestrationResult`, `OrchestrationOrder`, `OrchestrationResponse`; remove `expectedBits_`/`orchestrationDeadlineMs_`; add `orderMailbox_`/`responseMailbox_`/`workerTaskHandle_`; replace method declarations; add friend; slim down `#else` block to include `native_stubs.h`
+- **Create:** `src/supervisor/native_stubs.h` — bitmap-backed event group stubs + task stubs for native
 - **Modify:** `src/supervisor/supervisor_v2.cpp` — add minimal `setObservedState()`, update `completeTransition` optional failure, update `setup()` to create worker task
 - **Modify:** `src/supervisor/orchestrator.cpp` — add `startOrchestration()`, `checkOrchestrationResponse()`, `orchestrationWorker()`
 - **Create:** `test/test_supervisor_v2_orchestration/test_main.cpp` — 11 tests
@@ -24,7 +25,7 @@
 
 ### Task 5a: Add orchestrator types, replace polling members, add friend and native stubs
 
-- [ ] **Step 5a.1: Add `OrchestrationResult`, `OrchestrationOrder`, `OrchestrationResponse` to `supervisor_v2.h`**
+- [x] **Step 5a.1: Add `OrchestrationResult`, `OrchestrationOrder`, `OrchestrationResponse` to `supervisor_v2.h`**
 
 Add after the `ErrorEvent` struct definition (after line 136), with doxygen comments following the existing codebase pattern:
 
@@ -100,7 +101,7 @@ struct OrchestrationResponse {
 };
 ```
 
-- [ ] **Step 5a.2: Replace polling member variables with split-task equivalents**
+- [x] **Step 5a.2: Replace polling member variables with split-task equivalents**
 
 In the private section, remove:
 ```cpp
@@ -115,7 +116,7 @@ Add after `hasActiveOrchestration_`:
     TaskHandle_t workerTaskHandle_{};
 ```
 
-- [ ] **Step 5a.3: Replace method declarations**
+- [x] **Step 5a.3: Replace method declarations**
 
 Remove `checkOrchestrationCompletion()` and `checkStateTimeout()`. Add:
 ```cpp
@@ -124,20 +125,27 @@ Remove `checkOrchestrationCompletion()` and `checkStateTimeout()`. Add:
 
 (`startOrchestration()` declaration stays — signature unchanged.)
 
-- [ ] **Step 5a.4: Add friend declaration**
+- [x] **Step 5a.4: Add friend declaration**
 
 Before closing `};` of class `SupervisorV2`:
 ```cpp
     friend void orchestrationWorker(void* param);
 ```
 
-- [ ] **Step 5a.5: Upgrade native event group stubs and add task stubs to `#if !defined(ARDUINO)` block**
+- [ ] **Step 5a.5: Create `src/supervisor/native_stubs.h` with bitmap-backed event group stubs**
 
-The current no-op event group stubs return 0 regardless of what bits were set, which breaks tests that call `xEventGroupSetBits` followed by `xEventGroupGetBits`. Replace the entire `#if !defined(ARDUINO)` block with functional bitmap-backed stubs plus the new task stubs:
+The current stubs in supervisor_v2.h's `#if !defined(ARDUINO)` block are no-op inline functions
+that return 0/nullptr. Extract them into a dedicated file with functional bitmap-backed
+implementations so event-group tests work on native. supervisor_v2.h keeps only type aliases
+and includes this file.
+
+Create `src/supervisor/native_stubs.h`:
 
 ```cpp
-#else
+#pragma once
+
 #include <cstring>
+
 using EventGroupHandle_t = void*;
 struct StaticEventGroup_t { uint8_t data[32]; };
 using TickType_t = uint32_t;
@@ -169,6 +177,16 @@ inline EventBits_t xEventGroupGetBits(EventGroupHandle_t handle) {
 }
 inline void xTaskCreatePinnedToCore(void (*task)(void*), const char*, uint32_t,
                                      void* param, uint32_t, TaskHandle_t*, int) {}
+```
+
+Replace the `#if !defined(ARDUINO)` block in `supervisor_v2.h` with:
+
+```cpp
+#if defined(ARDUINO)
+#include <freertos/FreeRTOS.h>
+#include <freertos/event_groups.h>
+#else
+#include "native_stubs.h"
 #endif
 ```
 
@@ -183,8 +201,8 @@ Expected: 97 succeeded. 4 pre-existing errors unchanged. No regressions from str
 - [ ] **Step 5a.7: Commit**
 
 ```bash
-git add src/supervisor/supervisor_v2.h
-git commit -m "step 5a: add orchestration structs, replace polling members, add friend and native stubs"
+git add src/supervisor/supervisor_v2.h src/supervisor/native_stubs.h
+git commit -m "step 5a: add orchestration structs, replace polling members, add friend, extract stubs to native_stubs.h"
 ```
 
 ---
@@ -321,7 +339,8 @@ void test_start_orchestration_posts_order_with_correct_bits() {
     int boardBit = 1 << static_cast<int>(ComponentID::BoardInfo);
     int wifiBit  = 1 << static_cast<int>(ComponentID::WiFi);
     int audioBit = 1 << static_cast<int>(ComponentID::AudioRuntime);
-    TEST_ASSERT_EQUAL(boardBit | wifiBit | audioBit, supervisor.orderMailbox_.expectedBits);
+    int cliBit   = 1 << static_cast<int>(ComponentID::CLI);
+    TEST_ASSERT_EQUAL(boardBit | wifiBit | audioBit | cliBit, supervisor.orderMailbox_.expectedBits);
 }
 
 void test_start_orchestration_excludes_degraded_from_order() {
@@ -410,12 +429,13 @@ Expected: FAIL — `startOrchestration` not defined yet.
  *  @param target The intermediate stepping state to orchestrate toward.
  */
 void SupervisorV2::startOrchestration(SystemState target) {
-    // Build the expected-bits mask: one bit per registered, non-degraded,
-    // required component. Optional components are excluded from the quorum.
+    // Build the expected-bits mask: one bit per registered, non-degraded
+    // component. Both required and optional components participate in the
+    // quorum — optional components are only excluded after they time out or
+    // explicitly fail (at which point they become DEGRADED).
     EventBits_t bits = 0;
     for (size_t i = 0; i < componentCount; i++) {
         if (componentMailboxes_[i] != nullptr
-            && isRequired_[i]
             && componentStatuses_[i] != ComponentStatus::DEGRADED) {
             bits |= (1 << i);
         }

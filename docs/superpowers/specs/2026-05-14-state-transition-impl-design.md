@@ -206,7 +206,7 @@ Key change: the two `if` blocks from the old design (state stepping and state ti
 - Call `getNextState(observedState_, targetState_)` to get the intermediate stepping state
 - If the result is the same as `observedState_` (already at target), no-op
 - Otherwise, call `startOrchestration(nextState)` which:
-  - Computes `expectedBits` from required, non-degraded registered components
+  - Computes `expectedBits` from non-degraded registered components
   - Clears the event group
   - Writes all component mailboxes with the stepping target
   - Computes per-state timeout deadline
@@ -262,7 +262,7 @@ The discovery window ends when the first orchestration starts (BOOTING → CONNE
 - In `setup()`: `eventGroup_ = xEventGroupCreateStatic(&eventGroupBuffer_)`
 
 ### Starting an orchestration (state machine side)
-1. Determine `expectedBits`: OR of `(1 << id)` for each non-degraded, required component
+1. Determine `expectedBits`: OR of `(1 << id)` for each non-degraded component
 2. `xEventGroupClearBits(eventGroup_, 0xFFFF)` — clear all bits
 3. Write each component's mailbox with the target state
 4. Look up the per-state timeout, compute `deadline = now + timeout`
@@ -369,7 +369,7 @@ When starting an orchestration:
 The worker calls `xEventGroupWaitBits(eventGroup_, expectedBits, pdTRUE, pdTRUE, deadline - xTaskGetTickCount())`. FreeRTOS handles the timeout internally — the function returns either with all bits set or with a timeout code.
 
 In the response:
-- COMPLETED: all required non-degraded components set their bits before the deadline
+- COMPLETED: all non-degraded components set their bits before the deadline
 - TIMED_OUT: the deadline elapsed before all bits were set. `timedOutComponents` is a mask of missing bits.
 
 ---
