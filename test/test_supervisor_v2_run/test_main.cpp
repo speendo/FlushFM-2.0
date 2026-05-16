@@ -204,11 +204,10 @@ void test_run_calls_handle_fatal() {
     SupervisorV2 supervisor;
 
     supervisor.observedState_ = SystemState::FATAL;
-    supervisor.fatalEntered_ = false;
 
     supervisor.run();
 
-    TEST_ASSERT_TRUE(supervisor.fatalEntered_);
+    TEST_ASSERT_TRUE(supervisor.fatalTaskSpawned_);
 }
 
 // --- error recovery ---

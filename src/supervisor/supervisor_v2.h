@@ -213,6 +213,8 @@ public:
 	 */
 	void registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired);
 
+	friend void fatalTask(SupervisorV2* supervisor);
+
 private:
 	/** @brief Consume and clear a pending state request.
 	 *  @return true if a request was pending and applied, false otherwise.
@@ -318,7 +320,7 @@ private:
 	 *  On subsequent calls, if (now - fatalEnteredTicks_) >= 60s,
 	 *  triggers esp_deep_sleep_start().
 	 */
-	void handleFatal();
+	void spawnFatalTask();
 
 	/** @brief Check that all required components have registered.
 	 *  Posts an error event for each missing required component.
@@ -366,9 +368,11 @@ private:
 	TaskHandle_t workerTaskHandle_{};
 	TaskHandle_t supervisorTaskHandle_{};
 
+	TaskHandle_t fatalTaskHandle_{};
+	bool fatalTaskSpawned_{};
+
 	TickType_t fatalEnteredTicks_{};
 	bool fatalDeadlineElapsed_{};
-	bool fatalEntered_{};
 	bool firstOrchestration_{true};
 
 	/** @brief Saved target for ERROR recovery placeholder.

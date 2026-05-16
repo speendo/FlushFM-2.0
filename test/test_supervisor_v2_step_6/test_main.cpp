@@ -4,7 +4,10 @@
 #include "../../src/supervisor/supervisor_v2.cpp"
 #include "../../src/supervisor/orchestrator.cpp"
 #include "../../src/supervisor/state_machine.cpp"
+#include "../../src/supervisor/fatal_task.cpp"
 #undef private
+
+void fatalTask(SupervisorV2* supervisor);
 
 namespace {
 
@@ -114,33 +117,31 @@ void test_determine_recovery_target_after_booting() {
 
 // --- handleFatal tests ---
 
-void test_handle_fatal_sets_deadline_on_first_call() {
+void test_fatal_task_sets_elapsed_flag() {
     SupervisorV2 supervisor;
+    supervisor.fatalEnteredTicks_ = 1;
 
-    supervisor.handleFatal();
-
-    TEST_ASSERT_TRUE(supervisor.fatalEntered_);
-    TEST_ASSERT_FALSE(supervisor.fatalDeadlineElapsed_);
-}
-
-void test_handle_fatal_no_elapsed_before_deadline() {
-    SupervisorV2 supervisor;
-    supervisor.handleFatal();
-
-    supervisor.fatalDeadlineElapsed_ = false;
-    supervisor.handleFatal();
-
-    TEST_ASSERT_FALSE(supervisor.fatalDeadlineElapsed_);
-}
-
-void test_handle_fatal_detects_elapsed_deadline() {
-    SupervisorV2 supervisor;
-    supervisor.fatalEntered_ = true;
-    supervisor.fatalEnteredTicks_ = 1;  // xTaskGetTickCount() returns 0, so 0 - 1 == UINT32_MAX >= 60000 ✓
-
-    supervisor.handleFatal();
+    fatalTask(&supervisor);
 
     TEST_ASSERT_TRUE(supervisor.fatalDeadlineElapsed_);
+}
+
+void test_fatal_task_no_elapsed_before_deadline() {
+    SupervisorV2 supervisor;
+    supervisor.fatalEnteredTicks_ = 0;
+
+    fatalTask(&supervisor);
+
+    TEST_ASSERT_FALSE(supervisor.fatalDeadlineElapsed_);
+}
+
+void test_run_wakes_then_spawns_fatal_task() {
+    SupervisorV2 supervisor;
+    supervisor.observedState_ = SystemState::FATAL;
+
+    supervisor.run();
+
+    TEST_ASSERT_TRUE(supervisor.fatalTaskSpawned_);
 }
 
 }  // namespace
@@ -156,8 +157,8 @@ int main() {
     RUN_TEST(test_set_observed_state_during_fatal_does_not_reset_recovery);
     RUN_TEST(test_determine_recovery_target_returns_saved_target);
     RUN_TEST(test_determine_recovery_target_after_booting);
-    RUN_TEST(test_handle_fatal_sets_deadline_on_first_call);
-    RUN_TEST(test_handle_fatal_no_elapsed_before_deadline);
-    RUN_TEST(test_handle_fatal_detects_elapsed_deadline);
+    RUN_TEST(test_fatal_task_sets_elapsed_flag);
+    RUN_TEST(test_fatal_task_no_elapsed_before_deadline);
+    RUN_TEST(test_run_wakes_then_spawns_fatal_task);
     return UNITY_END();
 }

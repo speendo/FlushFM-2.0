@@ -8,8 +8,6 @@ constexpr const char* kLogSource = "Supervisor";
 
 }  // namespace
 
-constexpr TickType_t kFatalDwellMs = 60000;
-
 /** @brief Get the next system state based on the current and target states.
  *  @param current The current system state.
  *  @param target The target system state.
@@ -76,6 +74,22 @@ void SupervisorV2::stepTowardTarget() {
     startOrchestration(nextSteppingState);
 }
 
+void SupervisorV2::spawnFatalTask() {
+    fatalEnteredTicks_ = xTaskGetTickCount();
+    PROD_LOG(kLogSource, "Spawning FATAL task, dwell=%ums", static_cast<unsigned int>(pdTICKS_TO_MS(pdMS_TO_TICKS(60000))));
+#if defined(ARDUINO)
+    xTaskCreatePinnedToCore(
+        reinterpret_cast<void(*)(void*)>(fatalTask),
+        "FatalTask",
+        2048,
+        this,
+        1,
+        &fatalTaskHandle_,
+        1
+    );
+#endif
+}
+
 /** @brief Execute one tick of the supervisor state machine loop.
  *
  *  This is the top-level entry point called by the FreeRTOS state machine
@@ -104,9 +118,9 @@ void SupervisorV2::stepTowardTarget() {
  *    C. Idle in ERROR → determineRecoveryTarget() + postStateRequest()
  *
  *  Phase 4 — FATAL housekeeping:
- *    If observedState_ == FATAL, calls handleFatal() which arms a 60-second
- *    dwell timer on first entry and triggers deep sleep once the timer
- *    expires. FATAL is absorbent: no state transitions can exit it.
+ *    If observedState_ == FATAL, spawns the FATAL task which arms a 60-second
+ *    dwell timer and triggers deep sleep once the timer expires. FATAL is
+ *    absorbent: no state transitions can exit it.
  */
 void SupervisorV2::run() {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
@@ -128,7 +142,10 @@ void SupervisorV2::run() {
     }
 
     if (observedState_ == SystemState::FATAL) {
-        handleFatal();
+        if (!fatalTaskSpawned_) {
+            fatalTaskSpawned_ = true;
+            spawnFatalTask();
+        }
     }
 }
 
@@ -218,26 +235,4 @@ void SupervisorV2::setObservedState(SystemState state) {
  */
 SystemState SupervisorV2::determineRecoveryTarget() {
     return lastTargetBeforeError_;
-}
-
-/** @brief Manage the deep sleep shutdown after FATAL.
- *  On first call, records the entry tick. On subsequent calls, uses
- *  unsigned delta comparison (safe against TickType_t wrap-around) to
- *  check whether the dwell period has elapsed. When it has, sets the
- *  fatalDeadlineElapsed_ flag so tests can observe the state. On actual
- *  hardware, this would also trigger esp_deep_sleep_start().
- */
-void SupervisorV2::handleFatal() {
-    if (!fatalEntered_) {
-        fatalEntered_ = true;
-        fatalEnteredTicks_ = xTaskGetTickCount();
-        return;
-    }
-
-    if ((xTaskGetTickCount() - fatalEnteredTicks_) >= pdMS_TO_TICKS(kFatalDwellMs)) {
-        fatalDeadlineElapsed_ = true;
-#if defined(ARDUINO)
-        esp_deep_sleep_start();
-#endif
-    }
 }

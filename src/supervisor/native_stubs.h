@@ -9,6 +9,7 @@ using EventBits_t = uint32_t;
 using TaskHandle_t = void*;
 
 inline constexpr TickType_t pdMS_TO_TICKS(TickType_t ms) { return ms; }
+inline constexpr TickType_t pdTICKS_TO_MS(TickType_t ticks) { return ticks; }
 inline void vTaskDelay(TickType_t) {}
 inline constexpr int pdTRUE = 1;
 inline constexpr TickType_t portMAX_DELAY = 0xffffffffUL;
