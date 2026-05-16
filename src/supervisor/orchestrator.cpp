@@ -95,8 +95,10 @@ void SupervisorV2::startOrchestration(SystemState target) {
     nextState_.subState = SubState::PENDING;
     hasActiveOrchestration_ = true;
 
-    orderMailbox_.post(bits, xTaskGetTickCount() + getTransitionTimeout(target,
-        getIndex(target) > getIndex(observedState_)), target);
+    TickType_t timeoutTicks = pdMS_TO_TICKS(getTransitionTimeout(target,
+        getIndex(target) > getIndex(observedState_)));
+    TickType_t deadline = xTaskGetTickCount() + timeoutTicks;
+    orderMailbox_.post(bits, deadline, target);
 }
 
 /** @brief Check for a pending orchestration response from the worker task.
@@ -143,8 +145,8 @@ void orchestrationWorker(void* param) {
             continue;
         }
 
-        TickType_t now = xTaskGetTickCount();
-        TickType_t waitTicks = pdMS_TO_TICKS(deadlineTicks - now);
+        TickType_t rawWait = deadlineTicks - xTaskGetTickCount();
+        TickType_t waitTicks = (rawWait < pdMS_TO_TICKS(60000)) ? rawWait : 0;
 
         EventBits_t bits = xEventGroupWaitBits(supervisor->eventGroup_,
                                                  expectedBits,

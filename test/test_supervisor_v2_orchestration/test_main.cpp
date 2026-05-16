@@ -106,7 +106,7 @@ void test_start_orchestration_sets_deadline_in_order() {
     supervisor.observedState_ = SystemState::BOOTING;
     supervisor.startOrchestration(SystemState::CONNECTING);
 
-    TEST_ASSERT_NOT_EQUAL(0, supervisor.orderMailbox_.deadlineMs);
+    TEST_ASSERT_NOT_EQUAL(0, supervisor.orderMailbox_.deadlineTicks);
 }
 
 void test_complete_transition_optional_failed_sets_event_bit() {

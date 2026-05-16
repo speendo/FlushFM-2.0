@@ -28,14 +28,14 @@ enum class OrchestrationResult : uint8_t {
 struct OrchestrationOrder {
     bool pending = false;
     EventBits_t expectedBits = 0;
-    TickType_t deadlineMs = 0;
+    TickType_t deadlineTicks = 0;
     SystemState transitionTarget;
     portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
 
     void post(EventBits_t bits, TickType_t deadline, SystemState target) {
         portENTER_CRITICAL(&spinlock);
         expectedBits = bits;
-        deadlineMs = deadline;
+        deadlineTicks = deadline;
         transitionTarget = target;
         pending = true;
         portEXIT_CRITICAL(&spinlock);
@@ -51,7 +51,7 @@ struct OrchestrationOrder {
         portENTER_CRITICAL(&spinlock);
         if (!pending) { portEXIT_CRITICAL(&spinlock); return false; }
         outBits = expectedBits;
-        outDeadline = deadlineMs;
+        outDeadline = deadlineTicks;
         outTarget = transitionTarget;
         pending = false;
         portEXIT_CRITICAL(&spinlock);
