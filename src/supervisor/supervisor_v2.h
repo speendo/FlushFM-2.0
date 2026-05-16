@@ -315,10 +315,10 @@ private:
 	 */
 	void postNextComponentState(ComponentID id);
 
-	/** @brief Manage the deep sleep shutdown after FATAL.
-	 *  On first call, records the entry tick (fatalEnteredTicks_).
-	 *  On subsequent calls, if (now - fatalEnteredTicks_) >= 60s,
-	 *  triggers esp_deep_sleep_start().
+	/** @brief Spawn the FATAL task on first entry to FATAL state.
+	 *  Records the entry tick, then creates a dedicated FreeRTOS task
+	 *  that handles logging, component cleanup, the 60s dwell, and
+	 *  esp_deep_sleep_start(). Called at most once.
 	 */
 	void spawnFatalTask();
 
