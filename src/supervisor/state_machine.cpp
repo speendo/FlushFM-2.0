@@ -19,7 +19,8 @@ SystemState getNextState(SystemState current, SystemState target) {
     // FATAL is absorbent — no state transitions out of FATAL.
     if (current == SystemState::FATAL) return SystemState::FATAL;
 
-    // ERROR and FATAL as target are immediate — no stepping needed.
+    // ERROR and FATAL as target are immediate target selection (no stepping).
+    // Components still go through orchestration to acknowledge the error state.
     if (isErrorState(target)) {
         return target;
     }

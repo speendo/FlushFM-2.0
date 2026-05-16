@@ -23,9 +23,9 @@ void SupervisorV2::completeTransition(ComponentID id, TransitionStatus status) {
 
     // Component reported Failed. How we handle it depends on whether this
     // component is required or optional:
-    //   - Required: post an error event which the supervisor consumes on the
-    //     next run() tick. This sets targetState_ to ERROR and aborts the
-    //     current orchestration. The recovery logic then decides what to do.
+    //   - Required: post an error event; the state machine processes it after
+    //     the current orchestration cycle ends (via timeout or completion),
+    //     then decides the next target.
     //   - Optional: mark as DEGRADED and exclude from the orchestration
     //     quorum. The remaining components are expected to finish normally.
     if (isRequired_[static_cast<int>(id)]) {
@@ -42,7 +42,9 @@ void SupervisorV2::postStateRequest(SystemState target) {
     stateRequestMailbox_.requestedTarget = target;
     portEXIT_CRITICAL(&stateRequestMailbox_.spinlock);
 
-    xTaskNotifyGive(supervisorTaskHandle_);
+    if (supervisorTaskHandle_ != nullptr) {
+        xTaskNotifyGive(supervisorTaskHandle_);
+    }
 }
 
 void SupervisorV2::postErrorEvent(DebugReason reason, ComponentID source) {
@@ -54,7 +56,9 @@ void SupervisorV2::postErrorEvent(DebugReason reason, ComponentID source) {
     }
     portEXIT_CRITICAL(&errorEvent_.spinlock);
 
-    xTaskNotifyGive(supervisorTaskHandle_);
+    if (supervisorTaskHandle_ != nullptr) {
+        xTaskNotifyGive(supervisorTaskHandle_);
+    }
 }
 
 /** @brief Begin an orchestration toward the given target state.
@@ -66,6 +70,11 @@ void SupervisorV2::startOrchestration(SystemState target) {
     // Set the transition target before writing mailboxes — postNextComponentState
     // reads nextState_.transitionTarget to know what to write.
     nextState_.transitionTarget = target;
+
+    if (firstOrchestration_) {
+        firstOrchestration_ = false;
+        checkComponentPresence();
+    }
 
     // Build expected-bits mask and write mailboxes in a single pass.
     // Unregistered components (nullptr) are skipped entirely.

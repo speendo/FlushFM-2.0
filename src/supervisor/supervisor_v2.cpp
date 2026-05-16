@@ -4,6 +4,9 @@ SupervisorV2::SupervisorV2() = default;
 
 void SupervisorV2::setup() {
     eventGroup_ = xEventGroupCreateStatic(&eventGroupBuffer_);
+    if (eventGroup_ == nullptr) {
+        return;
+    }
     loadTransitionTimeoutConfig();
 
     supervisorTaskHandle_ = xTaskGetCurrentTaskHandle();

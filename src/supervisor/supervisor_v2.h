@@ -99,7 +99,7 @@ enum class SubState {
 };
 
 struct ActiveTransition {
-	SystemState transitionTarget;
+	SystemState transitionTarget{SystemState::BOOTING};
 	SubState subState = SubState::PENDING;
 };
 
@@ -326,13 +326,25 @@ private:
 	 */
 	void checkComponentPresence();
 
-	SystemState observedState_;
-	SystemState targetState_;
+	SystemState observedState_{SystemState::BOOTING};
+	SystemState targetState_{SystemState::BOOTING};
 	ActiveTransition nextState_;
 
 	Mailbox stateRequestMailbox_{};
 	ErrorEvent errorEvent_{};
 	RetryPolicy retryPolicy_{};
+	/** @brief Per-component health tracking.
+	 *  Only resets to COMMITTED on reboot (zero-initialization of global/BSS).
+	 *  This is intentional — a component that failed once is not trusted again
+	 *  until the next full system restart.
+	 *
+	 *  If revisited, there are two future options:
+	 *    1 — Per-component self-healing: DEGRADED that reports Completed resets
+	 *        to COMMITTED, proving health individually.
+	 *    2 — Reset on leaving ERROR: clear all statuses when transitioning from
+	 *        ERROR to a non-error state.
+	 *  See docs/superpowers/specs/2026-05-16-code-review-fixes-design.md#11.
+	 */
 	std::array<ComponentStatus, componentCount> componentStatuses_{};
 	TransitionTimeoutConfig timeoutConfig_{};
 
@@ -351,12 +363,13 @@ private:
 	TickType_t fatalDeadlineMs_{};
 	bool fatalDeadlineElapsed_{};
 	bool fatalEntered_{};
+	bool firstOrchestration_{true};
 
 	/** @brief Saved target for ERROR recovery placeholder.
 	 *  Auto-snapshotted by setTargetState() when transitioning to ERROR.
 	 *  TODO: remove once determineRecoveryTarget() is replaced with real logic.
 	 */
-	SystemState lastTargetBeforeError_;
+	SystemState lastTargetBeforeError_{SystemState::BOOTING};
 
 	void setTargetState(SystemState target);
 
