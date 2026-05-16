@@ -14,6 +14,7 @@ void SupervisorV2::postNextComponentState(ComponentID id) {
 
 void SupervisorV2::completeTransition(ComponentID id, TransitionStatus status) {
     if (status == TransitionStatus::Completed) {
+        if (eventGroup_ == nullptr) return;
         // Set this component's bit in the event group. The orchestration
         // completes when all required, non-degraded components have set
         // their bits — checked on each run() tick.
@@ -32,7 +33,9 @@ void SupervisorV2::completeTransition(ComponentID id, TransitionStatus status) {
         postErrorEvent("component failed", id);
     } else {
         componentStatuses_[static_cast<int>(id)] = ComponentStatus::DEGRADED;
-        xEventGroupSetBits(eventGroup_, 1 << static_cast<int>(id));
+        if (eventGroup_ != nullptr) {
+            xEventGroupSetBits(eventGroup_, 1 << static_cast<int>(id));
+        }
     }
 }
 

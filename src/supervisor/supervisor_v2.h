@@ -326,6 +326,10 @@ private:
 	 */
 	void checkComponentPresence();
 
+	// State fields: written/read only from the state machine task (single thread).
+	// No concurrent access from other cores. Workers read order data through
+	// spinlock-guarded mailboxes (orderMailbox_, responseMailbox_), never directly
+	// from these fields.
 	SystemState observedState_{SystemState::BOOTING};
 	SystemState targetState_{SystemState::BOOTING};
 	ActiveTransition nextState_;
@@ -357,6 +361,8 @@ private:
 	bool hasActiveOrchestration_{};
 	OrchestrationOrder orderMailbox_{};
 	OrchestrationResponse responseMailbox_{};
+	// Task handles: default-initialized to nullptr. All xTaskNotifyGive calls are
+	// guarded against null (see postStateRequest, postErrorEvent, startOrchestration).
 	TaskHandle_t workerTaskHandle_{};
 	TaskHandle_t supervisorTaskHandle_{};
 
