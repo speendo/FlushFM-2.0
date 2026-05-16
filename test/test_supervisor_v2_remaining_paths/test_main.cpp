@@ -96,8 +96,6 @@ void test_start_orchestration_empty_bits_mask() {
 
     TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(0, S2V2Access::getOrderExpectedBits(supervisor));
-    TEST_ASSERT_EQUAL(static_cast<int>(SubState::PENDING),
-                      static_cast<int>(S2V2Access::nextState(supervisor).subState));
 }
 
 // ============================================================================

@@ -95,7 +95,6 @@ void SupervisorV2::startOrchestration(SystemState target) {
         postNextComponentState(static_cast<ComponentID>(i)); // always write mailbox
     }
 
-    nextState_.subState = SubState::PENDING;
     hasActiveOrchestration_ = true;
 
     orderMailbox_.post(bits,
@@ -120,7 +119,6 @@ void SupervisorV2::checkOrchestrationResponse() {
     hasActiveOrchestration_ = false;
 
     if (result == OrchestrationResult::COMPLETED) {
-        nextState_.subState = SubState::COMMITTED;
         setObservedState(nextState_.transitionTarget);
     } else {
         for (size_t i = 0; i < componentCount; i++) {

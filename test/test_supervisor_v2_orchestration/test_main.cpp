@@ -20,8 +20,6 @@ void test_start_orchestration_sets_active_flag() {
     S2V2Access::startOrchestration(supervisor, SystemState::CONNECTING);
 
     TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
-    TEST_ASSERT_EQUAL(static_cast<int>(SubState::PENDING),
-                      static_cast<int>(S2V2Access::nextState(supervisor).subState));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING),
                       static_cast<int>(S2V2Access::nextState(supervisor).transitionTarget));
 }
@@ -137,8 +135,6 @@ void test_check_response_completed_advances_observed_state() {
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING),
                       static_cast<int>(S2V2Access::getObservedState(supervisor)));
     TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
-    TEST_ASSERT_EQUAL(static_cast<int>(SubState::COMMITTED),
-                      static_cast<int>(S2V2Access::nextState(supervisor).subState));
 }
 
 void test_check_response_timed_out_required_posts_error() {
