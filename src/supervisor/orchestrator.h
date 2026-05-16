@@ -28,14 +28,14 @@ enum class OrchestrationResult : uint8_t {
 struct OrchestrationOrder {
     bool pending = false;
     EventBits_t expectedBits = 0;
-    TickType_t deadlineTicks = 0;
+    TickType_t timeoutTicks = 0;
     SystemState transitionTarget;
     portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
 
-    void post(EventBits_t bits, TickType_t deadline, SystemState target) {
+    void post(EventBits_t bits, TickType_t timeout, SystemState target) {
         portENTER_CRITICAL(&spinlock);
         expectedBits = bits;
-        deadlineTicks = deadline;
+        timeoutTicks = timeout;
         transitionTarget = target;
         pending = true;
         portEXIT_CRITICAL(&spinlock);
@@ -43,15 +43,15 @@ struct OrchestrationOrder {
 
     /** @brief Copy all fields under spinlock and clear the pending flag.
      *  @param outBits Receives the expected bits mask.
-     *  @param outDeadline Receives the deadline tick.
+     *  @param outTimeout Receives the timeout in ticks.
      *  @param outTarget Receives the transition target state.
      *  @return true if an order was pending and was consumed.
      */
-    bool consume(EventBits_t& outBits, TickType_t& outDeadline, SystemState& outTarget) {
+    bool consume(EventBits_t& outBits, TickType_t& outTimeout, SystemState& outTarget) {
         portENTER_CRITICAL(&spinlock);
         if (!pending) { portEXIT_CRITICAL(&spinlock); return false; }
         outBits = expectedBits;
-        outDeadline = deadlineTicks;
+        outTimeout = timeoutTicks;
         outTarget = transitionTarget;
         pending = false;
         portEXIT_CRITICAL(&spinlock);

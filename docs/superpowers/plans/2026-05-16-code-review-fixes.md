@@ -635,3 +635,35 @@ git commit -m "fix: replace polling with task notification in orchestrationWorke
 **Placeholder scan:** No TBD, TODO, or incomplete sections in the plan itself. All code is complete and shown inline. Pre-existing TODO comments in the source files (e.g., `supervisor_v2.h:369`) are intentionally preserved — the plan does not remove or modify them.
 
 **Type consistency:** `deadlineMs` → `deadlineTicks` consistently renamed in Task 3. `fatalDeadlineMs_` → `fatalEnteredTicks_` consistently renamed in Task 5. `consume()` signature change applied to both call sites in Task 2.
+
+---
+
+### Additional Finding: Timeout clamp causes immediate false timeouts
+
+**Problem:** In `orchestrationWorker()` the wait time for `xEventGroupWaitBits` is clamped by forcing `waitTicks = 0` whenever `rawWait` exceeds 60 seconds. That means any transition timeout configured above 60 seconds will *always* be treated as already expired, causing an immediate `TIMED_OUT` response even though the deadline is still in the future. Refs: [src/supervisor/orchestrator.cpp](src/supervisor/orchestrator.cpp#L151-L165).
+
+**Repro (logic):** Configure a transition timeout of 120s in `getTransitionTimeout()`. `deadlineTicks - now` evaluates to ~120s. The clamp assigns `waitTicks = 0`, `xEventGroupWaitBits` returns immediately, and the worker posts `TIMED_OUT`. Refs: [src/supervisor/orchestrator.cpp](src/supervisor/orchestrator.cpp#L151-L165).
+
+**Fix sketch:** Remove the 60s clamp and instead guard only true underflow. The minimal safe version is:
+
+```cpp
+TickType_t now = xTaskGetTickCount();
+TickType_t rawWait = deadlineTicks - now; // unsigned wrap handles deadline in past
+TickType_t waitTicks = rawWait; // no upper clamp
+```
+
+If you want a bounded wait to periodically re-check, loop in chunks but carry the remaining time:
+
+```cpp
+TickType_t remaining = deadlineTicks - xTaskGetTickCount();
+while (remaining > 0) {
+    TickType_t chunk = (remaining > pdMS_TO_TICKS(60000))
+        ? pdMS_TO_TICKS(60000)
+        : remaining;
+    EventBits_t bits = xEventGroupWaitBits(..., chunk);
+    if ((bits & expectedBits) == expectedBits) { /* completed */ break; }
+    remaining = deadlineTicks - xTaskGetTickCount();
+}
+```
+
+Either approach avoids the false immediate timeout and preserves correctness for long deadlines. Refs: [src/supervisor/orchestrator.cpp](src/supervisor/orchestrator.cpp#L151-L165).

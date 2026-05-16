@@ -95,10 +95,10 @@ void SupervisorV2::startOrchestration(SystemState target) {
     nextState_.subState = SubState::PENDING;
     hasActiveOrchestration_ = true;
 
-    TickType_t timeoutTicks = pdMS_TO_TICKS(getTransitionTimeout(target,
-        getIndex(target) > getIndex(observedState_)));
-    TickType_t deadline = xTaskGetTickCount() + timeoutTicks;
-    orderMailbox_.post(bits, deadline, target);
+    orderMailbox_.post(bits,
+        pdMS_TO_TICKS(getTransitionTimeout(target,
+            getIndex(target) > getIndex(observedState_))),
+        target);
     if (workerTaskHandle_ != nullptr) {
         xTaskNotifyGive(workerTaskHandle_);
     }
@@ -141,21 +141,18 @@ void orchestrationWorker(void* param) {
     auto* supervisor = static_cast<SupervisorV2*>(param);
     for (;;) {
         EventBits_t expectedBits;
-        TickType_t deadlineTicks;
+        TickType_t timeoutTicks;
         SystemState transitionTarget;
-        if (!supervisor->orderMailbox_.consume(expectedBits, deadlineTicks, transitionTarget)) {
+        if (!supervisor->orderMailbox_.consume(expectedBits, timeoutTicks, transitionTarget)) {
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
             continue;
         }
-
-        TickType_t rawWait = deadlineTicks - xTaskGetTickCount();
-        TickType_t waitTicks = (rawWait < pdMS_TO_TICKS(60000)) ? rawWait : 0;
 
         EventBits_t bits = xEventGroupWaitBits(supervisor->eventGroup_,
                                                  expectedBits,
                                                  pdTRUE,
                                                  pdTRUE,
-                                                 waitTicks);
+                                                 timeoutTicks);
 
         if ((bits & expectedBits) == expectedBits) {
             supervisor->responseMailbox_.post(OrchestrationResult::COMPLETED, 0);
