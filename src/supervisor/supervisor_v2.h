@@ -314,9 +314,9 @@ private:
 	void postNextComponentState(ComponentID id);
 
 	/** @brief Manage the deep sleep shutdown after FATAL.
-	 *  On first call, sets fatalDeadlineMs_ = now + 60s.
-	 *  On subsequent calls, triggers esp_deep_sleep_start() if the
-	 *  deadline has elapsed.
+	 *  On first call, records the entry tick (fatalEnteredTicks_).
+	 *  On subsequent calls, if (now - fatalEnteredTicks_) >= 60s,
+	 *  triggers esp_deep_sleep_start().
 	 */
 	void handleFatal();
 
