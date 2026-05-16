@@ -99,6 +99,7 @@ void SupervisorV2::startOrchestration(SystemState target) {
         getIndex(target) > getIndex(observedState_)));
     TickType_t deadline = xTaskGetTickCount() + timeoutTicks;
     orderMailbox_.post(bits, deadline, target);
+    xTaskNotifyGive(workerTaskHandle_);
 }
 
 /** @brief Check for a pending orchestration response from the worker task.
@@ -141,7 +142,7 @@ void orchestrationWorker(void* param) {
         TickType_t deadlineTicks;
         SystemState transitionTarget;
         if (!supervisor->orderMailbox_.consume(expectedBits, deadlineTicks, transitionTarget)) {
-            vTaskDelay(pdMS_TO_TICKS(10));
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
             continue;
         }
 
