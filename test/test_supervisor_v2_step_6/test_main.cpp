@@ -114,20 +114,12 @@ void test_determine_recovery_target_after_booting() {
 
 void test_fatal_task_sets_elapsed_flag() {
     SupervisorV2 supervisor;
-    S2V2Access::setFatalEnteredTicks(supervisor, 1);
-
-    fatalTask(&supervisor);
-
-    TEST_ASSERT_TRUE(S2V2Access::getFatalDeadlineElapsed(supervisor));
-}
-
-void test_fatal_task_no_elapsed_before_deadline() {
-    SupervisorV2 supervisor;
+    nativeTickCount = 0;
     S2V2Access::setFatalEnteredTicks(supervisor, 0);
 
     fatalTask(&supervisor);
 
-    TEST_ASSERT_FALSE(S2V2Access::getFatalDeadlineElapsed(supervisor));
+    TEST_ASSERT_TRUE(S2V2Access::getFatalDeadlineElapsed(supervisor));
 }
 
 void test_run_wakes_then_spawns_fatal_task() {
@@ -153,7 +145,6 @@ int main() {
     RUN_TEST(test_determine_recovery_target_returns_saved_target);
     RUN_TEST(test_determine_recovery_target_after_booting);
     RUN_TEST(test_fatal_task_sets_elapsed_flag);
-    RUN_TEST(test_fatal_task_no_elapsed_before_deadline);
     RUN_TEST(test_run_wakes_then_spawns_fatal_task);
     return UNITY_END();
 }

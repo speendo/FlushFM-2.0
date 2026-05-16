@@ -14,7 +14,8 @@ using TaskHandle_t = void*;
 
 inline constexpr TickType_t pdMS_TO_TICKS(TickType_t ms) { return ms; }
 inline constexpr TickType_t pdTICKS_TO_MS(TickType_t ticks) { return ticks; }
-inline void vTaskDelay(TickType_t) {}
+inline TickType_t nativeTickCount = 0;
+inline void vTaskDelay(TickType_t ticks) { nativeTickCount += ticks; }
 inline constexpr int pdTRUE = 1;
 inline constexpr TickType_t portMAX_DELAY = 0xffffffffUL;
 
@@ -49,7 +50,7 @@ inline EventBits_t xEventGroupWaitBits(EventGroupHandle_t handle, EventBits_t bi
 }
 inline void xTaskCreatePinnedToCore(void (*task)(void*), const char*, uint32_t,
                                      void* param, uint32_t, TaskHandle_t*, int) {}
-inline TickType_t xTaskGetTickCount() { return 0; }
+inline TickType_t xTaskGetTickCount() { return nativeTickCount; }
 inline TaskHandle_t xTaskGetCurrentTaskHandle() { return nullptr; }
 inline void xTaskNotifyGive(TaskHandle_t) {}
 inline uint32_t ulTaskNotifyTake(bool, TickType_t) { return 0; }
