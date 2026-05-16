@@ -41,12 +41,18 @@ struct OrchestrationOrder {
         portEXIT_CRITICAL(&spinlock);
     }
 
-    /** @brief Clear the pending flag under spinlock. Caller reads members directly after.
+    /** @brief Copy all fields under spinlock and clear the pending flag.
+     *  @param outBits Receives the expected bits mask.
+     *  @param outDeadline Receives the deadline tick.
+     *  @param outTarget Receives the transition target state.
      *  @return true if an order was pending and was consumed.
      */
-    bool consume() {
+    bool consume(EventBits_t& outBits, TickType_t& outDeadline, SystemState& outTarget) {
         portENTER_CRITICAL(&spinlock);
         if (!pending) { portEXIT_CRITICAL(&spinlock); return false; }
+        outBits = expectedBits;
+        outDeadline = deadlineMs;
+        outTarget = transitionTarget;
         pending = false;
         portEXIT_CRITICAL(&spinlock);
         return true;
@@ -70,12 +76,16 @@ struct OrchestrationResponse {
         portEXIT_CRITICAL(&spinlock);
     }
 
-    /** @brief Clear the pending flag under spinlock. Caller reads members directly after.
+    /** @brief Copy all fields under spinlock and clear the pending flag.
+     *  @param outResult Receives the orchestration result.
+     *  @param outTimedOut Receives the timed-out component bits.
      *  @return true if a response was pending and was consumed.
      */
-    bool consume() {
+    bool consume(OrchestrationResult& outResult, EventBits_t& outTimedOut) {
         portENTER_CRITICAL(&spinlock);
         if (!pending) { portEXIT_CRITICAL(&spinlock); return false; }
+        outResult = result;
+        outTimedOut = timedOutComponents;
         pending = false;
         portEXIT_CRITICAL(&spinlock);
         return true;
