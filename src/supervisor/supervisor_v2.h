@@ -215,6 +215,10 @@ public:
 
 	friend void fatalTask(SupervisorV2* supervisor);
 
+#ifdef UNIT_TEST
+	friend struct S2V2Access;
+#endif
+
 private:
 	/** @brief Consume and clear a pending state request.
 	 *  @return true if a request was pending and applied, false otherwise.
