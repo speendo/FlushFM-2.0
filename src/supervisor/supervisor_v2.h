@@ -370,3 +370,8 @@ private:
 
     friend void orchestrationWorker(void* param);
 };
+
+/* Forward declaration for the FATAL task function.
+ * Defined in fatal_task.cpp; friend-declared inside the class.
+ * Separate declaration needed for non-ADL name lookup (e.g. address-of). */
+void fatalTask(SupervisorV2* supervisor);
