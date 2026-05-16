@@ -1,9 +1,6 @@
 #include <unity.h>
 
 #include "support/s2v2_access.h"
-#include "../../src/supervisor/supervisor_v2.cpp"
-#include "../../src/supervisor/orchestrator.cpp"
-#include "../../src/supervisor/state_machine.cpp"
 
 namespace {
 

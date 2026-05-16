@@ -1,3 +1,5 @@
+#ifndef UNIT_TEST
+
 #include <Arduino.h>
 
 #include "AudioPlayerESP32.h"
@@ -84,4 +86,6 @@ void loop() {
         component->loop();
     }
 }
+
+#endif  // UNIT_TEST
 

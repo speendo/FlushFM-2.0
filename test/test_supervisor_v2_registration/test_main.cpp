@@ -1,10 +1,7 @@
 #include <unity.h>
 
-#define private public
-#include "../../src/supervisor/supervisor_v2.cpp"
-#include "../../src/supervisor/orchestrator.cpp"
-#include "../../src/supervisor/state_machine.cpp"
-#undef private
+#include "support/s2v2_access.h"
+#include "supervisor/supervisor_v2.h"
 
 namespace {
 
@@ -19,9 +16,9 @@ void test_register_component_stores_pointer() {
     supervisor.registerComponent(ComponentID::WiFi, &comp.mailbox, true);
 
     // Set the orchestration target so postNextComponentState writes it
-    supervisor.nextState_.transitionTarget = SystemState::READY;
+    S2V2Access::nextState(supervisor).transitionTarget = SystemState::READY;
 
-    supervisor.postNextComponentState(ComponentID::WiFi);
+    S2V2Access::postNextComponentState(supervisor, ComponentID::WiFi);
     TEST_ASSERT_TRUE(comp.mailbox.pending);
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY),
                       static_cast<int>(comp.mailbox.targetState));
@@ -29,14 +26,14 @@ void test_register_component_stores_pointer() {
 
 void test_post_next_component_state_null_guard() {
     SupervisorV2 supervisor;
-    supervisor.postNextComponentState(ComponentID::AudioRuntime);
+    S2V2Access::postNextComponentState(supervisor, ComponentID::AudioRuntime);
     TEST_ASSERT_TRUE_MESSAGE(true, "postNextComponentState on unregistered did not crash");
 }
 
 void test_register_component_null_mailbox_is_safe() {
     SupervisorV2 supervisor;
     supervisor.registerComponent(ComponentID::BoardInfo, nullptr, false);
-    supervisor.postNextComponentState(ComponentID::BoardInfo);
+    S2V2Access::postNextComponentState(supervisor, ComponentID::BoardInfo);
     TEST_ASSERT_TRUE_MESSAGE(true, "registerComponent with nullptr did not crash");
 }
 
@@ -77,7 +74,7 @@ void test_boot_presence_passes_when_all_required_registered() {
     supervisor.registerComponent(ComponentID::AudioRuntime, &audio.mailbox, true);
     supervisor.registerComponent(ComponentID::CLI, &cli.mailbox, false);
 
-    supervisor.checkComponentPresence();
+    S2V2Access::checkComponentPresence(supervisor);
     TEST_ASSERT_TRUE_MESSAGE(true, "presence check passed for all required");
 }
 
@@ -88,7 +85,7 @@ void test_boot_presence_detects_missing_required() {
     supervisor.registerComponent(ComponentID::AudioRuntime, &audio.mailbox, true);
     supervisor.registerComponent(ComponentID::CLI, &cli.mailbox, false);
 
-    supervisor.checkComponentPresence();
+    S2V2Access::checkComponentPresence(supervisor);
     TEST_ASSERT_TRUE_MESSAGE(true, "presence check detected missing required");
 }
 
@@ -99,7 +96,7 @@ void test_boot_presence_ignores_missing_optional() {
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
     supervisor.registerComponent(ComponentID::AudioRuntime, &audio.mailbox, true);
 
-    supervisor.checkComponentPresence();
+    S2V2Access::checkComponentPresence(supervisor);
     TEST_ASSERT_TRUE_MESSAGE(true, "presence check ignored missing optional");
 }
 

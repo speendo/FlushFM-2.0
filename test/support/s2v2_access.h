@@ -37,6 +37,8 @@ struct S2V2Access {
     static void callSetTargetState(SupervisorV2& s, SystemState target) { s.setTargetState(target); }
     static void callSetObservedState(SupervisorV2& s, SystemState state) { s.setObservedState(state); }
     static SystemState callDetermineRecoveryTarget(SupervisorV2& s) { return s.determineRecoveryTarget(); }
+    static void postNextComponentState(SupervisorV2& s, ComponentID id) { s.postNextComponentState(id); }
+    static void checkComponentPresence(SupervisorV2& s) { s.checkComponentPresence(); }
 
     // --- retry policy ---
     static RetryPolicy& retryPolicy(SupervisorV2& s) { return s.retryPolicy_; }

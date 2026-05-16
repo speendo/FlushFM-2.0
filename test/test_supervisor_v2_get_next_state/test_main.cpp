@@ -1,8 +1,6 @@
 #include <unity.h>
 
-#include "../../src/supervisor/supervisor_v2.cpp"
-#include "../../src/supervisor/orchestrator.cpp"
-#include "../../src/supervisor/state_machine.cpp"
+#include "supervisor/supervisor_v2.h"
 
 void test_get_index_valid_states() {
     TEST_ASSERT_EQUAL_INT(0, getIndex(SystemState::FATAL));

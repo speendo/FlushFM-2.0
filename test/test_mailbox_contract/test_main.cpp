@@ -1,6 +1,6 @@
 #include <unity.h>
+#include "supervisor/supervisor.h"
 
-#include "../../src/supervisor/supervisor.cpp"
 
 namespace {
 
