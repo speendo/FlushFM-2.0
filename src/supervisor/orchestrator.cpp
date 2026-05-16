@@ -99,7 +99,9 @@ void SupervisorV2::startOrchestration(SystemState target) {
         getIndex(target) > getIndex(observedState_)));
     TickType_t deadline = xTaskGetTickCount() + timeoutTicks;
     orderMailbox_.post(bits, deadline, target);
-    xTaskNotifyGive(workerTaskHandle_);
+    if (workerTaskHandle_ != nullptr) {
+        xTaskNotifyGive(workerTaskHandle_);
+    }
 }
 
 /** @brief Check for a pending orchestration response from the worker task.
