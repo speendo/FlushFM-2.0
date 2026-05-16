@@ -2,6 +2,10 @@
 
 #include <cstring>
 
+#ifndef configASSERT
+#define configASSERT(x) ((void)0)
+#endif
+
 using EventGroupHandle_t = void*;
 struct StaticEventGroup_t { uint8_t data[32]; };
 using TickType_t = uint32_t;
