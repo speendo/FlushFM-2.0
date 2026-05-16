@@ -1,11 +1,10 @@
 #include <unity.h>
 
-#define private public
+#include "support/s2v2_access.h"
 #include "../../src/supervisor/supervisor_v2.cpp"
 #include "../../src/supervisor/orchestrator.cpp"
 #include "../../src/supervisor/state_machine.cpp"
 #include "../../src/supervisor/fatal_task.cpp"
-#undef private
 
 void fatalTask(SupervisorV2* supervisor);
 
@@ -15,91 +14,91 @@ namespace {
 
 void test_set_target_to_error_saves_last_target() {
     SupervisorV2 supervisor;
-    supervisor.targetState_ = SystemState::LIVE;
-    supervisor.lastTargetBeforeError_ = SystemState::BOOTING;
+    S2V2Access::setTargetState(supervisor, SystemState::LIVE);
+    S2V2Access::setLastTargetBeforeError(supervisor, SystemState::BOOTING);
 
-    supervisor.setTargetState(SystemState::ERROR);
+    S2V2Access::callSetTargetState(supervisor, SystemState::ERROR);
 
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE),
-                      static_cast<int>(supervisor.lastTargetBeforeError_));
+                      static_cast<int>(S2V2Access::getLastTargetBeforeError(supervisor)));
 }
 
 void test_set_target_to_fatal_saves_last_target() {
     SupervisorV2 supervisor;
-    supervisor.targetState_ = SystemState::CONNECTING;
-    supervisor.lastTargetBeforeError_ = SystemState::BOOTING;
+    S2V2Access::setTargetState(supervisor, SystemState::CONNECTING);
+    S2V2Access::setLastTargetBeforeError(supervisor, SystemState::BOOTING);
 
-    supervisor.setTargetState(SystemState::FATAL);
+    S2V2Access::callSetTargetState(supervisor, SystemState::FATAL);
 
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING),
-                      static_cast<int>(supervisor.lastTargetBeforeError_));
+                      static_cast<int>(S2V2Access::getLastTargetBeforeError(supervisor)));
 }
 
 void test_set_target_error_to_error_does_not_restamp() {
     SupervisorV2 supervisor;
-    supervisor.targetState_ = SystemState::ERROR;
-    supervisor.lastTargetBeforeError_ = SystemState::LIVE;
+    S2V2Access::setTargetState(supervisor, SystemState::ERROR);
+    S2V2Access::setLastTargetBeforeError(supervisor, SystemState::LIVE);
 
-    supervisor.setTargetState(SystemState::ERROR);
+    S2V2Access::callSetTargetState(supervisor, SystemState::ERROR);
 
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE),
-                      static_cast<int>(supervisor.lastTargetBeforeError_));
+                      static_cast<int>(S2V2Access::getLastTargetBeforeError(supervisor)));
 }
 
 void test_set_target_non_error_does_not_snapshot() {
     SupervisorV2 supervisor;
-    supervisor.lastTargetBeforeError_ = SystemState::READY;
+    S2V2Access::setLastTargetBeforeError(supervisor, SystemState::READY);
 
-    supervisor.setTargetState(SystemState::CONNECTING);
+    S2V2Access::callSetTargetState(supervisor, SystemState::CONNECTING);
 
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY),
-                      static_cast<int>(supervisor.lastTargetBeforeError_));
+                      static_cast<int>(S2V2Access::getLastTargetBeforeError(supervisor)));
 }
 
 // --- setObservedState enhancement tests ---
 
 void test_set_observed_state_logs_and_resets_recovery() {
     SupervisorV2 supervisor;
-    supervisor.retryPolicy_.recoveryCounter = 2;
-    supervisor.hasActiveOrchestration_ = false;
+    S2V2Access::retryPolicy(supervisor).recoveryCounter = 2;
+    S2V2Access::setHasActiveOrchestration(supervisor, false);
 
-    supervisor.setObservedState(SystemState::READY);
+    S2V2Access::callSetObservedState(supervisor, SystemState::READY);
 
-    TEST_ASSERT_EQUAL(0, supervisor.retryPolicy_.recoveryCounter);
+    TEST_ASSERT_EQUAL(0, S2V2Access::retryPolicy(supervisor).recoveryCounter);
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY),
-                      static_cast<int>(supervisor.observedState_));
-    TEST_ASSERT_FALSE(supervisor.hasActiveOrchestration_);
+                      static_cast<int>(S2V2Access::getObservedState(supervisor)));
+    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
 }
 
 void test_set_observed_state_during_error_does_not_reset_recovery() {
     SupervisorV2 supervisor;
-    supervisor.retryPolicy_.recoveryCounter = 2;
+    S2V2Access::retryPolicy(supervisor).recoveryCounter = 2;
 
-    supervisor.setObservedState(SystemState::ERROR);
+    S2V2Access::callSetObservedState(supervisor, SystemState::ERROR);
 
-    TEST_ASSERT_EQUAL(2, supervisor.retryPolicy_.recoveryCounter);
+    TEST_ASSERT_EQUAL(2, S2V2Access::retryPolicy(supervisor).recoveryCounter);
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR),
-                      static_cast<int>(supervisor.observedState_));
+                      static_cast<int>(S2V2Access::getObservedState(supervisor)));
 }
 
 void test_set_observed_state_during_fatal_does_not_reset_recovery() {
     SupervisorV2 supervisor;
-    supervisor.retryPolicy_.recoveryCounter = 3;
+    S2V2Access::retryPolicy(supervisor).recoveryCounter = 3;
 
-    supervisor.setObservedState(SystemState::FATAL);
+    S2V2Access::callSetObservedState(supervisor, SystemState::FATAL);
 
-    TEST_ASSERT_EQUAL(3, supervisor.retryPolicy_.recoveryCounter);
+    TEST_ASSERT_EQUAL(3, S2V2Access::retryPolicy(supervisor).recoveryCounter);
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::FATAL),
-                      static_cast<int>(supervisor.observedState_));
+                      static_cast<int>(S2V2Access::getObservedState(supervisor)));
 }
 
 // --- determineRecoveryTarget tests ---
 
 void test_determine_recovery_target_returns_saved_target() {
     SupervisorV2 supervisor;
-    supervisor.lastTargetBeforeError_ = SystemState::LIVE;
+    S2V2Access::setLastTargetBeforeError(supervisor, SystemState::LIVE);
 
-    SystemState result = supervisor.determineRecoveryTarget();
+    SystemState result = S2V2Access::callDetermineRecoveryTarget(supervisor);
 
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE),
                       static_cast<int>(result));
@@ -107,41 +106,41 @@ void test_determine_recovery_target_returns_saved_target() {
 
 void test_determine_recovery_target_after_booting() {
     SupervisorV2 supervisor;
-    supervisor.lastTargetBeforeError_ = SystemState::CONNECTING;
+    S2V2Access::setLastTargetBeforeError(supervisor, SystemState::CONNECTING);
 
-    SystemState result = supervisor.determineRecoveryTarget();
+    SystemState result = S2V2Access::callDetermineRecoveryTarget(supervisor);
 
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING),
                       static_cast<int>(result));
 }
 
-// --- handleFatal tests ---
+// --- fatalTask tests ---
 
 void test_fatal_task_sets_elapsed_flag() {
     SupervisorV2 supervisor;
-    supervisor.fatalEnteredTicks_ = 1;
+    S2V2Access::setFatalEnteredTicks(supervisor, 1);
 
     fatalTask(&supervisor);
 
-    TEST_ASSERT_TRUE(supervisor.fatalDeadlineElapsed_);
+    TEST_ASSERT_TRUE(S2V2Access::getFatalDeadlineElapsed(supervisor));
 }
 
 void test_fatal_task_no_elapsed_before_deadline() {
     SupervisorV2 supervisor;
-    supervisor.fatalEnteredTicks_ = 0;
+    S2V2Access::setFatalEnteredTicks(supervisor, 0);
 
     fatalTask(&supervisor);
 
-    TEST_ASSERT_FALSE(supervisor.fatalDeadlineElapsed_);
+    TEST_ASSERT_FALSE(S2V2Access::getFatalDeadlineElapsed(supervisor));
 }
 
 void test_run_wakes_then_spawns_fatal_task() {
     SupervisorV2 supervisor;
-    supervisor.observedState_ = SystemState::FATAL;
+    S2V2Access::setObservedState(supervisor, SystemState::FATAL);
 
     supervisor.run();
 
-    TEST_ASSERT_TRUE(supervisor.fatalTaskSpawned_);
+    TEST_ASSERT_TRUE(S2V2Access::getFatalTaskSpawned(supervisor));
 }
 
 }  // namespace

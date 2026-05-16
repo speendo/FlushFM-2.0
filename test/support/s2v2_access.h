@@ -34,6 +34,9 @@ struct S2V2Access {
     static uint32_t getTransitionTimeout(const SupervisorV2& s, SystemState state, bool isForward) {
         return s.getTransitionTimeout(state, isForward);
     }
+    static void callSetTargetState(SupervisorV2& s, SystemState target) { s.setTargetState(target); }
+    static void callSetObservedState(SupervisorV2& s, SystemState state) { s.setObservedState(state); }
+    static SystemState callDetermineRecoveryTarget(SupervisorV2& s) { return s.determineRecoveryTarget(); }
 
     // --- retry policy ---
     static RetryPolicy& retryPolicy(SupervisorV2& s) { return s.retryPolicy_; }
