@@ -1,10 +1,9 @@
 #include <unity.h>
 
-#define private public
+#include "support/s2v2_access.h"
 #include "../../src/supervisor/supervisor_v2.cpp"
 #include "../../src/supervisor/orchestrator.cpp"
 #include "../../src/supervisor/state_machine.cpp"
-#undef private
 
 namespace {
 
@@ -15,30 +14,19 @@ struct TestComponent {
 // ============================================================================
 // Test group: getNextState — rank-based transitions
 // ============================================================================
-// The state rank table is: FATAL=0, ERROR=10, SLEEP=20, BOOTING=30,
-// CONNECTING=40, READY=50, LIVE=60.
-// Prior tests cover FATAL absorbent (always stays FATAL) and ERROR
-// recovery jump (ERROR -> BOOTING). These tests cover the general
-// downward and upward stepping paths and the invalid-state fallback.
 
 void test_get_next_state_downward_rank_stepping() {
-    // LIVE (rank 60, route index 6) -> SLEEP (rank 20, route index 2).
-    // currentIndex=6 > targetIndex=2, so step down: stateRoute[5]=READY.
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::READY),
                       static_cast<int>(getNextState(SystemState::LIVE, SystemState::SLEEP)));
 
-    // READY (index 5) -> CONNECTING (index 4). Single step down.
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING),
                       static_cast<int>(getNextState(SystemState::READY, SystemState::CONNECTING)));
 }
 
 void test_get_next_state_upward_rank_stepping() {
-    // SLEEP (rank 20, route index 2) -> LIVE (rank 60, route index 6).
-    // currentIndex=2 < targetIndex=6, so step up: stateRoute[3]=BOOTING.
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::BOOTING),
                       static_cast<int>(getNextState(SystemState::SLEEP, SystemState::LIVE)));
 
-    // BOOTING (index 3) -> LIVE (index 6). One step: CONNECTING.
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING),
                       static_cast<int>(getNextState(SystemState::BOOTING, SystemState::LIVE)));
 }
@@ -63,10 +51,10 @@ void test_complete_transition_required_failed_writes_error_event() {
 
     supervisor.completeTransition(ComponentID::WiFi, TransitionStatus::Failed);
 
-    TEST_ASSERT_TRUE(supervisor.errorEvent_.pending);
-    TEST_ASSERT_EQUAL_STRING("component failed", supervisor.errorEvent_.reason);
+    TEST_ASSERT_TRUE(S2V2Access::errorEvent(supervisor).pending);
+    TEST_ASSERT_EQUAL_STRING("component failed", S2V2Access::errorEvent(supervisor).reason);
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentID::WiFi),
-                      static_cast<int>(supervisor.errorEvent_.source));
+                      static_cast<int>(S2V2Access::errorEvent(supervisor).source));
 }
 
 // ============================================================================
@@ -79,23 +67,23 @@ void test_check_response_mixed_timeout() {
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
     supervisor.registerComponent(ComponentID::AudioRuntime, &audio.mailbox, true);
     supervisor.registerComponent(ComponentID::CLI, &cli.mailbox, false);
-    supervisor.setMaxRecoveries(3);
+    S2V2Access::setMaxRecoveries(supervisor, 3);
 
-    supervisor.observedState_ = SystemState::BOOTING;
+    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
     EventBits_t timedOut = (1 << static_cast<int>(ComponentID::WiFi))
                          | (1 << static_cast<int>(ComponentID::AudioRuntime))
                          | (1 << static_cast<int>(ComponentID::CLI));
-    supervisor.responseMailbox_.post(OrchestrationResult::TIMED_OUT, timedOut);
+    S2V2Access::postResponse(supervisor, OrchestrationResult::TIMED_OUT, timedOut);
 
-    supervisor.checkOrchestrationResponse();
+    S2V2Access::checkOrchestrationResponse(supervisor);
 
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentStatus::FAILED),
-                      static_cast<int>(supervisor.componentStatuses_[static_cast<int>(ComponentID::WiFi)]));
+                      static_cast<int>(S2V2Access::getComponentStatus(supervisor, ComponentID::WiFi)));
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentStatus::FAILED),
-                      static_cast<int>(supervisor.componentStatuses_[static_cast<int>(ComponentID::AudioRuntime)]));
+                      static_cast<int>(S2V2Access::getComponentStatus(supervisor, ComponentID::AudioRuntime)));
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentStatus::DEGRADED),
-                      static_cast<int>(supervisor.componentStatuses_[static_cast<int>(ComponentID::CLI)]));
-    TEST_ASSERT_FALSE(supervisor.hasActiveOrchestration_);
+                      static_cast<int>(S2V2Access::getComponentStatus(supervisor, ComponentID::CLI)));
+    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
 }
 
 // ============================================================================
@@ -106,13 +94,13 @@ void test_start_orchestration_empty_bits_mask() {
     SupervisorV2 supervisor;
     supervisor.setup();
 
-    supervisor.observedState_ = SystemState::BOOTING;
-    supervisor.startOrchestration(SystemState::CONNECTING);
+    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
+    S2V2Access::startOrchestration(supervisor, SystemState::CONNECTING);
 
-    TEST_ASSERT_TRUE(supervisor.hasActiveOrchestration_);
-    TEST_ASSERT_EQUAL(0, supervisor.orderMailbox_.expectedBits);
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(0, S2V2Access::getOrderExpectedBits(supervisor));
     TEST_ASSERT_EQUAL(static_cast<int>(SubState::PENDING),
-                      static_cast<int>(supervisor.nextState_.subState));
+                      static_cast<int>(S2V2Access::nextState(supervisor).subState));
 }
 
 // ============================================================================
@@ -121,23 +109,23 @@ void test_start_orchestration_empty_bits_mask() {
 
 void test_set_max_recoveries_rejects_invalid_values() {
     SupervisorV2 supervisor;
-    int original = supervisor.retryPolicy_.maxRecoveries;
+    int original = S2V2Access::retryPolicy(supervisor).maxRecoveries;
 
-    supervisor.setMaxRecoveries(0);
-    TEST_ASSERT_EQUAL(original, supervisor.retryPolicy_.maxRecoveries);
+    S2V2Access::setMaxRecoveries(supervisor, 0);
+    TEST_ASSERT_EQUAL(original, S2V2Access::retryPolicy(supervisor).maxRecoveries);
 
-    supervisor.setMaxRecoveries(-1);
-    TEST_ASSERT_EQUAL(original, supervisor.retryPolicy_.maxRecoveries);
+    S2V2Access::setMaxRecoveries(supervisor, -1);
+    TEST_ASSERT_EQUAL(original, S2V2Access::retryPolicy(supervisor).maxRecoveries);
 }
 
 void test_set_max_recoveries_accepts_valid_value() {
     SupervisorV2 supervisor;
 
-    supervisor.setMaxRecoveries(1);
-    TEST_ASSERT_EQUAL(1, supervisor.retryPolicy_.maxRecoveries);
+    S2V2Access::setMaxRecoveries(supervisor, 1);
+    TEST_ASSERT_EQUAL(1, S2V2Access::retryPolicy(supervisor).maxRecoveries);
 
-    supervisor.setMaxRecoveries(5);
-    TEST_ASSERT_EQUAL(5, supervisor.retryPolicy_.maxRecoveries);
+    S2V2Access::setMaxRecoveries(supervisor, 5);
+    TEST_ASSERT_EQUAL(5, S2V2Access::retryPolicy(supervisor).maxRecoveries);
 }
 
 // ============================================================================
@@ -148,8 +136,8 @@ void test_get_transition_timeout_forward_and_backward() {
     SupervisorV2 supervisor;
     supervisor.setup();
 
-    uint32_t forward = supervisor.getTransitionTimeout(SystemState::BOOTING, true);
-    uint32_t backward = supervisor.getTransitionTimeout(SystemState::BOOTING, false);
+    uint32_t forward = S2V2Access::getTransitionTimeout(supervisor, SystemState::BOOTING, true);
+    uint32_t backward = S2V2Access::getTransitionTimeout(supervisor, SystemState::BOOTING, false);
 
     TEST_ASSERT_EQUAL(5000, forward);
     TEST_ASSERT_EQUAL(5000, backward);
@@ -159,7 +147,7 @@ void test_get_transition_timeout_invalid_state_returns_zero() {
     SupervisorV2 supervisor;
     SystemState badState = static_cast<SystemState>(99);
 
-    uint32_t result = supervisor.getTransitionTimeout(badState, true);
+    uint32_t result = S2V2Access::getTransitionTimeout(supervisor, badState, true);
 
     TEST_ASSERT_EQUAL(0, result);
 }
