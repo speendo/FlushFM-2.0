@@ -221,19 +221,20 @@ SystemState SupervisorV2::determineRecoveryTarget() {
 }
 
 /** @brief Manage the deep sleep shutdown after FATAL.
- *  On first call, records the deadline 60 seconds from now. On subsequent
- *  calls, checks whether the deadline has elapsed. When it has, sets the
+ *  On first call, records the entry tick. On subsequent calls, uses
+ *  unsigned delta comparison (safe against TickType_t wrap-around) to
+ *  check whether the dwell period has elapsed. When it has, sets the
  *  fatalDeadlineElapsed_ flag so tests can observe the state. On actual
  *  hardware, this would also trigger esp_deep_sleep_start().
  */
 void SupervisorV2::handleFatal() {
     if (!fatalEntered_) {
         fatalEntered_ = true;
-        fatalDeadlineMs_ = xTaskGetTickCount() + pdMS_TO_TICKS(kFatalDwellMs);
+        fatalEnteredTicks_ = xTaskGetTickCount();
         return;
     }
 
-    if (xTaskGetTickCount() >= fatalDeadlineMs_) {
+    if ((xTaskGetTickCount() - fatalEnteredTicks_) >= pdMS_TO_TICKS(kFatalDwellMs)) {
         fatalDeadlineElapsed_ = true;
 #if defined(ARDUINO)
         esp_deep_sleep_start();

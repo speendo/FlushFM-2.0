@@ -119,7 +119,7 @@ void test_handle_fatal_sets_deadline_on_first_call() {
 
     supervisor.handleFatal();
 
-    TEST_ASSERT_NOT_EQUAL(0, supervisor.fatalDeadlineMs_);
+    TEST_ASSERT_TRUE(supervisor.fatalEntered_);
     TEST_ASSERT_FALSE(supervisor.fatalDeadlineElapsed_);
 }
 
@@ -136,7 +136,7 @@ void test_handle_fatal_no_elapsed_before_deadline() {
 void test_handle_fatal_detects_elapsed_deadline() {
     SupervisorV2 supervisor;
     supervisor.fatalEntered_ = true;
-    supervisor.fatalDeadlineMs_ = 0;
+    supervisor.fatalEnteredTicks_ = 1;  // xTaskGetTickCount() returns 0, so 0 - 1 == UINT32_MAX >= 60000 ✓
 
     supervisor.handleFatal();
 

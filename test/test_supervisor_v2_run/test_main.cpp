@@ -208,7 +208,6 @@ void test_run_calls_handle_fatal() {
 
     supervisor.run();
 
-    TEST_ASSERT_NOT_EQUAL(0, supervisor.fatalDeadlineMs_);
     TEST_ASSERT_TRUE(supervisor.fatalEntered_);
 }
 

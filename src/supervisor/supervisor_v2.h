@@ -360,7 +360,7 @@ private:
 	TaskHandle_t workerTaskHandle_{};
 	TaskHandle_t supervisorTaskHandle_{};
 
-	TickType_t fatalDeadlineMs_{};
+	TickType_t fatalEnteredTicks_{};
 	bool fatalDeadlineElapsed_{};
 	bool fatalEntered_{};
 	bool firstOrchestration_{true};
