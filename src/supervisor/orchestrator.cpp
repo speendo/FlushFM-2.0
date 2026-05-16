@@ -76,6 +76,8 @@ void SupervisorV2::startOrchestration(SystemState target) {
         checkComponentPresence();
     }
 
+    xEventGroupClearBits(eventGroup_, kAllComponentBits);
+
     // Build expected-bits mask and write mailboxes in a single pass.
     // Unregistered components (nullptr) are skipped entirely.
     // DEGRADED components get a mailbox write but no event-group bit.
@@ -89,8 +91,6 @@ void SupervisorV2::startOrchestration(SystemState target) {
 
         postNextComponentState(static_cast<ComponentID>(i)); // always write mailbox
     }
-
-    xEventGroupClearBits(eventGroup_, kAllComponentBits);
 
     nextState_.subState = SubState::PENDING;
     hasActiveOrchestration_ = true;
