@@ -14,17 +14,6 @@
 #include "../component_types.h"
 #include "orchestrator.h"
 
-#ifndef SYSTEM_STATE_X
-#define SYSTEM_STATE_X(V) \
-    V(FATAL, 0) \
-    V(ERROR, 10) \
-    V(SLEEP, 20) \
-    V(BOOTING, 30) \
-    V(CONNECTING, 40) \
-    V(READY, 50) \
-    V(LIVE, 60)
-#endif
-
 namespace detail {
 
     /* Rank values in declaration order -- extracted at compile time */
@@ -63,7 +52,6 @@ namespace detail {
 
 }  // namespace detail
 
-#undef SYSTEM_STATE_X
 
 /* Backward-compatible aliases -- .cpp and existing tests use these unchanged */
 inline constexpr auto& stateRoute = detail::kRoute;
