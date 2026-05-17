@@ -84,7 +84,7 @@ systemCap = min(CONNECTING, LIVE) = CONNECTING
 | Scenario | Behavior |
 |----------|----------|
 | `targetState <= systemCap` | Normal: step toward target, orchestrate |
-| `targetState > systemCap` | Step toward `systemCap` as effective target, store original intent for when cap rises |
+| `targetState > systemCap` | Step toward `systemCap` as effective target, store original intent in `targetState_` for when cap rises. `targetState_` remains last-write-wins — a new request overwrites the stored intent. |
 | `systemCap drops < observedState` | Trigger downward step to new cap |
 | Downward request (any target) | Always allowed, cap irrelevant |
 
