@@ -28,7 +28,7 @@ The sequence writes component mailboxes **before** clearing the event group. A c
 **Fix:** Move `xEventGroupClearBits()` to **before** the mailbox-write loop (line 84 before line 74).
 
 **Status: FIXED** — `xEventGroupClearBits()` moved before the mailbox-write loop in commit `77260d8`.
-**Nachweis:** `orchestrator.cpp:82-84` löscht die Event-Bits, **dann** erst läuft die Schleife (`orchestrator.cpp:90-98`), die `postNextComponentState()` aufruft. Ein Race über Core-Grenzen hinweg kann nicht mehr auftreten.
+**Evidence:** `orchestrator.cpp:82-84` clears the event bits, **then** the loop runs (`orchestrator.cpp:90-98`) that calls `postNextComponentState()`. A race condition across core boundaries can no longer occur.
 
 ---
 
@@ -48,7 +48,7 @@ Both `deadlineMs` and `now` are `TickType_t` (unsigned 32-bit). If `now > deadli
 **Fix:** Clamp to zero: `(deadlineMs > now) ? deadlineMs - now : 0`.
 
 **Status: FIXED** — Absolute deadline replaced with relative `pdMS_TO_TICKS(timeout)`; commit `b50ed39`.
-**Nachweis:** `orchestrator.cpp:103-106` übergibt `pdMS_TO_TICKS(getTransitionTimeout(...))` direkt an `orderMailbox_.post()`. Der alte Code mit `deadlineMs - now` existiert nicht mehr. `orderMailbox_` speichert jetzt `TickType_t timeoutTicks` statt eines absoluten `deadlineMs`.
+**Evidence:** `orchestrator.cpp:103-106` passes `pdMS_TO_TICKS(getTransitionTimeout(...))` directly to `orderMailbox_.post()`. The old code with `deadlineMs - now` no longer exists. `orderMailbox_` now stores `TickType_t timeoutTicks` instead of an absolute `deadlineMs`.
 
 ---
 
@@ -68,7 +68,7 @@ Both `deadlineMs` and `now` are `TickType_t` (unsigned 32-bit). If `now > deadli
 **Fix:** Use a periodic wake mechanism (timer, or `ulTaskNotifyTake()` with a finite timeout and periodic re-check).
 
 **Status: OPEN**
-**Nachweis:** `state_machine.cpp:112` — `run()` beginnt mit `ulTaskNotifyTake(pdTRUE, portMAX_DELAY)`. Nach dem ersten FATAL-Eintrag (wenn `observedState_ == FATAL`) wird `handleFatal()` in Zeile 131 aufgerufen, aber danach blockiert `run()` wieder bei Zeile 112. Ohne externen Event (Error/State-Request) wird `handleFatal()` nie wieder erreicht → der 60s-Dwell-Timer (`state_machine.cpp:237`) feuert nicht. Kein Timer, kein `ulTaskNotifyTake` mit Timeout vorhanden.
+**Evidence:** `state_machine.cpp:112` — `run()` starts with `ulTaskNotifyTake(pdTRUE, portMAX_DELAY)`. After the first FATAL entry (when `observedState_ == FATAL`), `handleFatal()` is called at line 131, but then `run()` blocks again at line 112. Without an external event (Error/State-Request), `handleFatal()` is never reached again → the 60s dwell timer (`state_machine.cpp:237`) never fires. No timer, no `ulTaskNotifyTake` with timeout exists.
 
 ---
 
@@ -97,7 +97,7 @@ The files are split (`state_machine.cpp`, `orchestrator.cpp`) but all methods la
 - `SupervisorV2` — composition of the above, public API surface
 
 **Status: OPEN**
-**Nachweis:** `supervisor_v2.h:161-383` — die Klasse hat immer noch ~25 Member und ~22 Methoden. `state_machine.cpp` und `orchestrator.cpp` definieren ausschließlich `SupervisorV2::method()` — keine eigene Klasse `StateMachine` oder `Orchestrator`.
+**Evidence:** `supervisor_v2.h:161-383` — the class still has ~25 members and ~22 methods. `state_machine.cpp` and `orchestrator.cpp` exclusively define `SupervisorV2::method()` — no separate `StateMachine` or `Orchestrator` class.
 
 ---
 
@@ -113,7 +113,7 @@ The files are split (`state_machine.cpp`, `orchestrator.cpp`) but all methods la
 This is not a separation — it's a forwarding header that exists because the directory structure expected a file here. If `SupervisorV2` were refactored into separate classes, `StateMachine` would get its own header.
 
 **Status: OPEN**
-**Nachweis:** `src/supervisor/state_machine.h` ist immer noch 3 Zeilen (`#pragma once`, `#include "supervisor/supervisor_v2.h"`), kein eigener Inhalt.
+**Evidence:** `src/supervisor/state_machine.h` is still 3 lines (`#pragma once`, `#include "supervisor/supervisor_v2.h"`), no own content.
 
 ---
 
@@ -131,7 +131,7 @@ The copy in `supervisor_v2.h` is dead code — never reached. A developer editin
 **Fix:** Remove the duplicate from `supervisor_v2.h`. The `detail` namespace already references `component_types.h`'s types.
 
 **Status: OPEN**
-**Nachweis:** `supervisor_v2.h:17-26` definiert `SYSTEM_STATE_X` via `#ifndef`. Da `component_types.h:20-27` es bereits definiert hat (inkludiert via `orchestrator.h`), ist der Block in `supervisor_v2.h` tot. Die `#undef` in Zeile 66 ist wirkungslos, da sie ein nie-definiertes Makro entfernt. Das Makro steht immer noch doppelt im Code.
+**Evidence:** `supervisor_v2.h:17-26` defines `SYSTEM_STATE_X` via `#ifndef`. Since `component_types.h:20-27` has already defined it (included via `orchestrator.h`), the block in `supervisor_v2.h` is dead. The `#undef` at line 66 is a no-op because it undefines a never-defined macro. The macro still appears twice in the code.
 
 ---
 
@@ -150,7 +150,7 @@ enum class SubState {
 `ActiveTransition.subState` is set to `PENDING` in `startOrchestration()` and `COMMITTED` in `checkOrchestrationResponse()` — but `FAILED` is never assigned. If this value is meant for future use, it should have a reference. Otherwise it's dead code.
 
 **Status: OPEN**
-**Nachweis:** `supervisor_v2.h:95-99` definiert `FAILED` im `SubState`-Enum. Eine grep-Suche über `src/` und `test/` findet keine einzige Stelle, die `SubState::FAILED` setzt oder abfragt. `startOrchestration()` setzt auf `PENDING` (`orchestrator.cpp:100`), `checkOrchestrationResponse()` auf `COMMITTED` (`orchestrator.cpp:125`).
+**Evidence:** `supervisor_v2.h:95-99` defines `FAILED` in the `SubState` enum. A grep search over `src/` and `test/` finds no location that sets or queries `SubState::FAILED`. `startOrchestration()` sets `PENDING` (`orchestrator.cpp:100`), `checkOrchestrationResponse()` sets `COMMITTED` (`orchestrator.cpp:125`).
 
 ---
 
@@ -168,7 +168,7 @@ SystemState lastTargetBeforeError_;
 The TODO links to no issue, no plan, and no timeline. The placeholder is now the shipped implementation. Either remove the TODO (if the snapshot approach is the final design) or create a tracking issue.
 
 **Status: OPEN**
-**Nachweis:** `supervisor_v2.h:376` — `// TODO: remove once determineRecoveryTarget() is replaced with real logic.` ist immer noch da. Kein Issue, kein Plan, kein Timeline-Kommentar hinzugefügt.
+**Evidence:** `supervisor_v2.h:376` — `// TODO: remove once determineRecoveryTarget() is replaced with real logic.` is still there. No issue, no plan, no timeline comment added.
 
 ---
 
@@ -186,7 +186,7 @@ SystemState targetState_;    // default-initialized to 0 = FATAL
 While `main.cpp` calls `SupervisorV2::setup()` which doesn't change these states, the system relies on external components posting state requests to leave FATAL. A more natural default would be `BOOTING` for `observedState_` and `SLEEP` for `targetState_`.
 
 **Status: FIXED** — Both default to `SystemState::BOOTING` now (`supervisor_v2.h:333-334`).
-**Nachweis:** `supervisor_v2.h:333-334`: `SystemState observedState_{SystemState::BOOTING};` und `SystemState targetState_{SystemState::BOOTING};`. Der alte Default auf `FATAL` (0) wurde ersetzt.
+**Evidence:** `supervisor_v2.h:333-334`: `SystemState observedState_{SystemState::BOOTING};` and `SystemState targetState_{SystemState::BOOTING};`. The old default of `FATAL` (0) has been replaced.
 
 ---
 
@@ -201,7 +201,7 @@ using DebugReason = const char*;
 Works fine with string literals (the common case), but one dynamically-allocated string or `std::string::c_str()` with a short lifetime away from a use-after-free. The type provides no safety guarantees and no way to distinguish between null, empty, and valid strings.
 
 **Status: OPEN**
-**Nachweis:** `component_types.h:123` — `using DebugReason = const char*;` unverändert. Kein Wrapper, kein `std::string_view`, keine Unterscheidung null/leer/valide.
+**Evidence:** `component_types.h:123` — `using DebugReason = const char*;` unchanged. No wrapper, no `std::string_view`, no distinction between null/empty/valid.
 
 ---
 
@@ -217,7 +217,7 @@ isRequired_[static_cast<int>(id)] = isRequired;
 Both arrays are sized by `componentCount`, which equals `ComponentID::Count`. The `static_assert` in the header (line 84) ensures bitmask safety but doesn't prevent a runtime out-of-bounds if `id` is somehow invalid (e.g., corrupted RAM, logic bug). A `size_t` check or debug assertion would catch this.
 
 **Status: OPEN**
-**Nachweis:** `supervisor_v2.cpp:57-61` — `registerComponent()` macht `componentMailboxes_[static_cast<int>(id)] = mailbox;` ohne Bereichsprüfung. Kein `if (id < ComponentID::Count)`, kein `assert()`, kein early return.
+**Evidence:** `supervisor_v2.cpp:57-61` — `registerComponent()` does `componentMailboxes_[static_cast<int>(id)] = mailbox;` without bounds check. No `if (id < ComponentID::Count)`, no `assert()`, no early return.
 
 ---
 
@@ -235,7 +235,7 @@ if (!supervisor->orderMailbox_.consume()) {
 The orchestration worker polls its mailbox every 10ms even when idle. On the ESP32-S3 (potentially battery-powered), this wastes CPU and energy. The worker should block on a task notification (like the state machine does) and be notified by `startOrchestration()`.
 
 **Status: FIXED** — Worker now blocks on `ulTaskNotifyTake(pdTRUE, portMAX_DELAY)` and is woken by `xTaskNotifyGive()` in `startOrchestration()` and `orchestrationWorker` loop.
-**Nachweis:** `orchestrator.cpp:152` — `ulTaskNotifyTake(pdTRUE, portMAX_DELAY);`. Die konsumierende Schleife blockiert, bis `startOrchestration()` in Zeile 108 `xTaskNotifyGive(workerTaskHandle_)` aufruft. Das alte `vTaskDelay(10)` existiert nicht mehr.
+**Evidence:** `orchestrator.cpp:152` — `ulTaskNotifyTake(pdTRUE, portMAX_DELAY);`. The consuming loop blocks until `startOrchestration()` at line 108 calls `xTaskNotifyGive(workerTaskHandle_)`. The old `vTaskDelay(10)` no longer exists.
 
 ---
 
@@ -248,7 +248,7 @@ After `orderMailbox_.consume()` returns (spinlock released), the worker reads `e
 This is mitigated in practice because `hasActiveOrchestration_` prevents the state machine from starting a new orchestration while one is in-flight. However, there's no formal guarantee — the fields should be copied out under spinlock.
 
 **Status: FIXED** — `OrchestrationOrder::consume()` (`orchestrator.h:50-58`) copies all fields under spinlock. The worker reads from local copies, not shared fields.
-**Nachweis:** `orchestrator.h:50-58`: `consume()` liest `expectedBits`, `timeoutTicks`, `transitionTarget` unter `portENTER_CRITICAL(&spinlock)` aus und schreibt sie in lokale Variablen (`outBits`, `outTimeout`, `outTarget`). Der Worker in `orchestrator.cpp:148-154` deklariert `EventBits_t expectedBits; TickType_t timeoutTicks; SystemState transitionTarget;` als lokale Variablen und ruft `consume(expectedBits, timeoutTicks, transitionTarget)` auf.
+**Evidence:** `orchestrator.h:50-58`: `consume()` reads `expectedBits`, `timeoutTicks`, `transitionTarget` under `portENTER_CRITICAL(&spinlock)` and writes them into local variables (`outBits`, `outTimeout`, `outTarget`). The worker in `orchestrator.cpp:148-154` declares `EventBits_t expectedBits; TickType_t timeoutTicks; SystemState transitionTarget;` as local variables and calls `consume(expectedBits, timeoutTicks, transitionTarget)`.
 
 ---
 
@@ -259,7 +259,7 @@ This is mitigated in practice because `hasActiveOrchestration_` prevents the sta
 On every call after the first (when `fatalEntered_` is true but the deadline hasn't elapsed), `handleFatal()` does nothing — no logging, no indication that the deadline check is pending. A developer debugging a hang would see no output for 60 seconds while the dwell timer runs. A brief log or counter would help.
 
 **Status: OPEN**
-**Nachweis:** `state_machine.cpp:230-243` — `handleFatal()` enthält keinen `else`-Zweig und kein Logging für den Fall, dass die Deadline noch nicht abgelaufen ist. Nach dem Setzen von `fatalEntered_ = true` (Zeile 232) und dem Verfehlen der Deadline gibt es null Output.
+**Evidence:** `state_machine.cpp:230-243` — `handleFatal()` contains no `else` branch and no logging for the case where the deadline has not yet elapsed. After setting `fatalEntered_ = true` (line 232) and missing the deadline, there is zero output.
 
 ---
 
@@ -277,7 +277,7 @@ Tests reach directly into private members (`observedState_`, `targetState_`, `ha
 The tests that set up internal state manually (lines like `supervisor.observedState_ = SystemState::BOOTING`) are particularly fragile — they rely on specific member layouts and names.
 
 **Status: OPEN**
-**Nachweis:** `grep '#define private public' test/` findet 6 Treffer. In `test/test_supervisor_v2_orchestration/test_main.cpp` Zeile 23: `supervisor.observedState_ = SystemState::BOOTING;`. In `test/test_supervisor_v2_run/test_main.cpp` und 4 weiteren Dateien dasselbe Muster. Nur `test_supervisor_v2_get_next_state` kommt ohne `#define private public` aus.
+**Evidence:** `grep '#define private public' test/` finds 6 matches. In `test/test_supervisor_v2_orchestration/test_main.cpp` line 23: `supervisor.observedState_ = SystemState::BOOTING;`. In `test/test_supervisor_v2_run/test_main.cpp` and 4 other files the same pattern. Only `test_supervisor_v2_get_next_state` works without `#define private public`.
 
 ---
 
@@ -300,7 +300,7 @@ Each test `#include`s the `.cpp` source files directly, meaning:
 The `#include` approach combined with `#define private public` means tests are **compiled into the same translation unit** as the source, giving them access to everything. This is the root cause of the coupling in T1.
 
 **Status: OPEN**
-**Nachweis:** `grep '#include.*\.cpp"' test/` findet in jedem der 7 SupervisorV2-Test-Verzeichnisse die Zeilen `#include "../../src/supervisor/supervisor_v2.cpp"`, `#include "../../src/supervisor/orchestrator.cpp"` und `#include "../../src/supervisor/state_machine.cpp"`. Kein Test includiert `.h`-Dateien statt `.cpp`.
+**Evidence:** `grep '#include.*\.cpp"' test/` finds in each of the 7 SupervisorV2 test directories the lines `#include "../../src/supervisor/supervisor_v2.cpp"`, `#include "../../src/supervisor/orchestrator.cpp"` and `#include "../../src/supervisor/state_machine.cpp"`. No test includes `.h` files instead of `.cpp`.
 
 ---
 
@@ -321,7 +321,7 @@ Time is frozen at zero, making timeout-dependent behavior untestable:
 A better approach would be a settable tick counter (`xTaskGetTickCount() = fakeNow`) or a mock that tests can advance.
 
 **Status: OPEN**
-**Nachweis:** `native_stubs.h:47` — `inline TickType_t xTaskGetTickCount() { return 0; }`. Unverändert seit Audit. Keine Mock-Infrastruktur (keine globale Variable, kein Setter, kein `fakeNow`). `handleFatal()` kann den 60s-Timeout in Tests nicht natürlich erreichen.
+**Evidence:** `native_stubs.h:47` — `inline TickType_t xTaskGetTickCount() { return 0; }`. Unchanged since audit. No mock infrastructure (no global variable, no setter, no `fakeNow`). `handleFatal()` cannot naturally reach the 60s timeout in tests.
 
 ---
 
@@ -343,7 +343,7 @@ These verify the absence of a segfault but don't verify:
 Example: `test_complete_transition_completed_sets_event_bit` calls `completeTransition()` but never checks `xEventGroupGetBits()`. The test name says "sets event bit" but the assertion is "didn't crash."
 
 **Status: OPEN** — Partial improvement: `test_complete_transition_optional_failed_sets_event_bit` now verifies `xEventGroupGetBits()`.
-**Nachweis:** `test/test_supervisor_v2_registration/test_main.cpp` — immer noch 6 von 9 Tests mit `TEST_ASSERT_TRUE_MESSAGE(true, "...")`. Der erwähnte Test `test_complete_transition_completed_sets_event_bit` prüft immer noch nur "didn't crash", obwohl der neuere Test `test_complete_transition_optional_failed_sets_event_bit` in der Orchestration-Suite jetzt `xEventGroupGetBits()` checkt.
+**Evidence:** `test/test_supervisor_v2_registration/test_main.cpp` — still 6 of 9 tests use `TEST_ASSERT_TRUE_MESSAGE(true, "...")`. The mentioned test `test_complete_transition_completed_sets_event_bit` still only checks "didn't crash", although the newer test `test_complete_transition_optional_failed_sets_event_bit` in the orchestration suite now checks `xEventGroupGetBits()`.
 
 ---
 
@@ -358,7 +358,7 @@ All 7 test suites run single-threaded via native stubs. None test:
 This means the cross-core synchronization code is entirely untested in realistic conditions.
 
 **Status: OPEN**
-**Nachweis:** Alle 7 Test-Suites laufen single-threaded via native stubs (`native_stubs.h`). Es gibt keinen Test, der zwei Tasks startet, Mailboxen parallel schreibt oder `xEventGroupWaitBits` mit echtem Timeout testet. Die `native_stubs.h`-Implementierung von `ulTaskNotifyTake` gibt immer 0 zurück (Zeile 50), blockiert also nie — Notifications und echte Task-Synchronisation werden nicht getestet.
+**Evidence:** All 7 test suites run single-threaded via native stubs (`native_stubs.h`). There is no test that starts two tasks, writes mailboxes in parallel, or tests `xEventGroupWaitBits` with a real timeout. The `native_stubs.h` implementation of `ulTaskNotifyTake` always returns 0 (line 50), so it never blocks — notifications and real task synchronization are not tested.
 
 ---
 
