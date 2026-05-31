@@ -99,6 +99,18 @@ cli_output::CommandResult dispatchCommand(
         return {MessageKey::HELP};
     }
 
+    if (strcmp(cmd, "transition") == 0) {
+        if (!arg || *arg == '\0') {
+            return {MessageKey::USAGE_TRANSITION};
+        }
+        if (strcmp(arg, "live") == 0 || strcmp(arg, "streaming") == 0
+         || strcmp(arg, "ready") == 0 || strcmp(arg, "idle") == 0
+         || strcmp(arg, "sleep") == 0) {
+            return {MessageKey::STATE_TRANSITION_REQUESTED, arg};
+        }
+        return {MessageKey::USAGE_TRANSITION, arg};
+    }
+
     if (strcmp(cmd, "status") == 0) {
         uint8_t statusBits = 0;
         if (env.wifiConnectivity() == WiFiConnectivity::CONNECTED) {

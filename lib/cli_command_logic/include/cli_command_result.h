@@ -25,6 +25,8 @@ enum class MessageKey {
     SESSION_RESET,
     STATUS,
     HELP,
+    STATE_TRANSITION_REQUESTED,
+    USAGE_TRANSITION,
     UNKNOWN_COMMAND,
 };
 

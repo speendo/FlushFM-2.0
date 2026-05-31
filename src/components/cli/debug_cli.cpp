@@ -8,7 +8,6 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-#include "components/cli/cli.h"
 #include "component_types.h"
 #include "core/config.h"
 #include "core/debug.h"
@@ -33,49 +32,9 @@ static void loadtestTask(void* param);
 // ---------------------------------------------------------------------------
 namespace debug_cli {
 
-static bool postManualTransition(const char* targetState) {
-    if (!s_supervisor) {
-        ERROR_LOG(kLogSource, "Supervisor not available for transition command");
-        return true;
-    }
-
-    if (!targetState || targetState[0] == '\0') {
-        ERROR_LOG(kLogSource, "Usage: transition <ready|live|sleep|error>");
-        return true;
-    }
-
-    if (strcmp(targetState, "idle") == 0 || strcmp(targetState, "ready") == 0) {
-        (void)s_supervisor->postStateRequest(SystemState::READY);
-        PROD_LOG(kLogSource, "Transition request posted: ready");
-        return true;
-    }
-
-    if (strcmp(targetState, "streaming") == 0 || strcmp(targetState, "live") == 0) {
-        cli::process("play");
-        PROD_LOG(kLogSource, "Transition request posted: live");
-        return true;
-    }
-
-    if (strcmp(targetState, "sleep") == 0) {
-        (void)s_supervisor->postStateRequest(SystemState::SLEEP);
-        PROD_LOG(kLogSource, "Transition request posted: sleep");
-        return true;
-    }
-
-    if (strcmp(targetState, "error") == 0) {
-        (void)s_supervisor->postStateRequest(SystemState::ERROR);
-        PROD_LOG(kLogSource, "Transition request posted: error");
-        return true;
-    }
-
-    ERROR_LOG(kLogSource, "Unknown transition target: %s", targetState);
-    ERROR_LOG(kLogSource, "Usage: transition <ready|live|sleep|error>");
-    return true;
-}
-
-void init(TaskHandle_t* audioTaskHandle, Supervisor* supervisorV2) {
+void init(TaskHandle_t* audioTaskHandle, Supervisor* supervisor) {
     s_audioTaskHandle = audioTaskHandle;
-    s_supervisor = supervisorV2;
+    s_supervisor = supervisor;
 }
 
 bool process(const char* cmd, const char* arg) {
@@ -96,8 +55,6 @@ bool process(const char* cmd, const char* arg) {
     } else if (strcmp(cmd, "tstatus") == 0) {
         printTransitionStatus();
         return true;
-    } else if (strcmp(cmd, "transition") == 0) {
-        return postManualTransition(arg);
     }
 
     return false;
@@ -107,7 +64,6 @@ void printHelp() {
     Serial.println("  tasks               Print FreeRTOS task list (core, state, stack HWM)");
     Serial.println("  loadtest            Run 5s busy-loop on Core 0, check audio stability");
     Serial.println("  tstatus             Show transition and component lifecycle status");
-    Serial.println("  transition <s>      Request state transition: ready|live|sleep|error");
 }
 
 } // namespace debug_cli

@@ -167,7 +167,18 @@ void process(const char* line) {
         AUDIO_VOLUME_STEPS);
 
     if (s_supervisor) {
-        if (strcmp(cmd, "play") == 0 && result.key == cli_output::MessageKey::CONNECTING_STREAM) {
+        if (result.key == cli_output::MessageKey::STATE_TRANSITION_REQUESTED) {
+            const char* target = result.text;
+            if (target) {
+                if (strcmp(target, "live") == 0 || strcmp(target, "streaming") == 0) {
+                    s_supervisor->postStateRequest(SystemState::LIVE);
+                } else if (strcmp(target, "ready") == 0 || strcmp(target, "idle") == 0) {
+                    s_supervisor->postStateRequest(SystemState::READY);
+                } else if (strcmp(target, "sleep") == 0) {
+                    s_supervisor->postStateRequest(SystemState::SLEEP);
+                }
+            }
+        } else if (strcmp(cmd, "play") == 0 && result.key == cli_output::MessageKey::CONNECTING_STREAM) {
             (void)s_supervisor->postStateRequest(SystemState::LIVE);
         } else if (strcmp(cmd, "stop") == 0 && result.key == cli_output::MessageKey::STREAM_STOPPED) {
             (void)s_supervisor->postStateRequest(SystemState::READY);

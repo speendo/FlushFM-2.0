@@ -24,6 +24,8 @@ void printHelp(DebugHelpPrinter debugHelpPrinter) {
     Serial.printf ("  volume [0-%d]       Get or set playback volume\r\n", AUDIO_VOLUME_STEPS);
     Serial.println("  mute [on|off]       Get or set mute state");
     Serial.println("  balance <-16..16>   Stereo balance (-16=L, 0=center, +16=R)");
+    Serial.println("  station <url>       Set default stream URL without starting playback");
+    Serial.println("  transition <s>      Request state transition: live|ready|sleep");
     Serial.println("  status              Show WiFi, audio, and persisted settings");
     if (debugHelpPrinter) {
         debugHelpPrinter();
@@ -120,6 +122,12 @@ void render(const CommandResult& result, DebugHelpPrinter debugHelpPrinter) {
             return;
         case MessageKey::HELP:
             printHelp(debugHelpPrinter);
+            return;
+        case MessageKey::STATE_TRANSITION_REQUESTED:
+            PROD_LOG(kLogSource, "Requesting transition to %s", result.text ? result.text : "");
+            return;
+        case MessageKey::USAGE_TRANSITION:
+            ERROR_LOG(kLogSource, "Usage: transition <live|ready|sleep>");
             return;
         case MessageKey::UNKNOWN_COMMAND:
             ERROR_LOG(kLogSource, "Unknown command '%s' - type 'help' for available commands", result.text ? result.text : "");
