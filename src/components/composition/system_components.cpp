@@ -43,16 +43,10 @@ void ISystemComponent::completeTransition(TransitionStatus status) {
 
 namespace {
 
-constexpr const char* kWiFiName = "WiFi";
 constexpr const char* kAudioRuntimeName = "AudioRuntime";
 constexpr const char* kCliName = "CLI";
 
-constexpr uint32_t kWiFiTimeoutOffMs = 1000;
-constexpr uint32_t kWiFiTimeoutIdleMs = 8000;
-constexpr uint32_t kWiFiTimeoutStreamingMs = 15000;
-constexpr uint32_t kWiFiTimeoutErrorMs = 1000;
-
-constexpr uint32_t kAudioTimeoutOffMs = 2000;
+constexpr const char* kAudioRuntimeName = "AudioRuntime";
 constexpr uint32_t kAudioTimeoutIdleMs = 2000;
 constexpr uint32_t kAudioTimeoutStreamingMs = 5000;
 constexpr uint32_t kAudioTimeoutErrorMs = 1000;
@@ -82,11 +76,10 @@ void BoardInfoComponent::handleERROR()      { completeTransition(TransitionStatu
 void BoardInfoComponent::handleFATAL()      { completeTransition(TransitionStatus::Completed); }
 
 WiFiComponent::WiFiComponent()
-    : ISystemComponent(ComponentID::WiFi, kWiFiName) {}
+    : ISystemComponent(ComponentID::WiFi, "WiFi", true) {}
 
 bool WiFiComponent::setup() {
-    s_supervisorV2.registerComponent(
-        id(), &const_cast<WiFiComponent*>(this)->supervisorV2Mailbox, true);
+    registerWithSupervisor(s_supervisorV2);
 
     wifi_manager::setConnectedCallback(&WiFiComponent::onConnected, this);
     wifi_manager::setDisconnectedCallback(&WiFiComponent::onDisconnected, this);
@@ -101,81 +94,77 @@ bool WiFiComponent::setup() {
         if (pass[0] != '\0') {
             wifi_manager::setPass(pass);
         }
-
-        PROD_LOG(kWiFiName, "Boot auto-connect requested from persisted settings");
-        wifi_manager::connect();
-        bootAutoConnectSucceeded_ = (wifi_manager::state() == wifi_manager::WiFiState::CONNECTED);
+        PROD_LOG("WiFi", "Boot auto-connect requested from persisted settings");
     }
+
+    // Opportunistic head-start: if credentials exist, start connecting early.
+    // handleCONNECTING() will set transitionPending_ and call ensureConnected()
+    // again -- if already connected, it returns instantly.
+    ensureConnected();
 
     return true;
 }
 
-uint32_t WiFiComponent::setOFF(uint32_t transitionId) {
-    startPendingTransition(false, transitionId);
+void WiFiComponent::handleBOOTING() {
+    completeTransition(TransitionStatus::Completed);
+}
+
+void WiFiComponent::handleSLEEP() {
+    transitionPending_ = false;
     wifi_manager::disconnect();
-    completePendingTransition(TransitionStatus::Completed);
-    return kWiFiTimeoutOffMs;
+    completeTransition(TransitionStatus::Completed);
 }
 
-uint32_t WiFiComponent::setIDLE(uint32_t transitionId) {
-    startPendingTransition(false, transitionId);
-    completePendingTransition(TransitionStatus::Completed);
-    return kWiFiTimeoutIdleMs;
+void WiFiComponent::handleCONNECTING() {
+    transitionPending_ = true;
+    pendingStreamingTarget_ = true;
+    ensureConnected();
 }
 
-uint32_t WiFiComponent::setSTREAMING(uint32_t transitionId) {
-    startPendingTransition(true, transitionId);
-    if (!wifi_manager::isConnected()) {
-        wifi_manager::connect();
+void WiFiComponent::handleREADY() {
+    completeTransition(TransitionStatus::Completed);
+}
+
+void WiFiComponent::handleLIVE() {
+    transitionPending_ = true;
+    pendingStreamingTarget_ = true;
+    ensureConnected();
+}
+
+void WiFiComponent::handleERROR() {
+    transitionPending_ = false;
+    completeTransition(TransitionStatus::Completed);
+}
+
+void WiFiComponent::handleFATAL() {
+    completeTransition(TransitionStatus::Completed);
+}
+
+void WiFiComponent::ensureConnected() {
+    if (wifi_manager::isConnected()) return;
+    wifi_manager::connect();
+}
+
+void WiFiComponent::poll() {
+    if (!transitionPending_) return;
+    if (wifi_manager::isConnected()) {
+        transitionPending_ = false;
+        completeTransition(TransitionStatus::Completed);
     }
-    return kWiFiTimeoutStreamingMs;
-}
-
-uint32_t WiFiComponent::setERROR(uint32_t transitionId) {
-    startPendingTransition(false, transitionId);
-    completePendingTransition(TransitionStatus::Completed);
-    return kWiFiTimeoutErrorMs;
 }
 
 void WiFiComponent::onTransitionTimeout(uint32_t transitionId) {
-    (void)transitionId;
-    if (transitionPending_ && pendingTransitionId_ == transitionId) {
-        completePendingTransition(TransitionStatus::Failed);
-    }
-}
-
-void WiFiComponent::loop() {
-    SystemState target;
-    if (supervisorV2Mailbox.consumeNextState(target)) {
-        switch (target) {
-            case SystemState::SLEEP:       setOFF(0); break;
-            case SystemState::READY:       setIDLE(0); break;
-            case SystemState::CONNECTING:
-            case SystemState::LIVE:        setSTREAMING(0); break;
-            case SystemState::ERROR:
-            case SystemState::FATAL:       setERROR(0); break;
-            default: break;
-        }
-    }
-
-    if (!transitionPending_ || !pendingStreamingTarget_) {
-        return;
-    }
-
-    if (wifi_manager::isConnected()) {
-        completePendingTransition(TransitionStatus::Completed);
-    }
-}
-
-bool WiFiComponent::bootAutoConnectSucceeded() const {
-    return bootAutoConnectSucceeded_;
+    if (!transitionPending_ || pendingTransitionId_ != transitionId) return;
+    transitionPending_ = false;
+    completeTransition(TransitionStatus::Failed);
 }
 
 void WiFiComponent::onConnected(void* context) {
     auto* self = static_cast<WiFiComponent*>(context);
     if (!self) return;
     if (self->transitionPending_ && self->pendingStreamingTarget_) {
-        self->completePendingTransition(TransitionStatus::Completed);
+        self->transitionPending_ = false;
+        self->completeTransition(TransitionStatus::Completed);
     }
 }
 
@@ -183,22 +172,11 @@ void WiFiComponent::onDisconnected(void* context) {
     auto* self = static_cast<WiFiComponent*>(context);
     if (!self) return;
     if (self->transitionPending_ && self->pendingStreamingTarget_) {
-        self->completePendingTransition(TransitionStatus::Failed);
+        self->transitionPending_ = false;
+        self->completeTransition(TransitionStatus::Failed);
     } else {
         s_supervisorV2.postErrorEvent("wifi disconnected", ComponentID::WiFi);
     }
-}
-
-void WiFiComponent::startPendingTransition(bool streamingTarget, uint32_t transitionId) {
-    transitionPending_ = true;
-    pendingStreamingTarget_ = streamingTarget;
-    pendingTransitionId_ = transitionId;
-}
-
-void WiFiComponent::completePendingTransition(TransitionStatus status) {
-    if (!transitionPending_) return;
-    transitionPending_ = false;
-    s_supervisorV2.completeTransition(id(), status);
 }
 
 AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer& audio)
