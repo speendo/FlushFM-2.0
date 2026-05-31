@@ -164,14 +164,14 @@ void WiFiComponent::onDisconnected(void* context) {
     }
 }
 
-AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer* audio)
+AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer** audio)
     : ISystemComponent(ComponentID::AudioRuntime, "AudioRuntime", true), audio_(audio) {}
 
 bool AudioRuntimeComponent::setup() {
     registerWithSupervisor(s_supervisorV2);
 
     audio_runtime::setSignalHandler(&AudioRuntimeComponent::onAudioSignal, this);
-    const bool started = audio_runtime::start(*audio_);
+    const bool started = audio_runtime::start(**audio_);
     if (!started) {
         s_supervisorV2.postErrorEvent("audio task init failed", ComponentID::AudioRuntime);
     }
@@ -185,14 +185,14 @@ void AudioRuntimeComponent::handleBOOTING() {
 void AudioRuntimeComponent::handleSLEEP() {
     transitionPending_ = false;
     pendingErrorTarget_ = false;
-    audio_->stop();
+    (*audio_)->stop();
     completeTransition(TransitionStatus::Completed);
 }
 
 void AudioRuntimeComponent::handleREADY() {
     transitionPending_ = false;
     pendingErrorTarget_ = false;
-    audio_->stop();
+    (*audio_)->stop();
     completeTransition(TransitionStatus::Completed);
 }
 
@@ -208,7 +208,7 @@ void AudioRuntimeComponent::handleCONNECTING() {
         return;
     }
 
-    if (!audio_->connectToHost(station)) {
+    if (!(*audio_)->connectToHost(station)) {
         transitionPending_ = false;
         completeTransition(TransitionStatus::Failed);
     }
@@ -226,7 +226,7 @@ void AudioRuntimeComponent::handleLIVE() {
         return;
     }
 
-    if (!audio_->connectToHost(station)) {
+    if (!(*audio_)->connectToHost(station)) {
         transitionPending_ = false;
         completeTransition(TransitionStatus::Failed);
     }
@@ -235,7 +235,7 @@ void AudioRuntimeComponent::handleLIVE() {
 void AudioRuntimeComponent::handleERROR() {
     transitionPending_ = false;
     pendingErrorTarget_ = true;
-    audio_->stop();
+    (*audio_)->stop();
     completeTransition(TransitionStatus::Completed);
 }
 
@@ -246,7 +246,7 @@ void AudioRuntimeComponent::handleFATAL() {
 void AudioRuntimeComponent::poll() {
     if (!transitionPending_) return;
 
-    const IAudioPlayer::RuntimeState runtimeState = audio_->runtimeState();
+    const IAudioPlayer::RuntimeState runtimeState = (*audio_)->runtimeState();
     if (pendingStreamingTarget_) {
         if (runtimeState == IAudioPlayer::RuntimeState::LIVE) {
             transitionPending_ = false;
@@ -269,7 +269,7 @@ void AudioRuntimeComponent::poll() {
 
 void AudioRuntimeComponent::onTransitionTimeout(uint32_t transitionId) {
     if (!transitionPending_ || pendingTransitionId_ != transitionId) return;
-    audio_->stop();
+    (*audio_)->stop();
     transitionPending_ = false;
     completeTransition(TransitionStatus::Failed);
 }
@@ -300,12 +300,12 @@ void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* co
     }
 }
 
-CliComponent::CliComponent(IAudioPlayer* audio)
+CliComponent::CliComponent(IAudioPlayer** audio)
     : ISystemComponent(ComponentID::CLI, "CLI", false), audio_(audio) {}
 
 bool CliComponent::setup() {
     registerWithSupervisor(s_supervisorV2);
-    cli::init(*audio_, audio_runtime::taskHandlePtr(), &s_supervisorV2);
+    cli::init(**audio_, audio_runtime::taskHandlePtr(), &s_supervisorV2);
     cli::printHelp();
     return true;
 }

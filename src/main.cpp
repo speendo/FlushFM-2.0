@@ -28,8 +28,8 @@ static IAudioPlayer* s_audio = nullptr;
 SupervisorV2 s_supervisorV2;
 static BoardInfoComponent s_boardInfo;
 static WiFiComponent s_wifi;
-static AudioRuntimeComponent s_audioRuntime(s_audio);
-static CliComponent s_cli(s_audio);
+static AudioRuntimeComponent s_audioRuntime(&s_audio);
+static CliComponent s_cli(&s_audio);
 
 static ISystemComponent* s_components[] = {
     &s_boardInfo,
