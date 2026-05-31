@@ -99,6 +99,14 @@ cli_output::CommandResult dispatchCommand(
         return {MessageKey::HELP};
     }
 
+    if (strcmp(cmd, "station") == 0) {
+        if (!arg || *arg == '\0') {
+            return {MessageKey::USAGE_STATION};
+        }
+        env.saveStation(arg);
+        return {MessageKey::STATION_SET, arg};
+    }
+
     if (strcmp(cmd, "transition") == 0) {
         if (!arg || *arg == '\0') {
             return {MessageKey::USAGE_TRANSITION};

@@ -25,6 +25,8 @@ enum class MessageKey {
     HELP,
     STATE_TRANSITION_REQUESTED,
     USAGE_TRANSITION,
+    USAGE_STATION,
+    STATION_SET,
     UNKNOWN_COMMAND,
 };
 

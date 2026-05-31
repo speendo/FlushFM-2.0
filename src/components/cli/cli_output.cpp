@@ -123,6 +123,12 @@ void render(const CommandResult& result, DebugHelpPrinter debugHelpPrinter) {
         case MessageKey::USAGE_TRANSITION:
             ERROR_LOG(kLogSource, "Usage: transition <live|ready|sleep>");
             return;
+        case MessageKey::USAGE_STATION:
+            ERROR_LOG(kLogSource, "Usage: station <url>");
+            return;
+        case MessageKey::STATION_SET:
+            PROD_LOG(kLogSource, "Station set to: %s", result.text ? result.text : "");
+            return;
         case MessageKey::UNKNOWN_COMMAND:
             ERROR_LOG(kLogSource, "Unknown command '%s' - type 'help' for available commands", result.text ? result.text : "");
             return;

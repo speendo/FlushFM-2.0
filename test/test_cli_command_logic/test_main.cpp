@@ -374,6 +374,37 @@ void test_volume_command_rejects_values_above_max() {
     TEST_ASSERT_EQUAL(0, audio.setVolumeCalls);
 }
 
+void test_station_with_url_saves_and_returns_set() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "station",
+        "http://example.com/tune",
+        audio,
+        env,
+        255);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::STATION_SET), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(1, env.saveStationCalls);
+    TEST_ASSERT_EQUAL_STRING("http://example.com/tune", result.text);
+}
+
+void test_station_without_arg_returns_usage() {
+    FakeAudioPlayer audio;
+    FakeEnvironment env;
+
+    const cli_output::CommandResult result = cli_command_logic::dispatchCommand(
+        "station",
+        "",
+        audio,
+        env,
+        255);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::USAGE_STATION), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(0, env.saveStationCalls);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_play_command_requires_wifi_and_does_not_start_stream);
@@ -391,5 +422,7 @@ int main() {
     RUN_TEST(test_status_shows_disconnected_and_idle_state);
     RUN_TEST(test_volume_command_accepts_high_values_with_max_255);
     RUN_TEST(test_volume_command_rejects_values_above_max);
+    RUN_TEST(test_station_with_url_saves_and_returns_set);
+    RUN_TEST(test_station_without_arg_returns_usage);
     return UNITY_END();
 }
