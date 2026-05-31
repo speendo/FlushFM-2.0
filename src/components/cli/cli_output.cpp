@@ -68,12 +68,6 @@ void render(const CommandResult& result, DebugHelpPrinter debugHelpPrinter) {
         case MessageKey::PASSWORD_SET:
             PROD_LOG(kLogSource, "Password set");
             return;
-        case MessageKey::CONNECTING_STREAM:
-            PROD_LOG(kLogSource, "Connecting to stream: %s", result.text ? result.text : "");
-            return;
-        case MessageKey::STREAM_STOPPED:
-            PROD_LOG(kLogSource, "Stream stopped");
-            return;
         case MessageKey::VOLUME_CURRENT:
             PROD_LOG(kLogSource, "Current volume: %d (range 0-%d)", result.value, AUDIO_VOLUME_STEPS);
             return;

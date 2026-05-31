@@ -42,11 +42,11 @@ cli_output::CommandResult dispatchCommand(
             return {MessageKey::WIFI_REQUIRED};
         }
         env.saveStation(url);
-        return {MessageKey::CONNECTING_STREAM, url};
+        return {MessageKey::NONE, url};
     }
 
     if (strcmp(cmd, "stop") == 0) {
-        return {MessageKey::STREAM_STOPPED};
+        return {MessageKey::NONE};
     }
 
     if (strcmp(cmd, "forget") == 0) {

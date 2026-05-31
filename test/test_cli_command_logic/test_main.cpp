@@ -148,7 +148,7 @@ void test_play_command_with_wifi_requests_transition_and_persists_station() {
         env,
         21);
 
-    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::CONNECTING_STREAM), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::NONE), static_cast<int>(result.key));
     TEST_ASSERT_EQUAL(0, audio.connectCalls);
     TEST_ASSERT_EQUAL(1, env.saveStationCalls);
     TEST_ASSERT_EQUAL_STRING("http://example.com/play.mp3", env.lastStation);
@@ -216,7 +216,7 @@ void test_play_without_url_loads_persisted_station() {
         env,
         21);
 
-    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::CONNECTING_STREAM), static_cast<int>(result.key));
+    TEST_ASSERT_EQUAL(static_cast<int>(cli_output::MessageKey::NONE), static_cast<int>(result.key));
     TEST_ASSERT_EQUAL(0, audio.connectCalls);
     TEST_ASSERT_EQUAL(1, env.saveStationCalls);
 }

@@ -8,6 +8,7 @@
 #include "components/cli/cli_output.h"
 #include "component_types.h"
 #include "core/config.h"
+#include "core/debug.h"
 #include "settings.h"
 #include "supervisor/supervisor.h"
 #include "components/network/wifi_manager.h"
@@ -178,12 +179,13 @@ void process(const char* line) {
                     s_supervisor->postStateRequest(SystemState::SLEEP);
                 }
             }
-        } else if (strcmp(cmd, "play") == 0 && result.key == cli_output::MessageKey::CONNECTING_STREAM) {
-            (void)s_supervisor->postStateRequest(SystemState::LIVE);
-        } else if (strcmp(cmd, "stop") == 0 && result.key == cli_output::MessageKey::STREAM_STOPPED) {
-            (void)s_supervisor->postStateRequest(SystemState::READY);
-        } else if (strcmp(cmd, "reset") == 0 && result.key == cli_output::MessageKey::SESSION_RESET) {
-            (void)s_supervisor->postStateRequest(SystemState::READY);
+        } else if (strcmp(cmd, "play") == 0) {
+            s_supervisor->postStateRequest(SystemState::LIVE);
+            PROD_LOG("CLI", "Connecting to stream: %s", result.text ? result.text : "");
+        } else if (strcmp(cmd, "stop") == 0) {
+            s_supervisor->postStateRequest(SystemState::READY);
+        } else if (strcmp(cmd, "reset") == 0) {
+            s_supervisor->postStateRequest(SystemState::READY);
         }
     }
 
