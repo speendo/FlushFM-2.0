@@ -11,6 +11,36 @@
 
 extern SupervisorV2 s_supervisorV2;
 
+// -- ISystemComponent base class --------------------------------------------
+
+void ISystemComponent::loop() {
+    SystemState target;
+    if (mailbox_.consumeNextState(target)) {
+        dispatch(target);
+    }
+    poll();
+}
+
+void ISystemComponent::dispatch(SystemState target) {
+    switch (target) {
+        case SystemState::BOOTING:    handleBOOTING(); break;
+        case SystemState::SLEEP:      handleSLEEP(); break;
+        case SystemState::CONNECTING: handleCONNECTING(); break;
+        case SystemState::READY:      handleREADY(); break;
+        case SystemState::LIVE:       handleLIVE(); break;
+        case SystemState::ERROR:      handleERROR(); break;
+        case SystemState::FATAL:      handleFATAL(); break;
+    }
+}
+
+void ISystemComponent::registerWithSupervisor(SupervisorV2& supervisor) {
+    supervisor.registerComponent(id_, &mailbox_, isRequired_);
+}
+
+void ISystemComponent::completeTransition(TransitionStatus status) {
+    s_supervisorV2.completeTransition(id_, status);
+}
+
 namespace {
 
 constexpr const char* kBoardInfoName = "BoardInfo";
