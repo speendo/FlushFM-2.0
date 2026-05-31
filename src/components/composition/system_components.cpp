@@ -43,15 +43,9 @@ void ISystemComponent::completeTransition(TransitionStatus status) {
 
 namespace {
 
-constexpr const char* kBoardInfoName = "BoardInfo";
 constexpr const char* kWiFiName = "WiFi";
 constexpr const char* kAudioRuntimeName = "AudioRuntime";
 constexpr const char* kCliName = "CLI";
-
-constexpr uint32_t kBoardInfoTimeoutOffMs = 0;
-constexpr uint32_t kBoardInfoTimeoutIdleMs = 0;
-constexpr uint32_t kBoardInfoTimeoutStreamingMs = 0;
-constexpr uint32_t kBoardInfoTimeoutErrorMs = 0;
 
 constexpr uint32_t kWiFiTimeoutOffMs = 1000;
 constexpr uint32_t kWiFiTimeoutIdleMs = 8000;
@@ -70,53 +64,22 @@ constexpr uint32_t kCliTimeoutErrorMs = 0;
 
 }  // namespace
 
-BoardInfoComponent::BoardInfoComponent() : ISystemComponent(ComponentID::BoardInfo, kBoardInfoName) {}
+BoardInfoComponent::BoardInfoComponent()
+    : ISystemComponent(ComponentID::BoardInfo, "BoardInfo", false) {}
 
 bool BoardInfoComponent::setup() {
     board_info::print();
-    s_supervisorV2.registerComponent(
-        id(), &const_cast<BoardInfoComponent*>(this)->supervisorV2Mailbox, false);
+    registerWithSupervisor(s_supervisorV2);
     return true;
 }
 
-void BoardInfoComponent::loop() {
-    SystemState target;
-    if (!supervisorV2Mailbox.consumeNextState(target)) return;
-
-    switch (target) {
-        case SystemState::SLEEP:     setOFF(0); break;
-        case SystemState::READY:     setIDLE(0); break;
-        case SystemState::LIVE:      setSTREAMING(0); break;
-        case SystemState::ERROR:
-        case SystemState::FATAL:     setERROR(0); break;
-        default: return;
-    }
-    s_supervisorV2.completeTransition(id(), TransitionStatus::Completed);
-}
-
-uint32_t BoardInfoComponent::setOFF(uint32_t transitionId) {
-    (void)transitionId;
-    return kBoardInfoTimeoutOffMs;
-}
-
-uint32_t BoardInfoComponent::setIDLE(uint32_t transitionId) {
-    (void)transitionId;
-    return kBoardInfoTimeoutIdleMs;
-}
-
-uint32_t BoardInfoComponent::setSTREAMING(uint32_t transitionId) {
-    (void)transitionId;
-    return kBoardInfoTimeoutStreamingMs;
-}
-
-uint32_t BoardInfoComponent::setERROR(uint32_t transitionId) {
-    (void)transitionId;
-    return kBoardInfoTimeoutErrorMs;
-}
-
-void BoardInfoComponent::onTransitionTimeout(uint32_t transitionId) {
-    (void)transitionId;
-}
+void BoardInfoComponent::handleBOOTING()    { completeTransition(TransitionStatus::Completed); }
+void BoardInfoComponent::handleSLEEP()      { completeTransition(TransitionStatus::Completed); }
+void BoardInfoComponent::handleCONNECTING() { completeTransition(TransitionStatus::Completed); }
+void BoardInfoComponent::handleREADY()      { completeTransition(TransitionStatus::Completed); }
+void BoardInfoComponent::handleLIVE()       { completeTransition(TransitionStatus::Completed); }
+void BoardInfoComponent::handleERROR()      { completeTransition(TransitionStatus::Completed); }
+void BoardInfoComponent::handleFATAL()      { completeTransition(TransitionStatus::Completed); }
 
 WiFiComponent::WiFiComponent()
     : ISystemComponent(ComponentID::WiFi, kWiFiName) {}
