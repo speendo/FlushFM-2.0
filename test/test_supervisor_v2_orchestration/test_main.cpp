@@ -181,6 +181,258 @@ void test_check_response_returns_when_no_pending() {
     TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
 }
 
+// Complete the in-flight orchestration by setting all registered component bits
+// and posting a COMPLETED response — simulates the orchestration worker.
+static void completeInFlightOrchestration(SupervisorV2& supervisor) {
+    EventGroupHandle_t eg = S2V2Access::getEventGroup(supervisor);
+    EventBits_t allBits = (1 << static_cast<int>(ComponentID::BoardInfo))
+                        | (1 << static_cast<int>(ComponentID::WiFi))
+                        | (1 << static_cast<int>(ComponentID::AudioRuntime))
+                        | (1 << static_cast<int>(ComponentID::CLI));
+    xEventGroupSetBits(eg, allBits);
+    S2V2Access::postResponse(supervisor, OrchestrationResult::COMPLETED, 0);
+}
+
+void test_multi_step_transition_sleep_to_live_completes_autonomously() {
+    SupervisorV2 supervisor;
+    TestComponent board, wifi, audio, cli;
+    supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
+    supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
+    supervisor.registerComponent(ComponentID::AudioRuntime, &audio.mailbox, true);
+    supervisor.registerComponent(ComponentID::CLI, &cli.mailbox, false);
+    supervisor.setup();
+
+    // Path: SLEEP(20) → BOOTING(30) → CONNECTING(40) → READY(50) → LIVE(60)
+    S2V2Access::setObservedState(supervisor, SystemState::SLEEP);
+    S2V2Access::setTargetState(supervisor, SystemState::LIVE);
+    S2V2Access::setHasActiveOrchestration(supervisor, false);
+
+    // Run 1: SLEEP → start BOOTING
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(SystemState::BOOTING,
+                      S2V2Access::nextState(supervisor).transitionTarget);
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 2: BOOTING complete → advance to BOOTING, self-wake
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::BOOTING,
+                      S2V2Access::getObservedState(supervisor));
+
+    // Run 3: BOOTING → start CONNECTING
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(SystemState::CONNECTING,
+                      S2V2Access::nextState(supervisor).transitionTarget);
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 4: CONNECTING complete → advance to CONNECTING, self-wake
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::CONNECTING,
+                      S2V2Access::getObservedState(supervisor));
+
+    // Run 5: CONNECTING → start READY
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(SystemState::READY,
+                      S2V2Access::nextState(supervisor).transitionTarget);
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 6: READY complete → advance to READY, self-wake
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::READY,
+                      S2V2Access::getObservedState(supervisor));
+
+    // Run 7: READY → start LIVE
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(SystemState::LIVE,
+                      S2V2Access::nextState(supervisor).transitionTarget);
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 8: LIVE complete → at target (no self-wake needed)
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::LIVE,
+                      S2V2Access::getObservedState(supervisor));
+    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(SystemState::LIVE,
+                      S2V2Access::getTargetState(supervisor));
+}
+
+void test_multi_step_transition_sleep_to_ready_completes_autonomously() {
+    SupervisorV2 supervisor;
+    TestComponent board, wifi, audio, cli;
+    supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
+    supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
+    supervisor.registerComponent(ComponentID::AudioRuntime, &audio.mailbox, true);
+    supervisor.registerComponent(ComponentID::CLI, &cli.mailbox, false);
+    supervisor.setup();
+
+    // Path: SLEEP(20) → BOOTING(30) → CONNECTING(40) → READY(50)
+    S2V2Access::setObservedState(supervisor, SystemState::SLEEP);
+    S2V2Access::setTargetState(supervisor, SystemState::READY);
+    S2V2Access::setHasActiveOrchestration(supervisor, false);
+
+    // Run 1: SLEEP → start BOOTING
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(SystemState::BOOTING,
+                      S2V2Access::nextState(supervisor).transitionTarget);
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 2: BOOTING complete → advance to BOOTING, self-wake
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::BOOTING,
+                      S2V2Access::getObservedState(supervisor));
+
+    // Run 3: BOOTING → start CONNECTING
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(SystemState::CONNECTING,
+                      S2V2Access::nextState(supervisor).transitionTarget);
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 4: CONNECTING complete → advance to CONNECTING, self-wake
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::CONNECTING,
+                      S2V2Access::getObservedState(supervisor));
+
+    // Run 5: CONNECTING → start READY
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(SystemState::READY,
+                      S2V2Access::nextState(supervisor).transitionTarget);
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 6: READY complete → at target (no self-wake needed)
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::READY,
+                      S2V2Access::getObservedState(supervisor));
+    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(SystemState::READY,
+                      S2V2Access::getTargetState(supervisor));
+}
+
+void test_multi_step_transition_live_to_sleep_completes_autonomously() {
+    SupervisorV2 supervisor;
+    TestComponent board, wifi, audio, cli;
+    supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
+    supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
+    supervisor.registerComponent(ComponentID::AudioRuntime, &audio.mailbox, true);
+    supervisor.registerComponent(ComponentID::CLI, &cli.mailbox, false);
+    supervisor.setup();
+
+    // Path: LIVE(60) → READY(50) → CONNECTING(40) → BOOTING(30) → SLEEP(20)
+    S2V2Access::setObservedState(supervisor, SystemState::LIVE);
+    S2V2Access::setTargetState(supervisor, SystemState::SLEEP);
+    S2V2Access::setHasActiveOrchestration(supervisor, false);
+
+    // Run 1: LIVE → start READY
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 2: READY complete → advance to READY, self-wake
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::READY,
+                      S2V2Access::getObservedState(supervisor));
+
+    // Run 3: READY → start CONNECTING
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 4: CONNECTING complete → advance to CONNECTING, self-wake
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::CONNECTING,
+                      S2V2Access::getObservedState(supervisor));
+
+    // Run 5: CONNECTING → start BOOTING
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 6: BOOTING complete → advance to BOOTING, self-wake
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::BOOTING,
+                      S2V2Access::getObservedState(supervisor));
+
+    // Run 7: BOOTING → start SLEEP
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 8: SLEEP complete → at target
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::SLEEP,
+                      S2V2Access::getObservedState(supervisor));
+    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(SystemState::SLEEP,
+                      S2V2Access::getTargetState(supervisor));
+}
+
+void test_multi_step_transition_ready_to_sleep_completes_autonomously() {
+    SupervisorV2 supervisor;
+    TestComponent board, wifi, audio, cli;
+    supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
+    supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
+    supervisor.registerComponent(ComponentID::AudioRuntime, &audio.mailbox, true);
+    supervisor.registerComponent(ComponentID::CLI, &cli.mailbox, false);
+    supervisor.setup();
+
+    // Path: READY(50) → CONNECTING(40) → BOOTING(30) → SLEEP(20)
+    S2V2Access::setObservedState(supervisor, SystemState::READY);
+    S2V2Access::setTargetState(supervisor, SystemState::SLEEP);
+    S2V2Access::setHasActiveOrchestration(supervisor, false);
+
+    // Run 1: READY → start CONNECTING
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 2: CONNECTING complete → advance to CONNECTING, self-wake
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::CONNECTING,
+                      S2V2Access::getObservedState(supervisor));
+
+    // Run 3: CONNECTING → start BOOTING
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 4: BOOTING complete → advance to BOOTING, self-wake
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::BOOTING,
+                      S2V2Access::getObservedState(supervisor));
+
+    // Run 5: BOOTING → start SLEEP
+    supervisor.run();
+    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+
+    completeInFlightOrchestration(supervisor);
+
+    // Run 6: SLEEP complete → at target
+    supervisor.run();
+    TEST_ASSERT_EQUAL(SystemState::SLEEP,
+                      S2V2Access::getObservedState(supervisor));
+    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(SystemState::SLEEP,
+                      S2V2Access::getTargetState(supervisor));
+}
+
 }  // namespace
 
 int main() {
@@ -196,5 +448,9 @@ int main() {
     RUN_TEST(test_check_response_timed_out_required_posts_error);
     RUN_TEST(test_check_response_timed_out_optional_is_degraded);
     RUN_TEST(test_check_response_returns_when_no_pending);
+    RUN_TEST(test_multi_step_transition_sleep_to_live_completes_autonomously);
+    RUN_TEST(test_multi_step_transition_sleep_to_ready_completes_autonomously);
+    RUN_TEST(test_multi_step_transition_live_to_sleep_completes_autonomously);
+    RUN_TEST(test_multi_step_transition_ready_to_sleep_completes_autonomously);
     return UNITY_END();
 }
