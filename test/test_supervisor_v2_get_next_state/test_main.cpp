@@ -1,6 +1,6 @@
 #include <unity.h>
 
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 
 void test_get_index_valid_states() {
     TEST_ASSERT_EQUAL_INT(0, getIndex(SystemState::FATAL));

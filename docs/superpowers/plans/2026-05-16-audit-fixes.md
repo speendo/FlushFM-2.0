@@ -4,7 +4,7 @@
 
 **Goal:** Fix the 14 open issues from the Supervisor V2 code audit (2026-05-16): C3 FATAL dwell bug, D3–D5/D7/D8 design cleanups, T1–T5 test infrastructure improvements, and file a user story for D1/D2.
 
-**Architecture:** A new `fatal_task.cpp` gets a dedicated FreeRTOS task that owns all FATAL behavior (logging, LED, cleanup, dwell timer, deep sleep). The supervisor spawns it once on FATAL entry and goes idle — no cancellation needed (FATAL is one-way). Test access to private members moves to a `S2V2Access` friend struct, enabling removal of `#define private public`. Small type-safety fixes (DebugReason, bounds check) are applied inline.
+**Architecture:** A new `fatal_task.cpp` gets a dedicated FreeRTOS task that owns all FATAL behavior (logging, LED, cleanup, dwell timer, deep sleep). The supervisor spawns it once on FATAL entry and goes idle — no cancellation needed (FATAL is one-way). Test access to private members moves to a `SupervisorAccess` friend struct, enabling removal of `#define private public`. Small type-safety fixes (DebugReason, bounds check) are applied inline.
 
 **Tech Stack:** C++20, Arduino-ESP32 (FreeRTOS), PlatformIO native tests (Unity), pioarduino platform
 
@@ -15,22 +15,22 @@
 ```
 Create:
   src/supervisor/fatal_task.cpp          -- FATAL task function (logging, dwell, deep sleep)
-  test/support/s2v2_access.h             -- Test-accessor friend struct for SupervisorV2
+  test/support/supervisor_access.h             -- Test-accessor friend struct for Supervisor
   test/test_fatal_task/test_main.cpp     -- Tests for fatalTask()
 
 Modify:
-  src/supervisor/supervisor_v2.h         -- Friend decl, FATAL members, remove D3/D4/D5 dead code
+  src/supervisor/supervisor.h         -- Friend decl, FATAL members, remove D3/D4/D5 dead code
   src/supervisor/supervisor_v2.cpp       -- D8 bounds check in registerComponent()
   src/supervisor/state_machine.cpp       -- Remove handleFatal(), update run() + FATAL spawn
   src/component_types.h                  -- D7: DebugReason -> char[48] buffer
   src/supervisor/native_stubs.h          -- T3: settable tick counter, xTaskCreatePinnedToCore
   platformio.ini                         -- T1: -DUNIT_TEST, compile .cpp separately
-  test/test_supervisor_v2_run/test_main.cpp           -- Migrate to S2V2Access
+  test/test_supervisor_v2_run/test_main.cpp           -- Migrate to SupervisorAccess
   test/test_supervisor_v2_step_6/test_main.cpp         -- Replace handleFatal tests with fatalTask tests
-  test/test_supervisor_v2_orchestration/test_main.cpp  -- Migrate to S2V2Access
-  test/test_supervisor_v2_remaining_paths/test_main.cpp-- Migrate to S2V2Access
+  test/test_supervisor_v2_orchestration/test_main.cpp  -- Migrate to SupervisorAccess
+  test/test_supervisor_v2_remaining_paths/test_main.cpp-- Migrate to SupervisorAccess
   test/test_supervisor_v2_registration/test_main.cpp   -- T4 real assertions + migrate
-  test/test_supervisor_v2_mailbox_spinlock/test_main.cpp -- Migrate to S2V2Access
+  test/test_supervisor_v2_mailbox_spinlock/test_main.cpp -- Migrate to SupervisorAccess
 
 User story only (no code):
   requirements/user-stories/open/             -- File US-00XX for D1/D2 refactor
@@ -61,12 +61,12 @@ Create `test/test_fatal_task/test_main.cpp`:
 #undef private
 
 // Forward-declare the free function under test (defined in fatal_task.cpp)
-void fatalTask(SupervisorV2* supervisor);
+void fatalTask(Supervisor* supervisor);
 
 namespace {
 
 void test_fatal_task_sets_elapsed_flag() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.fatalEnteredTicks_ = 1;  // xTaskGetTickCount() returns 0, delta wraps to UINT32_MAX >= 60s
 
     fatalTask(&supervisor);
@@ -75,7 +75,7 @@ void test_fatal_task_sets_elapsed_flag() {
 }
 
 void test_fatal_task_does_not_set_elapsed_before_dwell() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     // fatalEnteredTicks_ defaults to 0, xTaskGetTickCount() returns 0 => delta 0 < 60s
     // BUT native stubs make vTaskDelay a no-op, so time doesn't pass.
     // This test verifies: when deadline has NOT elapsed, flag stays false.
@@ -109,7 +109,7 @@ Expected: FAIL — `fatalTask` is not defined (linker error).
 Create `src/supervisor/fatal_task.cpp`:
 
 ```cpp
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 #include "core/debug.h"
 
 namespace {
@@ -119,7 +119,7 @@ constexpr TickType_t kFatalDwellMs = 60000;
 
 }  // namespace
 
-void fatalTask(SupervisorV2* supervisor) {
+void fatalTask(Supervisor* supervisor) {
     PROD_LOG(kLogSource, "FATAL — system entering fatal state");
 
     // TODO: LED signalling placeholder
@@ -162,12 +162,12 @@ git commit -m "audit-fixes: add FATAL task with dwell timer and deep sleep"
 **Context:** `run()` now spawns the FATAL task on first entry into FATAL and then goes idle. The old `handleFatal()` method and its associated members (`fatalEntered_`, `fatalEnteredTicks_`, `fatalDeadlineElapsed_`, `kFatalDwellMs`) are removed from `state_machine.cpp`. However `fatalEnteredTicks_` and `fatalDeadlineElapsed_` stay as members on the class — the FATAL task needs them for the dwell check and tests observe them.
 
 **Files:**
-- Modify: `src/supervisor/supervisor_v2.h` — add `fatalTaskSpawned_`, `fatalTaskHandle_`, keep `fatalEnteredTicks_`/`fatalDeadlineElapsed_`
+- Modify: `src/supervisor/supervisor.h` — add `fatalTaskSpawned_`, `fatalTaskHandle_`, keep `fatalEnteredTicks_`/`fatalDeadlineElapsed_`
 - Modify: `src/supervisor/state_machine.cpp` — update `run()`, remove `handleFatal()`, remove `kFatalDwellMs`
 
 - [x] **Step 1: Add FATAL task members to header**
 
-In `src/supervisor/supervisor_v2.h`, after the `firstOrchestration_` member (around line 372), add:
+In `src/supervisor/supervisor.h`, after the `firstOrchestration_` member (around line 372), add:
 
 ```cpp
     TaskHandle_t fatalTaskHandle_{};
@@ -203,7 +203,7 @@ Replace the FATAL section in `run()` (lines 130-132) with:
 Add `spawnFatalTask()` before `run()`:
 
 ```cpp
-void SupervisorV2::spawnFatalTask() {
+void Supervisor::spawnFatalTask() {
     fatalEnteredTicks_ = xTaskGetTickCount();
     PROD_LOG(kLogSource, "Spawning FATAL task, dwell=%ums", static_cast<unsigned int>(pdTICKS_TO_MS(pdMS_TO_TICKS(60000))));
 #if defined(ARDUINO)
@@ -225,7 +225,7 @@ void SupervisorV2::spawnFatalTask() {
 At the bottom of the public method declarations in `supervisor_v2.h`, add:
 
 ```cpp
-    friend void fatalTask(SupervisorV2* supervisor);
+    friend void fatalTask(Supervisor* supervisor);
 ```
 
 - [x] **Step 4: Run all tests to verify nothing broke**
@@ -240,10 +240,10 @@ Expected: The 3 old `handleFatal()` tests in `test_supervisor_v2_step_6` will fa
 In `test/test_supervisor_v2_step_6/test_main.cpp`, replace the three `handleFatal` tests (lines 117-144) with tests that call fatalTask directly:
 
 ```cpp
-void fatalTask(SupervisorV2* supervisor);
+void fatalTask(Supervisor* supervisor);
 
 void test_fatal_task_sets_elapsed_flag() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.fatalEnteredTicks_ = 1;
 
     fatalTask(&supervisor);
@@ -252,7 +252,7 @@ void test_fatal_task_sets_elapsed_flag() {
 }
 
 void test_fatal_task_no_elapsed_before_deadline() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.fatalEnteredTicks_ = 0;
 
     fatalTask(&supervisor);
@@ -261,7 +261,7 @@ void test_fatal_task_no_elapsed_before_deadline() {
 }
 
 void test_run_wakes_then_spawns_fatal_task() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.observedState_ = SystemState::FATAL;
 
     supervisor.run();
@@ -288,7 +288,7 @@ Expected: All tests pass.
 - [x] **Step 7: Commit**
 
 ```bash
-git add src/supervisor/state_machine.cpp src/supervisor/supervisor_v2.h test/test_supervisor_v2_step_6/test_main.cpp
+git add src/supervisor/state_machine.cpp src/supervisor/supervisor.h test/test_supervisor_v2_step_6/test_main.cpp
 git commit -m "audit-fixes: integrate FATAL task, remove handleFatal"
 ```
 
@@ -296,26 +296,26 @@ git commit -m "audit-fixes: integrate FATAL task, remove handleFatal"
 
 ### Task 3: Add test accessor infrastructure (T1)
 
-**Context:** Replace `#define private public` with a `S2V2Access` friend struct that provides controlled read/write access to private members. The struct is defined in `test/support/s2v2_access.h`, guarded by `#ifdef UNIT_TEST`. The `SupervisorV2` class declares it as a friend. Tests include `s2v2_access.h` and use `S2V2Access::setObservedState(s, state)` etc. instead of `s.observedState_ = state`.
+**Context:** Replace `#define private public` with a `SupervisorAccess` friend struct that provides controlled read/write access to private members. The struct is defined in `test/support/supervisor_access.h`, guarded by `#ifdef UNIT_TEST`. The `Supervisor` class declares it as a friend. Tests include `s2v2_access.h` and use `SupervisorAccess::setObservedState(s, state)` etc. instead of `s.observedState_ = state`.
 
 **Files:**
-- Create: `test/support/s2v2_access.h`
-- Modify: `src/supervisor/supervisor_v2.h` — friend declaration
+- Create: `test/support/supervisor_access.h`
+- Modify: `src/supervisor/supervisor.h` — friend declaration
 - Modify: `platformio.ini` — add `-DUNIT_TEST`
 
 - [x] **Step 1: Add friend declaration to header**
 
-In `src/supervisor/supervisor_v2.h`, after the existing `friend void fatalTask(SupervisorV2* supervisor);` line, add:
+In `src/supervisor/supervisor.h`, after the existing `friend void fatalTask(Supervisor* supervisor);` line, add:
 
 ```cpp
 #ifdef UNIT_TEST
-    friend struct S2V2Access;
+    friend struct SupervisorAccess;
 #endif
 ```
 
 - [x] **Step 2: Create the test accessor header**
 
-Create `test/support/s2v2_access.h`:
+Create `test/support/supervisor_access.h`:
 
 ```cpp
 #pragma once
@@ -324,46 +324,46 @@ Create `test/support/s2v2_access.h`:
 #error "s2v2_access.h requires -DUNIT_TEST build flag"
 #endif
 
-#include "src/supervisor/supervisor_v2.h"
+#include "src/supervisor/supervisor.h"
 
-struct S2V2Access {
-    static void setObservedState(SupervisorV2& s, SystemState state) { s.observedState_ = state; }
-    static SystemState getObservedState(const SupervisorV2& s) { return s.observedState_; }
+struct SupervisorAccess {
+    static void setObservedState(Supervisor& s, SystemState state) { s.observedState_ = state; }
+    static SystemState getObservedState(const Supervisor& s) { return s.observedState_; }
 
-    static void setTargetState(SupervisorV2& s, SystemState state) { s.targetState_ = state; }
-    static SystemState getTargetState(const SupervisorV2& s) { return s.targetState_; }
+    static void setTargetState(Supervisor& s, SystemState state) { s.targetState_ = state; }
+    static SystemState getTargetState(const Supervisor& s) { return s.targetState_; }
 
-    static void setHasActiveOrchestration(SupervisorV2& s, bool v) { s.hasActiveOrchestration_ = v; }
-    static bool getHasActiveOrchestration(const SupervisorV2& s) { return s.hasActiveOrchestration_; }
+    static void setHasActiveOrchestration(Supervisor& s, bool v) { s.hasActiveOrchestration_ = v; }
+    static bool getHasActiveOrchestration(const Supervisor& s) { return s.hasActiveOrchestration_; }
 
-    static ActiveTransition& nextState(SupervisorV2& s) { return s.nextState_; }
+    static ActiveTransition& nextState(Supervisor& s) { return s.nextState_; }
 
-    static RetryPolicy& retryPolicy(SupervisorV2& s) { return s.retryPolicy_; }
-    static ErrorEvent& errorEvent(SupervisorV2& s) { return s.errorEvent_; }
-    static Mailbox& stateRequestMailbox(SupervisorV2& s) { return s.stateRequestMailbox_; }
+    static RetryPolicy& retryPolicy(Supervisor& s) { return s.retryPolicy_; }
+    static ErrorEvent& errorEvent(Supervisor& s) { return s.errorEvent_; }
+    static Mailbox& stateRequestMailbox(Supervisor& s) { return s.stateRequestMailbox_; }
 
-    static void setFatalEnteredTicks(SupervisorV2& s, TickType_t v) { s.fatalEnteredTicks_ = v; }
-    static bool getFatalDeadlineElapsed(const SupervisorV2& s) { return s.fatalDeadlineElapsed_; }
-    static void setFatalDeadlineElapsed(SupervisorV2& s, bool v) { s.fatalDeadlineElapsed_ = v; }
+    static void setFatalEnteredTicks(Supervisor& s, TickType_t v) { s.fatalEnteredTicks_ = v; }
+    static bool getFatalDeadlineElapsed(const Supervisor& s) { return s.fatalDeadlineElapsed_; }
+    static void setFatalDeadlineElapsed(Supervisor& s, bool v) { s.fatalDeadlineElapsed_ = v; }
 
-    static void setFatalTaskSpawned(SupervisorV2& s, bool v) { s.fatalTaskSpawned_ = v; }
-    static bool getFatalTaskSpawned(const SupervisorV2& s) { return s.fatalTaskSpawned_; }
+    static void setFatalTaskSpawned(Supervisor& s, bool v) { s.fatalTaskSpawned_ = v; }
+    static bool getFatalTaskSpawned(const Supervisor& s) { return s.fatalTaskSpawned_; }
 
-    static SystemState getLastTargetBeforeError(const SupervisorV2& s) { return s.lastTargetBeforeError_; }
-    static void setLastTargetBeforeError(SupervisorV2& s, SystemState state) { s.lastTargetBeforeError_ = state; }
+    static SystemState getLastTargetBeforeError(const Supervisor& s) { return s.lastTargetBeforeError_; }
+    static void setLastTargetBeforeError(Supervisor& s, SystemState state) { s.lastTargetBeforeError_ = state; }
 
-    static ComponentStatus getComponentStatus(const SupervisorV2& s, ComponentID id) {
+    static ComponentStatus getComponentStatus(const Supervisor& s, ComponentID id) {
         return s.componentStatuses_[static_cast<int>(id)];
     }
-    static void setComponentStatus(SupervisorV2& s, ComponentID id, ComponentStatus status) {
+    static void setComponentStatus(Supervisor& s, ComponentID id, ComponentStatus status) {
         s.componentStatuses_[static_cast<int>(id)] = status;
     }
 
-    static ComponentMailbox* getComponentMailbox(SupervisorV2& s, ComponentID id) {
+    static ComponentMailbox* getComponentMailbox(Supervisor& s, ComponentID id) {
         return s.componentMailboxes_[static_cast<int>(id)];
     }
 
-    static bool getOrderPending(const SupervisorV2& s) { return s.orderMailbox_.pending; }
+    static bool getOrderPending(const Supervisor& s) { return s.orderMailbox_.pending; }
 };
 ```
 
@@ -386,15 +386,15 @@ Expected: All tests pass (verify the test accessor compiles).
 - [x] **Step 5: Commit**
 
 ```bash
-git add test/support/s2v2_access.h src/supervisor/supervisor_v2.h platformio.ini
-git commit -m "audit-fixes: add S2V2Access test accessor infrastructure"
+git add test/support/supervisor_access.h src/supervisor/supervisor.h platformio.ini
+git commit -m "audit-fixes: add SupervisorAccess test accessor infrastructure"
 ```
 
 ---
 
 ### Task 4: Migrate tests away from #define private public (T1 continued)
 
-**Context:** Update all 6 test files that use `#define private public` to use `S2V2Access` instead. This is the mechanical migration — find every `supervisor.privateMember_` access and replace with the equivalent `S2V2Access::method()`.
+**Context:** Update all 6 test files that use `#define private public` to use `SupervisorAccess` instead. This is the mechanical migration — find every `supervisor.privateMember_` access and replace with the equivalent `SupervisorAccess::method()`.
 
 **Files:**
 - Modify: `test/test_supervisor_v2_run/test_main.cpp`
@@ -409,7 +409,7 @@ In `test/test_supervisor_v2_run/test_main.cpp`, replace lines 1-7:
 ```cpp
 #include <unity.h>
 
-#include "support/s2v2_access.h"
+#include "support/supervisor_access.h"
 #define private public
 #include "../../src/supervisor/supervisor_v2.cpp"
 #include "../../src/supervisor/orchestrator.cpp"
@@ -422,7 +422,7 @@ becomes:
 ```cpp
 #include <unity.h>
 
-#include "support/s2v2_access.h"
+#include "support/supervisor_access.h"
 #include "../../src/supervisor/supervisor_v2.cpp"
 #include "../../src/supervisor/orchestrator.cpp"
 #include "../../src/supervisor/state_machine.cpp"
@@ -431,29 +431,29 @@ becomes:
 Then replace all direct member accesses. In `test_run_already_at_target_does_nothing()`:
 
 ```cpp
-    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
-    S2V2Access::setTargetState(supervisor, SystemState::BOOTING);
-    S2V2Access::setHasActiveOrchestration(supervisor, false);
+    SupervisorAccess::setObservedState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setTargetState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, false);
     // ...
-    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_FALSE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::BOOTING),
-                      static_cast<int>(S2V2Access::getObservedState(supervisor)));
+                      static_cast<int>(SupervisorAccess::getObservedState(supervisor)));
 ```
 
 In `test_run_steps_toward_target()`:
 
 ```cpp
-    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
-    S2V2Access::setTargetState(supervisor, SystemState::CONNECTING);
-    S2V2Access::setHasActiveOrchestration(supervisor, false);
+    SupervisorAccess::setObservedState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setTargetState(supervisor, SystemState::CONNECTING);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, false);
     // ...
-    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_TRUE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING),
-                      static_cast<int>(S2V2Access::nextState(supervisor).transitionTarget));
-    TEST_ASSERT_TRUE(S2V2Access::getOrderPending(supervisor));
+                      static_cast<int>(SupervisorAccess::nextState(supervisor).transitionTarget));
+    TEST_ASSERT_TRUE(SupervisorAccess::getOrderPending(supervisor));
 ```
 
-Apply the same pattern to all remaining test functions in this file — replace every `supervisor.observedState_`, `supervisor.targetState_`, `supervisor.hasActiveOrchestration_`, `supervisor.nextState_`, `supervisor.retryPolicy_`, `supervisor.errorEvent_` with S2V2Access equivalents.
+Apply the same pattern to all remaining test functions in this file — replace every `supervisor.observedState_`, `supervisor.targetState_`, `supervisor.hasActiveOrchestration_`, `supervisor.nextState_`, `supervisor.retryPolicy_`, `supervisor.errorEvent_` with SupervisorAccess equivalents.
 
 - [x] **Step 2: Migrate test_supervisor_v2_orchestration**
 
@@ -462,13 +462,13 @@ Same pattern — remove `#define private public` and replace line 3-7 preamble w
 ```cpp
 #include <unity.h>
 
-#include "support/s2v2_access.h"
+#include "support/supervisor_access.h"
 #include "../../src/supervisor/supervisor_v2.cpp"
 #include "../../src/supervisor/orchestrator.cpp"
 #include "../../src/supervisor/state_machine.cpp"
 ```
 
-Replace all private member accesses with S2V2Access calls throughout the file.
+Replace all private member accesses with SupervisorAccess calls throughout the file.
 
 - [x] **Step 3: Migrate test_supervisor_v2_remaining_paths**
 
@@ -492,7 +492,7 @@ git add test/test_supervisor_v2_run/test_main.cpp \
         test/test_supervisor_v2_orchestration/test_main.cpp \
         test/test_supervisor_v2_remaining_paths/test_main.cpp \
         test/test_supervisor_v2_mailbox_spinlock/test_main.cpp
-git commit -m "audit-fixes: migrate tests from #define private public to S2V2Access"
+git commit -m "audit-fixes: migrate tests from #define private public to SupervisorAccess"
 ```
 
 ---
@@ -550,8 +550,8 @@ Replace the .cpp includes:
 ```cpp
 #include <unity.h>
 
-#include "support/s2v2_access.h"
-#include "supervisor/supervisor_v2.h"
+#include "support/supervisor_access.h"
+#include "supervisor/supervisor.h"
 #include "supervisor/orchestrator.h"
 ```
 
@@ -589,12 +589,12 @@ Or for `supervisor.cpp` includes:
 
 Add:
 ```cpp
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 ```
 
 And for tests that need `fatalTask`:
 ```cpp
-void fatalTask(SupervisorV2* supervisor);  // forward declare
+void fatalTask(Supervisor* supervisor);  // forward declare
 ```
 
 - [x] **Step 6: Run full test suite**
@@ -640,11 +640,11 @@ git commit -m "audit-fixes: compile .cpp separately in native tests"
 **Context:** `SYSTEM_STATE_X` is defined in `component_types.h` (line 20) and duplicated in `supervisor_v2.h` (lines 17-26) inside a dead `#ifndef` guard. The `#undef` at line 66 is also dead. Remove both. The `detail` namespace at lines 28-62 uses `SYSTEM_STATE_X` as a macro — it still works because `component_types.h` defines it (included at line 14).
 
 **Files:**
-- Modify: `src/supervisor/supervisor_v2.h` — remove lines 17-26 and line 66
+- Modify: `src/supervisor/supervisor.h` — remove lines 17-26 and line 66
 
 - [x] **Step 1: Remove dead X-macro block and #undef**
 
-In `src/supervisor/supervisor_v2.h`, delete lines 17-26:
+In `src/supervisor/supervisor.h`, delete lines 17-26:
 
 ```cpp
 #ifndef SYSTEM_STATE_X       // ← DELETE (line 17)
@@ -675,7 +675,7 @@ Expected: All tests pass. The `detail::kValues` and `detail::kRoute` arrays stil
 - [x] **Step 3: Commit**
 
 ```bash
-git add src/supervisor/supervisor_v2.h
+git add src/supervisor/supervisor.h
 git commit -m "audit-fixes: remove dead duplicate SYSTEM_STATE_X macro"
 ```
 
@@ -686,13 +686,13 @@ git commit -m "audit-fixes: remove dead duplicate SYSTEM_STATE_X macro"
 **Context:** The `SubState` enum (`PENDING`, `COMMITTED`, `FAILED`) and the `subState` field on `ActiveTransition` are written but never read by any production code. Only tests assert on the values — those assertions can be removed without coverage loss since they duplicate checks on `hasActiveOrchestration_` and `observedState_`.
 
 **Files:**
-- Modify: `src/supervisor/supervisor_v2.h` — remove `SubState` enum and `subState` member
+- Modify: `src/supervisor/supervisor.h` — remove `SubState` enum and `subState` member
 - Modify: `test/test_supervisor_v2_orchestration/test_main.cpp` — remove 2 subState assertions
 - Modify: `test/test_supervisor_v2_remaining_paths/test_main.cpp` — remove 1 subState assertion
 
 - [x] **Step 1: Remove SubState enum and subState field**
 
-In `src/supervisor/supervisor_v2.h`:
+In `src/supervisor/supervisor.h`:
 
 Delete the entire `SubState` enum (lines 95-99):
 
@@ -720,13 +720,13 @@ In `test/test_supervisor_v2_orchestration/test_main.cpp`, find and remove these 
 In `test_start_orchestration_sets_active_flag`:
 ```cpp
     TEST_ASSERT_EQUAL(static_cast<int>(SubState::PENDING),
-                      static_cast<int>(S2V2Access::nextState(supervisor).subState));
+                      static_cast<int>(SupervisorAccess::nextState(supervisor).subState));
 ```
 
 In `test_check_response_completed_advances_observed_state`:
 ```cpp
     TEST_ASSERT_EQUAL(static_cast<int>(SubState::COMMITTED),
-                      static_cast<int>(S2V2Access::nextState(supervisor).subState));
+                      static_cast<int>(SupervisorAccess::nextState(supervisor).subState));
 ```
 
 - [x] **Step 3: Remove subState assertion from test_supervisor_v2_remaining_paths**
@@ -735,7 +735,7 @@ In `test/test_supervisor_v2_remaining_paths/test_main.cpp`, find and remove:
 
 ```cpp
     TEST_ASSERT_EQUAL(static_cast<int>(SubState::PENDING),
-                      static_cast<int>(S2V2Access::nextState(supervisor).subState));
+                      static_cast<int>(SupervisorAccess::nextState(supervisor).subState));
 ```
 
 - [x] **Step 4: Run tests**
@@ -748,7 +748,7 @@ Expected: All tests pass. No references to `SubState` or `subState` remain in pr
 - [x] **Step 5: Commit**
 
 ```bash
-git add src/supervisor/supervisor_v2.h \
+git add src/supervisor/supervisor.h \
         test/test_supervisor_v2_orchestration/test_main.cpp \
         test/test_supervisor_v2_remaining_paths/test_main.cpp
 git commit -m "audit-fixes: remove unused SubState enum and subState field"
@@ -766,7 +766,7 @@ git commit -m "audit-fixes: remove unused SubState enum and subState field"
 In `src/supervisor/supervisor_v2.cpp`, change:
 
 ```cpp
-void SupervisorV2::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
+void Supervisor::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
     // Store the mailbox pointer for cross-core writes. Null means absent.
     componentMailboxes_[static_cast<int>(id)] = mailbox;
     // Track required/optional for boot presence checks and failure handling.
@@ -777,7 +777,7 @@ void SupervisorV2::registerComponent(ComponentID id, ComponentMailbox* mailbox, 
 to:
 
 ```cpp
-void SupervisorV2::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
+void Supervisor::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
     configASSERT(static_cast<size_t>(id) < componentCount);
     // Store the mailbox pointer for cross-core writes. Null means absent.
     componentMailboxes_[static_cast<size_t>(id)] = mailbox;
@@ -857,7 +857,7 @@ In `test/test_fatal_task/test_main.cpp`, update tests:
 
 ```cpp
 void test_fatal_task_sets_elapsed_flag() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     nativeTickCount = 0;
     // Simulate that we entered FATAL 60001 ticks ago (>= 60s)
     supervisor.fatalEnteredTicks_ = 0;
@@ -869,7 +869,7 @@ void test_fatal_task_sets_elapsed_flag() {
 }
 
 void test_fatal_task_no_elapsed_before_deadline() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     nativeTickCount = 0;
     supervisor.fatalEnteredTicks_ = 0;
     nativeTickCount = 100;  // Only 100ms passed, nowhere near 60s
@@ -919,29 +919,29 @@ Replace each smoke test:
 `test_post_next_component_state_null_guard`:
 ```cpp
 void test_post_next_component_state_null_guard() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     // postNextComponentState on unregistered component: should be a safe no-op
     supervisor.postNextComponentState(ComponentID::AudioRuntime);
     // No crash = pass. Additionally: verify no mailbox was touched.
-    TEST_ASSERT_NULL(S2V2Access::getComponentMailbox(supervisor, ComponentID::AudioRuntime));
+    TEST_ASSERT_NULL(SupervisorAccess::getComponentMailbox(supervisor, ComponentID::AudioRuntime));
 }
 ```
 
 `test_register_component_null_mailbox_is_safe`:
 ```cpp
 void test_register_component_null_mailbox_is_safe() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.registerComponent(ComponentID::BoardInfo, nullptr, false);
     supervisor.postNextComponentState(ComponentID::BoardInfo);
     // Null mailbox means postNextComponentState is a no-op — no crash.
-    TEST_ASSERT_NULL(S2V2Access::getComponentMailbox(supervisor, ComponentID::BoardInfo));
+    TEST_ASSERT_NULL(SupervisorAccess::getComponentMailbox(supervisor, ComponentID::BoardInfo));
 }
 ```
 
 `test_complete_transition_completed_sets_event_bit`:
 ```cpp
 void test_complete_transition_completed_sets_event_bit() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent comp;
     supervisor.registerComponent(ComponentID::WiFi, &comp.mailbox, true);
     supervisor.setup();
@@ -957,23 +957,23 @@ void test_complete_transition_completed_sets_event_bit() {
 `test_complete_transition_failed_required_posts_error`:
 ```cpp
 void test_complete_transition_failed_required_posts_error() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent comp;
     supervisor.registerComponent(ComponentID::WiFi, &comp.mailbox, true);
 
     supervisor.completeTransition(ComponentID::WiFi, TransitionStatus::Failed);
 
     // Error event should be pending
-    TEST_ASSERT_TRUE(S2V2Access::errorEvent(supervisor).pending);
+    TEST_ASSERT_TRUE(SupervisorAccess::errorEvent(supervisor).pending);
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentID::WiFi),
-                      static_cast<int>(S2V2Access::errorEvent(supervisor).source));
+                      static_cast<int>(SupervisorAccess::errorEvent(supervisor).source));
 }
 ```
 
 `test_complete_transition_failed_optional_is_degraded`:
 ```cpp
 void test_complete_transition_failed_optional_is_degraded() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent comp;
     supervisor.registerComponent(ComponentID::CLI, &comp.mailbox, false);
 
@@ -981,16 +981,16 @@ void test_complete_transition_failed_optional_is_degraded() {
 
     // Optional component should be marked DEGRADED (not FAILED)
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentStatus::DEGRADED),
-                      static_cast<int>(S2V2Access::getComponentStatus(supervisor, ComponentID::CLI)));
+                      static_cast<int>(SupervisorAccess::getComponentStatus(supervisor, ComponentID::CLI)));
     // No error event for optional failures
-    TEST_ASSERT_FALSE(S2V2Access::errorEvent(supervisor).pending);
+    TEST_ASSERT_FALSE(SupervisorAccess::errorEvent(supervisor).pending);
 }
 ```
 
 `test_boot_presence_passes_when_all_required_registered`:
 ```cpp
 void test_boot_presence_passes_when_all_required_registered() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent board, wifi, audio, cli;
     supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
@@ -1000,14 +1000,14 @@ void test_boot_presence_passes_when_all_required_registered() {
     supervisor.checkComponentPresence();
 
     // No error event should be pending (all required components present)
-    TEST_ASSERT_FALSE(S2V2Access::errorEvent(supervisor).pending);
+    TEST_ASSERT_FALSE(SupervisorAccess::errorEvent(supervisor).pending);
 }
 ```
 
 `test_boot_presence_detects_missing_required`:
 ```cpp
 void test_boot_presence_detects_missing_required() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent board, audio, cli;
     supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
     supervisor.registerComponent(ComponentID::AudioRuntime, &audio.mailbox, true);
@@ -1016,16 +1016,16 @@ void test_boot_presence_detects_missing_required() {
     supervisor.checkComponentPresence();
 
     // Error event should be pending — WiFi is required but not registered
-    TEST_ASSERT_TRUE(S2V2Access::errorEvent(supervisor).pending);
+    TEST_ASSERT_TRUE(SupervisorAccess::errorEvent(supervisor).pending);
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentID::WiFi),
-                      static_cast<int>(S2V2Access::errorEvent(supervisor).source));
+                      static_cast<int>(SupervisorAccess::errorEvent(supervisor).source));
 }
 ```
 
 `test_boot_presence_ignores_missing_optional`:
 ```cpp
 void test_boot_presence_ignores_missing_optional() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent board, wifi, audio;
     supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
@@ -1034,16 +1034,16 @@ void test_boot_presence_ignores_missing_optional() {
     supervisor.checkComponentPresence();
 
     // No error event — CLI is optional, its absence is not an error
-    TEST_ASSERT_FALSE(S2V2Access::errorEvent(supervisor).pending);
+    TEST_ASSERT_FALSE(SupervisorAccess::errorEvent(supervisor).pending);
 }
 ```
 
-Also update the top of the file — add `S2V2Access` include and remove `#define private public`:
+Also update the top of the file — add `SupervisorAccess` include and remove `#define private public`:
 
 ```cpp
 #include <unity.h>
 
-#include "support/s2v2_access.h"
+#include "support/supervisor_access.h"
 #include "../../src/supervisor/supervisor_v2.cpp"
 #include "../../src/supervisor/orchestrator.cpp"
 #include "../../src/supervisor/state_machine.cpp"
@@ -1096,7 +1096,7 @@ Use the next number in sequence.
 Create `requirements/user-stories/open/US-00XX-supervisor-refactor.md` with this content:
 
 ```markdown
-# US-00XX: Extract StateMachine and Orchestrator from SupervisorV2
+# US-00XX: Extract StateMachine and Orchestrator from Supervisor
 
 **Status:** To Do
 **Priority:** Low
@@ -1104,7 +1104,7 @@ Create `requirements/user-stories/open/US-00XX-supervisor-refactor.md` with this
 
 ## Description
 
-`SupervisorV2` is a god class with 22 members and 25 methods, owning state
+`Supervisor` is a god class with 22 members and 25 methods, owning state
 machine logic, orchestration coordination, mailbox I/O, and FreeRTOS management.
 The files are split (`state_machine.cpp`, `orchestrator.cpp`) but all methods
 belong to the same class — the split is cosmetic.
@@ -1116,7 +1116,7 @@ belong to the same class — the split is cosmetic.
       consumeErrorEvent, consumeStateRequest) — no FreeRTOS dependencies
 - [ ] `Orchestrator` class exists owning the worker task, event group, order/response
       mailboxes, component mailboxes, and orchestration lifecycle
-- [ ] `SupervisorV2` composes `StateMachine` and `Orchestrator`, exposing the public
+- [ ] `Supervisor` composes `StateMachine` and `Orchestrator`, exposing the public
       API surface (postStateRequest, postErrorEvent, completeTransition, run, etc.)
 - [ ] `state_machine.h` is a real header (not a 3-line forward)
 - [ ] All 67+ tests pass
@@ -1131,7 +1131,7 @@ belong to the same class — the split is cosmetic.
 
 ```bash
 git add requirements/user-stories/open/US-00XX-supervisor-refactor.md
-git commit -m "audit-fixes: file user story for SupervisorV2 refactor (D1/D2)"
+git commit -m "audit-fixes: file user story for Supervisor refactor (D1/D2)"
 ```
 
 ---
@@ -1183,7 +1183,7 @@ Only commit if there are untracked/stale files to clean up.
 |------|-------|-------------|
 | 1 | C3 | Create FATAL task function (TDD) |
 | 2 | C3 | Integrate FATAL task into run(), remove handleFatal() |
-| 3 | T1 | Add S2V2Access test accessor infrastructure |
+| 3 | T1 | Add SupervisorAccess test accessor infrastructure |
 | 4 | T1 | Migrate all tests from `#define private public` |
 | 5 | T2 | Compile .cpp separately, remove direct includes |
 | 6 | D3 | Remove duplicate SYSTEM_STATE_X macro |

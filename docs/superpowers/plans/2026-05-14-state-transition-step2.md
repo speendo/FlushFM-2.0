@@ -43,7 +43,7 @@ struct TestComponent {
 };
 
 void test_register_component_stores_pointer() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent comp;
 
     supervisor.registerComponent(ComponentID::WiFi, &comp.mailbox, true);
@@ -57,14 +57,14 @@ void test_register_component_stores_pointer() {
 }
 
 void test_post_next_component_state_null_guard() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.postNextComponentState(ComponentID::AudioRuntime);
     // Unregistered component — should not crash
     TEST_ASSERT_TRUE_MESSAGE(true, "postNextComponentState on unregistered did not crash");
 }
 
 void test_register_component_null_mailbox_is_safe() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.registerComponent(ComponentID::BoardInfo, nullptr, false);
     supervisor.postNextComponentState(ComponentID::BoardInfo);
     // Null guard in postNextComponentState — should not crash
@@ -72,7 +72,7 @@ void test_register_component_null_mailbox_is_safe() {
 }
 
 void test_complete_transition_completed_sets_event_bit() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent comp;
     supervisor.registerComponent(ComponentID::WiFi, &comp.mailbox, true);
 
@@ -85,7 +85,7 @@ void test_complete_transition_completed_sets_event_bit() {
 }
 
 void test_complete_transition_failed_required_posts_error() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent comp;
     supervisor.registerComponent(ComponentID::WiFi, &comp.mailbox, true);
 
@@ -97,7 +97,7 @@ void test_complete_transition_failed_required_posts_error() {
 }
 
 void test_complete_transition_failed_optional_is_degraded() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent comp;
     supervisor.registerComponent(ComponentID::CLI, &comp.mailbox, false);
 
@@ -107,7 +107,7 @@ void test_complete_transition_failed_optional_is_degraded() {
 }
 
 void test_boot_presence_passes_when_all_required_registered() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent board, wifi, audio, cli;
     supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
@@ -119,7 +119,7 @@ void test_boot_presence_passes_when_all_required_registered() {
 }
 
 void test_boot_presence_detects_missing_required() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent board, audio, cli;
     supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
     supervisor.registerComponent(ComponentID::AudioRuntime, &audio.mailbox, true);
@@ -132,7 +132,7 @@ void test_boot_presence_detects_missing_required() {
 }
 
 void test_boot_presence_ignores_missing_optional() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent board, wifi, audio;
     supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
@@ -192,7 +192,7 @@ This stores the value the component passes during `registerComponent()`.
 In `supervisor_v2.cpp`, after `getTargetState()`:
 
 ```cpp
-void SupervisorV2::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
+void Supervisor::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
     componentMailboxes_[static_cast<int>(id)] = mailbox;
     isRequired_[static_cast<int>(id)] = isRequired;
 }
@@ -207,7 +207,7 @@ void SupervisorV2::registerComponent(ComponentID id, ComponentMailbox* mailbox, 
 In `supervisor_v2.cpp`, after `registerComponent()`:
 
 ```cpp
-void SupervisorV2::postNextComponentState(ComponentID id) {
+void Supervisor::postNextComponentState(ComponentID id) {
     ComponentMailbox* mailbox = componentMailboxes_[static_cast<int>(id)];
     if (mailbox == nullptr) return;
     portENTER_CRITICAL(&mailbox->spinlock);

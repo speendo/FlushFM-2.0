@@ -269,7 +269,7 @@ Write `requirements/user-stories/open/US-0044.md`:
 > **Status:** To Do | **Priority:** Medium | **Created:** 2026-05-17 | **Supersedes:** US-0033
 
 ## User Story
-As a **maintainer**, I want **the remaining structural gaps from the state-management guideline to be implemented in SupervisorV2**, so that **the supervisor contract fully aligns with the specified pattern for component state ranges, absent-component handling, and SLEEP sequencing**.
+As a **maintainer**, I want **the remaining structural gaps from the state-management guideline to be implemented in Supervisor**, so that **the supervisor contract fully aligns with the specified pattern for component state ranges, absent-component handling, and SLEEP sequencing**.
 
 ## Acceptance Criteria
 

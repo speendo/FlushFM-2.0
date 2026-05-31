@@ -2,19 +2,19 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Create a FreeRTOS task pinned to Core 0 that runs the `SupervisorV2::run()` event loop. The task calls `setup()` (which stores its handle via `xTaskGetCurrentTaskHandle()` and spawns the orchestration worker), then enters an infinite `run()` loop.
+**Goal:** Create a FreeRTOS task pinned to Core 0 that runs the `Supervisor::run()` event loop. The task calls `setup()` (which stores its handle via `xTaskGetCurrentTaskHandle()` and spawns the orchestration worker), then enters an infinite `run()` loop.
 
 **Architecture:** The new state machine task coexists with the existing `Supervisor` and component `loop()` calls. Both old and new supervisors run side by side until step 10 migrates components to the new mailbox pattern. The `main.cpp` file is hardware-only (`#include <Arduino.h>`) — not compiled in the native/test environment.
 
 **Tech Stack:** Arduino framework, FreeRTOS (`xTaskCreatePinnedToCore`). No new files, no test file.
 
-**Prerequisite:** Step 8 complete (145 passed, 4 pre-existing errors). SupervisorV2 and all its methods compiled and tested.
+**Prerequisite:** Step 8 complete (145 passed, 4 pre-existing errors). Supervisor and all its methods compiled and tested.
 
 ---
 
 ## File Structure
 
-- **Modify:** `src/main.cpp` — add SupervisorV2 include, static instance, task entry function, task creation in setup()
+- **Modify:** `src/main.cpp` — add Supervisor include, static instance, task entry function, task creation in setup()
 
 ---
 
@@ -23,20 +23,20 @@
 **Files:**
 - Modify: `src/main.cpp`
 
-- [ ] **Step 9.1: Add SupervisorV2 include and static instance**
+- [ ] **Step 9.1: Add Supervisor include and static instance**
 
 Add after the existing `#include "components/composition/system_components.h"` (line 10):
 
 ```cpp
 #include "components/composition/system_components.h"
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 ```
 
 Add after the existing `static CliComponent s_cli(...)` (line 27):
 
 ```cpp
 static CliComponent s_cli(s_audio, s_system);
-static SupervisorV2 s_supervisorV2;
+static Supervisor s_supervisor;
 ```
 
 - [ ] **Step 9.2: Add the state machine task entry function**
@@ -45,12 +45,12 @@ Add before the `// --- Arduino entry points ---` comment (before line 36):
 
 ```cpp
 // ---------------------------------------------------------------------------
-// SupervisorV2 state machine task — pinned to Core 0
+// Supervisor state machine task — pinned to Core 0
 // ---------------------------------------------------------------------------
 
-/** @brief FreeRTOS task entry point for the SupervisorV2 state machine.
+/** @brief FreeRTOS task entry point for the Supervisor state machine.
  *
- *  This task owns the SupervisorV2 lifecycle. It calls setup() which:
+ *  This task owns the Supervisor lifecycle. It calls setup() which:
  *    1. Creates the event group for component orchestration
  *    2. Stores this task's handle via xTaskGetCurrentTaskHandle() so that
  *       postStateRequest(), postErrorEvent(), and the orchestration worker
@@ -60,10 +60,10 @@ Add before the `// --- Arduino entry points ---` comment (before line 36):
  *  After setup, the task enters an infinite loop calling run() which blocks
  *  on ulTaskNotifyTake(portMAX_DELAY) until woken by a notification.
  *
- *  @param param  Pointer to the SupervisorV2 instance (cast from void*).
+ *  @param param  Pointer to the Supervisor instance (cast from void*).
  */
 static void stateMachineTask(void* param) {
-    auto* supervisorV2 = static_cast<SupervisorV2*>(param);
+    auto* supervisorV2 = static_cast<Supervisor*>(param);
     supervisorV2->setup();
     for (;;) {
         supervisorV2->run();
@@ -82,7 +82,7 @@ Add at the end of the existing `setup()` function, after the component registrat
 
     (void)s_system.setup();
 
-    // Create the SupervisorV2 state machine task, pinned to Core 0.
+    // Create the Supervisor state machine task, pinned to Core 0.
     // Priority 2 (default Arduino loop task priority) ensures the state
     // machine is responsive without starving the idle task. The orchestration
     // worker created inside setup() runs at priority 1 (below this task).
@@ -91,7 +91,7 @@ Add at the end of the existing `setup()` function, after the component registrat
         stateMachineTask,     // Task entry function
         "StateMachine",       // Human-readable name for debugging
         8192,                 // Stack size in bytes
-        &s_supervisorV2,      // Parameter passed to the task
+        &s_supervisor,      // Parameter passed to the task
         2,                    // Priority (same as Arduino loop task)
         nullptr,              // Task handle (not needed — stored in setup())
         0                     // Core 0 — shared with orchestration worker
@@ -106,11 +106,11 @@ Since main.cpp is hardware-only (not compiled in the native test environment), v
 pio run -e production
 ```
 
-Expected: BUILD SUCCESS. No linker errors (all SupervisorV2 methods defined). The build will show warnings about unused s_supervisorV2 from the old component code, which is expected until step 10.
+Expected: BUILD SUCCESS. No linker errors (all Supervisor methods defined). The build will show warnings about unused s_supervisor from the old component code, which is expected until step 10.
 
 - [ ] **Step 9.5: Run the full native test suite to verify no regressions**
 
-The native test environment does not compile `main.cpp`, so SupervisorV2 changes should not affect existing tests:
+The native test environment does not compile `main.cpp`, so Supervisor changes should not affect existing tests:
 
 ```bash
 pio test -e native
@@ -122,5 +122,5 @@ Expected: 145 succeeded, 4 pre-existing errors unchanged.
 
 ```bash
 git add src/main.cpp
-git commit -m "step 9: wire SupervisorV2 state machine task in main.cpp"
+git commit -m "step 9: wire Supervisor state machine task in main.cpp"
 ```

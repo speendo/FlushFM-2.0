@@ -4,7 +4,7 @@
 
 **Goal:** Add `OrchestrationOrder`/`OrchestrationResponse` types, replace polling members/methods with split-task equivalents, implement the orchestrator sub-file `orchestrator.cpp` with `startOrchestration`, `checkOrchestrationResponse`, and `orchestrationWorker`. Wire the worker task in `setup()`. Add a minimal `setObservedState()` so the completion path compiles. Update `completeTransition` optional failure to set event group bit.
 
-**Architecture:** All orchestrator methods live in `orchestrator.cpp` (sub-file of SupervisorV2 class). The state machine `setup()` in `supervisor_v2.cpp` creates the worker task. Tests include three `.cpp` files.
+**Architecture:** All orchestrator methods live in `orchestrator.cpp` (sub-file of Supervisor class). The state machine `setup()` in `supervisor_v2.cpp` creates the worker task. Tests include three `.cpp` files.
 
 **Tech Stack:** C++17, PlatformIO native, Unity test framework, `#define private public`. Worker hardware-only.
 
@@ -14,7 +14,7 @@
 
 ### File Structure
 
-- **Modify:** `src/supervisor/supervisor_v2.h` — add `OrchestrationResult`, `OrchestrationOrder`, `OrchestrationResponse`; remove `expectedBits_`/`orchestrationDeadlineMs_`; add `orderMailbox_`/`responseMailbox_`/`workerTaskHandle_`; replace method declarations; add friend; slim down `#else` block to include `native_stubs.h`
+- **Modify:** `src/supervisor/supervisor.h` — add `OrchestrationResult`, `OrchestrationOrder`, `OrchestrationResponse`; remove `expectedBits_`/`orchestrationDeadlineMs_`; add `orderMailbox_`/`responseMailbox_`/`workerTaskHandle_`; replace method declarations; add friend; slim down `#else` block to include `native_stubs.h`
 - **Create:** `src/supervisor/native_stubs.h` — bitmap-backed event group stubs + task stubs for native
 - **Modify:** `src/supervisor/supervisor_v2.cpp` — add minimal `setObservedState()`, update `completeTransition` optional failure, update `setup()` to create worker task
 - **Modify:** `src/supervisor/orchestrator.cpp` — add `startOrchestration()`, `checkOrchestrationResponse()`, `orchestrationWorker()`
@@ -128,7 +128,7 @@ Remove `checkOrchestrationCompletion()` and `checkStateTimeout()`. Add:
 
 - [x] **Step 5a.4: Add friend declaration**
 
-Before closing `};` of class `SupervisorV2`:
+Before closing `};` of class `Supervisor`:
 ```cpp
     friend void orchestrationWorker(void* param);
 ```
@@ -216,7 +216,7 @@ Expected: 97 succeeded. 4 pre-existing errors unchanged. No regressions from str
 - [x] **Step 5a.7: Commit**
 
 ```bash
-git add src/supervisor/supervisor_v2.h src/supervisor/native_stubs.h
+git add src/supervisor/supervisor.h src/supervisor/native_stubs.h
 git commit -m "step 5a: add orchestration structs, replace polling members, add friend, extract stubs to native_stubs.h"
 ```
 
@@ -232,7 +232,7 @@ Add after `resetRecoveryIfOutOfError()` in `state_machine.cpp`:
 /** @brief Commit a new observed state. Minimal version — step 6 adds logging and resetRecoveryIfOutOfError.
  *  @param state The new observed state.
  */
-void SupervisorV2::setObservedState(SystemState state) {
+void Supervisor::setObservedState(SystemState state) {
     observedState_ = state;
     hasActiveOrchestration_ = false;
 }
@@ -303,7 +303,7 @@ struct TestComponent {
 };
 
 void test_start_orchestration_sets_active_flag() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent board, wifi, audio, cli;
     supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
@@ -321,7 +321,7 @@ void test_start_orchestration_sets_active_flag() {
 }
 
 void test_start_orchestration_writes_all_component_mailboxes() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent board, wifi, audio, cli;
     supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
@@ -340,7 +340,7 @@ void test_start_orchestration_writes_all_component_mailboxes() {
 }
 
 void test_start_orchestration_posts_order_with_correct_bits() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent board, wifi, audio, cli;
     supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
@@ -359,7 +359,7 @@ void test_start_orchestration_posts_order_with_correct_bits() {
 }
 
 void test_start_orchestration_excludes_degraded_from_order() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent board, wifi;
     supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
@@ -373,7 +373,7 @@ void test_start_orchestration_excludes_degraded_from_order() {
 }
 
 void test_start_orchestration_clears_event_group_bits() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifi;
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
     supervisor.setup();
@@ -388,7 +388,7 @@ void test_start_orchestration_clears_event_group_bits() {
 }
 
 void test_start_orchestration_sets_deadline_in_order() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifi;
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
     supervisor.setup();
@@ -400,7 +400,7 @@ void test_start_orchestration_sets_deadline_in_order() {
 }
 
 void test_complete_transition_optional_failed_sets_event_bit() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent cli;
     supervisor.registerComponent(ComponentID::CLI, &cli.mailbox, false);
     supervisor.setup();
@@ -452,7 +452,7 @@ Then add `startOrchestration()` to `orchestrator.cpp`:
  *  OrchestrationOrder so the worker task can begin the blocking wait.
  *  @param target The intermediate stepping state to orchestrate toward.
  */
-void SupervisorV2::startOrchestration(SystemState target) {
+void Supervisor::startOrchestration(SystemState target) {
     // Build the expected-bits mask: one bit per registered, non-degraded
     // component. Both required and optional components participate in the
     // quorum — optional components are only excluded after they time out or
@@ -510,7 +510,7 @@ Expected: 104 succeeded (97 baseline + 7 new). 4 pre-existing errors.
 - [x] **Step 5c.7: Commit**
 
 ```bash
-git add src/supervisor/supervisor_v2.h src/supervisor/orchestrator.cpp test/test_supervisor_v2_orchestration/
+git add src/supervisor/supervisor.h src/supervisor/orchestrator.cpp test/test_supervisor_v2_orchestration/
 git commit -m "step 5c: add kAllComponentBits constant, add startOrchestration to orchestrator.cpp"
 ```
 
@@ -526,7 +526,7 @@ git commit -m "step 5c: add kAllComponentBits constant, add startOrchestration t
  *  On COMPLETED: advances observedState_ to the orchestration target.
  *  On TIMED_OUT: clears the active flag and handles overdue components.
  */
-void SupervisorV2::checkOrchestrationResponse() {
+void Supervisor::checkOrchestrationResponse() {
     if (!responseMailbox_.consume()) return;
 
     // Clear the active flag regardless of outcome — the orchestration cycle
@@ -560,7 +560,7 @@ Add before `}  // namespace`:
 
 ```cpp
 void test_check_response_completed_advances_observed_state() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifi;
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
 
@@ -580,7 +580,7 @@ void test_check_response_completed_advances_observed_state() {
 }
 
 void test_check_response_timed_out_required_posts_error() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifi;
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
     supervisor.setMaxRecoveries(3);
@@ -597,7 +597,7 @@ void test_check_response_timed_out_required_posts_error() {
 }
 
 void test_check_response_timed_out_optional_is_degraded() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent cli;
     supervisor.registerComponent(ComponentID::CLI, &cli.mailbox, false);
 
@@ -613,7 +613,7 @@ void test_check_response_timed_out_optional_is_degraded() {
 }
 
 void test_check_response_returns_when_no_pending() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
     supervisor.hasActiveOrchestration_ = true;
     supervisor.responseMailbox_.pending = false;
@@ -665,10 +665,10 @@ git commit -m "step 5d: add checkOrchestrationResponse to orchestrator.cpp"
 /** @brief Orchestration worker task. Reads orders from orderMailbox_ and blocks
  *  on xEventGroupWaitBits until all expected bits are set or the deadline expires.
  *  Posts a result back to responseMailbox_ for the state machine to consume.
- *  @param param Pointer to the SupervisorV2 instance (cast from void*).
+ *  @param param Pointer to the Supervisor instance (cast from void*).
  */
 void orchestrationWorker(void* param) {
-    auto* supervisor = static_cast<SupervisorV2*>(param);
+    auto* supervisor = static_cast<Supervisor*>(param);
     for (;;) {
         // Read an order from the state machine. If none pending, yield briefly
         // (10 FreeRTOS ticks = 10ms with 1ms/tick config) and try again.
@@ -718,7 +718,7 @@ void orchestrationWorker(void* param) {
 - [ ] **Step 5e.2: Update `setup()` in `supervisor_v2.cpp`**
 
 ```cpp
-void SupervisorV2::setup() {
+void Supervisor::setup() {
     eventGroup_ = xEventGroupCreateStatic(&eventGroupBuffer_);
     loadTransitionTimeoutConfig();
 
@@ -760,7 +760,7 @@ git commit -m "step 5e: add orchestrationWorker + wire worker task in setup()"
 - [ ] **Step 5f.1: Add `xTaskNotifyGive` to `postStateRequest()` in `orchestrator.cpp`**
 
 ```cpp
-void SupervisorV2::postStateRequest(SystemState target) {
+void Supervisor::postStateRequest(SystemState target) {
     portENTER_CRITICAL(&stateRequestMailbox_.spinlock);
     stateRequestMailbox_.pending = true;
     stateRequestMailbox_.requestedTarget = target;
@@ -773,7 +773,7 @@ void SupervisorV2::postStateRequest(SystemState target) {
 - [ ] **Step 5f.2: Add `xTaskNotifyGive` to `postErrorEvent()` in `orchestrator.cpp`**
 
 ```cpp
-void SupervisorV2::postErrorEvent(DebugReason reason, ComponentID source) {
+void Supervisor::postErrorEvent(DebugReason reason, ComponentID source) {
     portENTER_CRITICAL(&errorEvent_.spinlock);
     if (!errorEvent_.pending) {
         errorEvent_.pending = true;

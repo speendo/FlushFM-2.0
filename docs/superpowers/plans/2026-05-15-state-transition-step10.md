@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** Remove all old `Supervisor&` dependencies from the four system components (BoardInfo, WiFi, AudioRuntime, CLI), replace reportCompletion/setErrorEvent calls with SupervisorV2 equivalents, add ComponentMailbox polling in each component's `loop()`, and clean up main.cpp by removing the old `Supervisor` instance and old-loop wiring.
+**Goal:** Remove all old `Supervisor&` dependencies from the four system components (BoardInfo, WiFi, AudioRuntime, CLI), replace reportCompletion/setErrorEvent calls with Supervisor equivalents, add ComponentMailbox polling in each component's `loop()`, and clean up main.cpp by removing the old `Supervisor` instance and old-loop wiring.
 
-**Architecture:** The global `SupervisorV2 s_supervisorV2` (made non-static in step 10a) is accessed from component .cpp files via `extern`. Each component gains a `ComponentMailbox` member that is registered with SupervisorV2 during `registerWithController()`. The component's `loop()` polls the mailbox; for async components (WiFi, Audio), `completeTransition()` is called from the existing `completePendingTransition()` path. The CLI library (`cli::init()`, `printComponentStatusSummary()`) is also migrated to use SupervisorV2.
+**Architecture:** The global `Supervisor s_supervisor` (made non-static in step 10a) is accessed from component .cpp files via `extern`. Each component gains a `ComponentMailbox` member that is registered with Supervisor during `registerWithController()`. The component's `loop()` polls the mailbox; for async components (WiFi, Audio), `completeTransition()` is called from the existing `completePendingTransition()` path. The CLI library (`cli::init()`, `printComponentStatusSummary()`) is also migrated to use Supervisor.
 
 **Tech Stack:** C++17, Arduino framework. No new test file — this is a hardware-only wiring step. Verification via `pio run -e production` build and `pio test -e native`.
 
@@ -17,35 +17,35 @@
 - **Modify:** `src/main.cpp` — remove old `Supervisor s_system`, old `loop()` wiring
 - **Modify:** `src/components/composition/system_components.h` — remove `Supervisor&` from constructors, add `ComponentMailbox` members
 - **Modify:** `src/components/composition/system_components.cpp` — remove `#include "supervisor/supervisor.h"`, rewrite registerWithController, replace reportCompletion/setErrorEvent calls, add mailbox polling loops, remove invokeComponentTransition
-- **Modify:** `src/components/cli/cli.h` — change `Supervisor*` to `SupervisorV2*` in `init()`
-- **Modify:** `src/components/cli/cli.cpp` — store `SupervisorV2*`, use `postStateRequest()` instead of `postEvent()`, simplify `printComponentStatusSummary()`
-- **Modify:** `src/components/cli/debug_cli.h` / `debug_cli.cpp` — change `Supervisor*` to `SupervisorV2*`
+- **Modify:** `src/components/cli/cli.h` — change `Supervisor*` to `Supervisor*` in `init()`
+- **Modify:** `src/components/cli/cli.cpp` — store `Supervisor*`, use `postStateRequest()` instead of `postEvent()`, simplify `printComponentStatusSummary()`
+- **Modify:** `src/components/cli/debug_cli.h` / `debug_cli.cpp` — change `Supervisor*` to `Supervisor*`
 
 ---
 
-### Task 10a: Make SupervisorV2 globally accessible (already done in step 9 — verify)
+### Task 10a: Make Supervisor globally accessible (already done in step 9 — verify)
 
-- [x] **Step 10a.1: Confirm `s_supervisorV2` is non-static**
+- [x] **Step 10a.1: Confirm `s_supervisor` is non-static**
 
 In `src/main.cpp`, line 28 should read:
 
 ```cpp
-SupervisorV2 s_supervisorV2;
+Supervisor s_supervisor;
 ```
 
-Not `static SupervisorV2 s_supervisorV2;`. If still `static`, remove the `static` keyword.
+Not `static Supervisor s_supervisor;`. If still `static`, remove the `static` keyword.
 
 (Note: this was done in the step 9 implementation; this step verifies it persisted.)
 
 ---
 
-### Task 10b: Migrate CLI library (cli.cpp, debug_cli) to SupervisorV2
+### Task 10b: Migrate CLI library (cli.cpp, debug_cli) to Supervisor
 
 This task must happen FIRST because `CliComponent::setup()` calls `cli::init()` which takes a `Supervisor*`.
 
 **Files:**
 - Modify: `src/components/cli/cli.h` — change `init()` signature
-- Modify: `src/components/cli/cli.cpp` — store `SupervisorV2*`, use `postStateRequest()`
+- Modify: `src/components/cli/cli.cpp` — store `Supervisor*`, use `postStateRequest()`
 - Modify: `src/components/cli/debug_cli.h` — change `init()` signature
 - Modify: `src/components/cli/debug_cli.cpp` — change stored pointer type
 
@@ -60,14 +60,14 @@ void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, Supervisor* contro
 To:
 
 ```cpp
-void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, SupervisorV2* supervisorV2 = nullptr);
+void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, Supervisor* supervisorV2 = nullptr);
 ```
 
-- [x] **Step 10b.2: Update `cli.cpp` to use SupervisorV2**
+- [x] **Step 10b.2: Update `cli.cpp` to use Supervisor**
 
 In `src/components/cli/cli.cpp`:
 
-a) Replace `#include "supervisor/supervisor.h"` with `#include "supervisor/supervisor_v2.h"`
+a) Replace `#include "supervisor/supervisor.h"` with `#include "supervisor/supervisor.h"`
 
 b) Change the static variable:
 ```cpp
@@ -75,7 +75,7 @@ static Supervisor* s_controller = nullptr;
 ```
 To:
 ```cpp
-static SupervisorV2* s_supervisorV2 = nullptr;
+static Supervisor* s_supervisor = nullptr;
 ```
 
 c) In `init()`, replace:
@@ -85,38 +85,38 @@ c) In `init()`, replace:
 ```
 With:
 ```cpp
-    s_supervisorV2 = supervisorV2;
+    s_supervisor = supervisorV2;
     debug_cli::init(audioTaskHandle, supervisorV2);
 ```
 
-d) Replace all `s_controller->postEvent(SystemEvent::STATE_REQUESTED, SystemState::XXX)` calls with `s_supervisorV2->postStateRequest(SystemState::XXX)`. The three instances in the play/stop/reset command handling:
+d) Replace all `s_controller->postEvent(SystemEvent::STATE_REQUESTED, SystemState::XXX)` calls with `s_supervisor->postStateRequest(SystemState::XXX)`. The three instances in the play/stop/reset command handling:
 
 ```cpp
-    if (s_supervisorV2) {
-            (void)s_supervisorV2->postStateRequest(SystemState::LIVE);
+    if (s_supervisor) {
+            (void)s_supervisor->postStateRequest(SystemState::LIVE);
 ```
 ```cpp
-            (void)s_supervisorV2->postStateRequest(SystemState::READY);
+            (void)s_supervisor->postStateRequest(SystemState::READY);
 ```
 ```cpp
-            (void)s_supervisorV2->postStateRequest(SystemState::READY);
+            (void)s_supervisor->postStateRequest(SystemState::READY);
 ```
 
-e) Simplify `printComponentStatusSummary()` to use SupervisorV2's public interface instead of old Supervisor methods:
+e) Simplify `printComponentStatusSummary()` to use Supervisor's public interface instead of old Supervisor methods:
 
 ```cpp
-void printComponentStatusSummary(const SupervisorV2& supervisorV2) {
+void printComponentStatusSummary(const Supervisor& supervisorV2) {
     Serial.printf("System:     %s\r\n", stateToString(supervisorV2.getObservedState()));
     Serial.printf("Target:     %s\r\n", stateToString(supervisorV2.getTargetState()));
-    // Component-level status is not exposed by SupervisorV2's public API;
+    // Component-level status is not exposed by Supervisor's public API;
     // omit the per-component registry dump.
 }
 ```
 
 f) Update the call site at line 270-271:
 ```cpp
-    if (result.key == cli_output::MessageKey::STATUS && s_supervisorV2) {
-        printComponentStatusSummary(*s_supervisorV2);
+    if (result.key == cli_output::MessageKey::STATUS && s_supervisor) {
+        printComponentStatusSummary(*s_supervisor);
 ```
 
 - [x] **Step 10b.3: Update `debug_cli.h` and `debug_cli.cpp`**
@@ -127,16 +127,16 @@ void init(TaskHandle_t* audioTaskHandle, Supervisor* controller);
 ```
 To:
 ```cpp
-void init(TaskHandle_t* audioTaskHandle, SupervisorV2* supervisorV2);
+void init(TaskHandle_t* audioTaskHandle, Supervisor* supervisorV2);
 ```
 
-In `src/components/cli/debug_cli.cpp`, replace `#include "supervisor/supervisor.h"` with `#include "supervisor/supervisor_v2.h"` and change the stored `Supervisor*` to `SupervisorV2*`.
+In `src/components/cli/debug_cli.cpp`, replace `#include "supervisor/supervisor.h"` with `#include "supervisor/supervisor.h"` and change the stored `Supervisor*` to `Supervisor*`.
 
 - [x] **Step 10b.4: Commit**
 
 ```bash
 git add src/components/cli/cli.h src/components/cli/cli.cpp src/components/cli/debug_cli.h src/components/cli/debug_cli.cpp
-git commit -m "step 10b: migrate CLI library from Supervisor to SupervisorV2"
+git commit -m "step 10b: migrate CLI library from Supervisor to Supervisor"
 ```
 
 ---
@@ -177,7 +177,7 @@ Replace the entire BoardInfoComponent section with:
 ```cpp
 BoardInfoComponent::BoardInfoComponent() : ISystemComponent(ComponentID::BoardInfo, kBoardInfoName) {}
 
-extern SupervisorV2 s_supervisorV2;
+extern Supervisor s_supervisor;
 
 void BoardInfoComponent::registerWithController(Supervisor& controller) const {
     (void)controller;
@@ -185,7 +185,7 @@ void BoardInfoComponent::registerWithController(Supervisor& controller) const {
 
 bool BoardInfoComponent::setup() {
     board_info::print();
-    s_supervisorV2.registerComponent(
+    s_supervisor.registerComponent(
         id(), &const_cast<BoardInfoComponent*>(this)->supervisorV2Mailbox, false);
     return true;
 }
@@ -202,7 +202,7 @@ void BoardInfoComponent::loop() {
         case SystemState::FATAL:     setERROR(0); break;
         default: return;
     }
-    s_supervisorV2.completeTransition(id(), TransitionStatus::Completed);
+    s_supervisor.completeTransition(id(), TransitionStatus::Completed);
 }
 
 uint32_t BoardInfoComponent::setOFF(uint32_t transitionId) {
@@ -234,7 +234,7 @@ void BoardInfoComponent::onTransitionTimeout(uint32_t transitionId) {
 
 ```bash
 git add src/components/composition/system_components.h src/components/composition/system_components.cpp
-git commit -m "step 10c: migrate BoardInfoComponent to SupervisorV2 mailbox"
+git commit -m "step 10c: migrate BoardInfoComponent to Supervisor mailbox"
 ```
 
 ---
@@ -288,9 +288,9 @@ void CliComponent::registerWithController(Supervisor& controller) const {
 }
 
 bool CliComponent::setup() {
-    s_supervisorV2.registerComponent(
+    s_supervisor.registerComponent(
         id(), &const_cast<CliComponent*>(this)->supervisorV2Mailbox, false);
-    cli::init(audio_, audio_runtime::taskHandlePtr(), &s_supervisorV2);
+    cli::init(audio_, audio_runtime::taskHandlePtr(), &s_supervisor);
     cli::printHelp();
     return true;
 }
@@ -306,7 +306,7 @@ void CliComponent::loop() {
             case SystemState::FATAL:     setERROR(0); break;
             default: break;
         }
-        s_supervisorV2.completeTransition(id(), TransitionStatus::Completed);
+        s_supervisor.completeTransition(id(), TransitionStatus::Completed);
     }
 
     static char cmdBuf[SERIAL_CMD_BUF_SIZE];
@@ -344,7 +344,7 @@ void CliComponent::onTransitionTimeout(uint32_t transitionId) {
 
 ```bash
 git add src/components/composition/system_components.h src/components/composition/system_components.cpp
-git commit -m "step 10d: migrate CliComponent to SupervisorV2 mailbox"
+git commit -m "step 10d: migrate CliComponent to Supervisor mailbox"
 ```
 
 ---
@@ -406,7 +406,7 @@ void WiFiComponent::registerWithController(Supervisor& controller) const {
 }
 
 bool WiFiComponent::setup() {
-    s_supervisorV2.registerComponent(
+    s_supervisor.registerComponent(
         id(), &const_cast<WiFiComponent*>(this)->supervisorV2Mailbox, true);
 
     wifi_manager::setConnectedCallback(&WiFiComponent::onConnected, this);
@@ -506,7 +506,7 @@ void WiFiComponent::onDisconnected(void* context) {
     if (self->transitionPending_ && self->pendingStreamingTarget_) {
         self->completePendingTransition(TransitionStatus::Failed, "wifi disconnected");
     } else {
-        s_supervisorV2.postErrorEvent("wifi disconnected", ComponentID::WiFi);
+        s_supervisor.postErrorEvent("wifi disconnected", ComponentID::WiFi);
     }
 }
 
@@ -520,7 +520,7 @@ void WiFiComponent::completePendingTransition(TransitionStatus status, const cha
     if (!transitionPending_) return;
     transitionPending_ = false;
     (void)reason;
-    s_supervisorV2.completeTransition(id(), status);
+    s_supervisor.completeTransition(id(), status);
 }
 ```
 
@@ -528,7 +528,7 @@ void WiFiComponent::completePendingTransition(TransitionStatus status, const cha
 
 ```bash
 git add src/components/composition/system_components.h src/components/composition/system_components.cpp
-git commit -m "step 10e: migrate WiFiComponent to SupervisorV2 mailbox"
+git commit -m "step 10e: migrate WiFiComponent to Supervisor mailbox"
 ```
 
 ---
@@ -589,13 +589,13 @@ void AudioRuntimeComponent::registerWithController(Supervisor& controller) const
 }
 
 bool AudioRuntimeComponent::setup() {
-    s_supervisorV2.registerComponent(
+    s_supervisor.registerComponent(
         id(), &const_cast<AudioRuntimeComponent*>(this)->supervisorV2Mailbox, true);
 
     audio_runtime::setSignalHandler(&AudioRuntimeComponent::onAudioSignal, this);
     const bool started = audio_runtime::start(audio_);
     if (!started) {
-        s_supervisorV2.postErrorEvent("audio task init failed", ComponentID::AudioRuntime);
+        s_supervisor.postErrorEvent("audio task init failed", ComponentID::AudioRuntime);
     }
     return started;
 }
@@ -691,13 +691,13 @@ void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* co
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
             self->completePendingTransition(TransitionStatus::Failed, "stream lost");
         } else {
-            s_supervisorV2.postErrorEvent("stream lost", ComponentID::AudioRuntime);
+            s_supervisor.postErrorEvent("stream lost", ComponentID::AudioRuntime);
         }
     } else {
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
             self->completePendingTransition(TransitionStatus::Failed, "audio init failed");
         } else {
-            s_supervisorV2.postErrorEvent("audio init failed", ComponentID::AudioRuntime);
+            s_supervisor.postErrorEvent("audio init failed", ComponentID::AudioRuntime);
         }
     }
 }
@@ -712,7 +712,7 @@ void AudioRuntimeComponent::completePendingTransition(TransitionStatus status, c
     if (!transitionPending_) return;
     transitionPending_ = false;
     (void)reason;
-    s_supervisorV2.completeTransition(id(), status);
+    s_supervisor.completeTransition(id(), status);
 }
 ```
 
@@ -720,7 +720,7 @@ void AudioRuntimeComponent::completePendingTransition(TransitionStatus status, c
 
 ```bash
 git add src/components/composition/system_components.h src/components/composition/system_components.cpp
-git commit -m "step 10f: migrate AudioRuntimeComponent to SupervisorV2 mailbox"
+git commit -m "step 10f: migrate AudioRuntimeComponent to Supervisor mailbox"
 ```
 
 ---
@@ -743,7 +743,7 @@ Replace the file with:
 #include "core/config.h"
 #include "core/debug.h"
 #include "settings.h"
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 #include "components/composition/system_components.h"
 
 namespace {
@@ -761,7 +761,7 @@ static IAudioPlayer& s_audio = s_playerImpl;
 // ---------------------------------------------------------------------------
 // Components — no old Supervisor dependency
 // ---------------------------------------------------------------------------
-SupervisorV2 s_supervisorV2;
+Supervisor s_supervisor;
 static BoardInfoComponent s_boardInfo;
 static WiFiComponent s_wifi;
 static AudioRuntimeComponent s_audioRuntime(s_audio);
@@ -775,11 +775,11 @@ static ISystemComponent* s_components[] = {
 };
 
 // ---------------------------------------------------------------------------
-// SupervisorV2 state machine task
+// Supervisor state machine task
 // ---------------------------------------------------------------------------
 
 static void stateMachineTask(void* param) {
-    auto* supervisorV2 = static_cast<SupervisorV2*>(param);
+    auto* supervisorV2 = static_cast<Supervisor*>(param);
     supervisorV2->setup();
     for (;;) {
         supervisorV2->run();
@@ -809,7 +809,7 @@ void setup() {
         stateMachineTask,
         "StateMachine",
         8192,
-        &s_supervisorV2,
+        &s_supervisor,
         2,
         nullptr,
         0
@@ -824,18 +824,18 @@ void loop() {
 ```
 
 Key changes:
-- Removed `#include "supervisor/supervisor.h"` — only SupervisorV2 remains
+- Removed `#include "supervisor/supervisor.h"` — only Supervisor remains
 - Removed `static Supervisor s_system;` — old Supervisor gone
 - Components no longer pass `s_system` to constructors
 - `(void)s_system.setup();` removed
-- `s_system.processMailbox();` removed — SupervisorV2 has its own task
-- `(void)s_system.setup();` → components now register with SupervisorV2
+- `s_system.processMailbox();` removed — Supervisor has its own task
+- `(void)s_system.setup();` → components now register with Supervisor
 
 - [x] **Step 10g.2: Commit**
 
 ```bash
 git add src/main.cpp
-git commit -m "step 10g: remove old Supervisor from main.cpp, wire components to SupervisorV2 only"
+git commit -m "step 10g: remove old Supervisor from main.cpp, wire components to Supervisor only"
 ```
 
 ---
@@ -850,13 +850,13 @@ git commit -m "step 10g: remove old Supervisor from main.cpp, wire components to
 In `system_components.cpp`, remove:
 - The `#include "supervisor/supervisor.h"` line (no longer needed)
 - The `invokeComponentTransition()` function (lines 41-60 — only used by old hooks)
-- The `extern SupervisorV2 s_supervisorV2;` is already in the file (from component sections)
+- The `extern Supervisor s_supervisor;` is already in the file (from component sections)
 
 Add at top after `#include "supervisor/supervisor.h"` removal:
 ```cpp
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 
-extern SupervisorV2 s_supervisorV2;
+extern Supervisor s_supervisor;
 ```
 
 The extern declaration should appear once, before the first component that uses it (BoardInfoComponent).

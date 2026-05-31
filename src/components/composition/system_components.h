@@ -5,7 +5,7 @@
 
 #include "component_types.h"
 
-class SupervisorV2;
+class Supervisor;
 class IAudioPlayer;
 
 namespace audio_runtime {
@@ -77,8 +77,8 @@ protected:
 
     /** @brief Register this component with the supervisor.
      *  Must be called from setup() before any state transitions begin.
-     *  @param supervisor  Reference to the global SupervisorV2 instance. */
-    void registerWithSupervisor(SupervisorV2& supervisor);
+     *  @param supervisor  Reference to the global Supervisor instance. */
+    void registerWithSupervisor(Supervisor& supervisor);
 
     /** @brief Signal transition completion to the supervisor.
      *  Safe to call from handleX() (sync) or from poll() / callbacks (async). */

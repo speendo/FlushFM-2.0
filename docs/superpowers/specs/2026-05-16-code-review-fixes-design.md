@@ -1,6 +1,6 @@
 # Code Review Fixes — Design Spec (2026-05-16)
 
-Scope: `src/supervisor/orchestrator.h`, `src/supervisor/orchestrator.cpp`, `src/supervisor/supervisor_v2.h`, `src/supervisor/supervisor_v2.cpp`, `src/supervisor/state_machine.cpp`.
+Scope: `src/supervisor/orchestrator.h`, `src/supervisor/orchestrator.cpp`, `src/supervisor/supervisor.h`, `src/supervisor/supervisor_v2.cpp`, `src/supervisor/state_machine.cpp`.
 
 Deferred: #7 (consumeStateRequest/consumeErrorEvent — already correct), #8 (setTargetState/setObservedState — single-task, atomic). Revisit at end.
 
@@ -74,7 +74,7 @@ Why this works:
 
 ## #5 — Uninitialized member variables
 
-**Problem:** `SupervisorV2::SupervisorV2() = default` leaves many members uninitialized:
+**Problem:** `Supervisor::Supervisor() = default` leaves many members uninitialized:
 - `observedState_`, `targetState_`, `lastTargetBeforeError_`
 - `hasActiveOrchestration_`
 - `workerTaskHandle_`, `supervisorTaskHandle_`
@@ -89,7 +89,7 @@ Why this works:
 
 ## #6 — TaskHandle NULL dereference in postStateRequest/postErrorEvent
 
-**Problem:** `postStateRequest()` and `postErrorEvent()` in `orchestrator.cpp:45,57` call `xTaskNotifyGive(supervisorTaskHandle_)` unconditionally. `supervisorTaskHandle_` is set in `setup()` at `supervisor_v2.cpp:9`. If a component calls these during its own init (before `SupervisorV2::setup()`), the handle is garbage/zero → undefined behavior.
+**Problem:** `postStateRequest()` and `postErrorEvent()` in `orchestrator.cpp:45,57` call `xTaskNotifyGive(supervisorTaskHandle_)` unconditionally. `supervisorTaskHandle_` is set in `setup()` at `supervisor_v2.cpp:9`. If a component calls these during its own init (before `Supervisor::setup()`), the handle is garbage/zero → undefined behavior.
 
 **Proposed fix:** Guard with `if (supervisorTaskHandle_ != nullptr)` before calling `xTaskNotifyGive`. `xTaskNotifyGive(nullptr)` is technically valid on FreeRTOS (ignores), but the guard is clearer and documents intent.
 

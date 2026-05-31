@@ -179,11 +179,11 @@ CliComponent::CliComponent(IAudioPlayer* audio)
 
 Change line 308 from:
 ```cpp
-    cli::init(audio_, audio_runtime::taskHandlePtr(), &s_supervisorV2);
+    cli::init(audio_, audio_runtime::taskHandlePtr(), &s_supervisor);
 ```
 To:
 ```cpp
-    cli::init(*audio_, audio_runtime::taskHandlePtr(), &s_supervisorV2);
+    cli::init(*audio_, audio_runtime::taskHandlePtr(), &s_supervisor);
 ```
 
 - [x] **Step 5: Commit**
@@ -236,7 +236,7 @@ void setup() {
         stateMachineTask,
         "StateMachine",
         8192,
-        &s_supervisorV2,
+        &s_supervisor,
         2,
         nullptr,
         0
@@ -268,7 +268,7 @@ void setup() {
         stateMachineTask,
         "StateMachine",
         8192,
-        &s_supervisorV2,
+        &s_supervisor,
         2,
         nullptr,
         0

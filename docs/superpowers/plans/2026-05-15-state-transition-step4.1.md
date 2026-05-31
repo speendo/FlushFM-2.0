@@ -16,10 +16,10 @@
 src/supervisor/
 ├── supervisor_v2.h          — unchanged (all declarations stay)
 ├── supervisor_v2.cpp        — thin: constructor, setup(), getters, config, registerComponent()
-├── orchestrator.h           — thin wrapper: #pragma once + #include "supervisor/supervisor_v2.h"
+├── orchestrator.h           — thin wrapper: #pragma once + #include "supervisor/supervisor.h"
 ├── orchestrator.cpp         — cross-core I/O: postNextComponentState, completeTransition,
 │                               postStateRequest, postErrorEvent
-├── state_machine.h          — thin wrapper: #pragma once + #include "supervisor/supervisor_v2.h"
+├── state_machine.h          — thin wrapper: #pragma once + #include "supervisor/supervisor.h"
 ├── state_machine.cpp        — state logic + free functions: getNextState, stateToString,
 │                               isErrorState, consumeStateRequest, consumeErrorEvent,
 │                               setTargetState, resetRecoveryIfOutOfError, checkComponentPresence
@@ -30,7 +30,7 @@ src/supervisor/
 ### Method Categorization
 
 **supervisor_v2.cpp** — Configuration & Registration (9 methods, lines 71-125):
-- `SupervisorV2()` — constructor (line 71)
+- `Supervisor()` — constructor (line 71)
 - `setup()` (lines 73-76)
 - `getObservedState()` / `getTargetState()` (lines 112-118)
 - `getMaxRecoveries()` / `setMaxRecoveries()` (lines 88-96)
@@ -103,7 +103,7 @@ Pattern for get_next_state (no `#define private public`):
 - [ ] **Step 4.1a.1: Create `src/supervisor/state_machine.cpp`**
 
 ```cpp
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 
 #include "core/debug.h"
 
@@ -159,7 +159,7 @@ SystemState getNextState(SystemState current, SystemState target) {
     return current;
 }
 
-void SupervisorV2::checkComponentPresence() {
+void Supervisor::checkComponentPresence() {
     for (size_t i = 0; i < componentCount; i++) {
         if (componentMailboxes_[i] == nullptr && isRequired_[i]) {
             postErrorEvent("component absent", static_cast<ComponentID>(i));
@@ -167,7 +167,7 @@ void SupervisorV2::checkComponentPresence() {
     }
 }
 
-bool SupervisorV2::consumeStateRequest() {
+bool Supervisor::consumeStateRequest() {
     SystemState target;
     bool hadPending = false;
 
@@ -185,7 +185,7 @@ bool SupervisorV2::consumeStateRequest() {
     return hadPending;
 }
 
-void SupervisorV2::consumeErrorEvent() {
+void Supervisor::consumeErrorEvent() {
     DebugReason reasonCopy = nullptr;
     ComponentID sourceCopy = ComponentID::Count;
     bool gotError = false;
@@ -216,12 +216,12 @@ void SupervisorV2::consumeErrorEvent() {
     }
 }
 
-void SupervisorV2::setTargetState(SystemState target) {
+void Supervisor::setTargetState(SystemState target) {
     PROD_LOG(kLogSource, "Setting target state to %s", stateToString(target));
     targetState_ = target;
 }
 
-void SupervisorV2::resetRecoveryIfOutOfError() {
+void Supervisor::resetRecoveryIfOutOfError() {
     if (!isErrorState(observedState_)) {
         retryPolicy_.recoveryCounter = 0;
     }
@@ -231,26 +231,26 @@ void SupervisorV2::resetRecoveryIfOutOfError() {
 - [ ] **Step 4.1a.2: Trim `src/supervisor/supervisor_v2.cpp`** — remove lines 5-9 (anonymous namespace), 13-69 (free functions), 78-86 (checkComponentPresence), 178-236 (consume/setTarget/resetRecovery). Remove `#include "core/debug.h"` (line 3). The result:
 
 ```cpp
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 
-SupervisorV2::SupervisorV2() = default;
+Supervisor::Supervisor() = default;
 
-void SupervisorV2::setup() {
+void Supervisor::setup() {
     eventGroup_ = xEventGroupCreateStatic(&eventGroupBuffer_);
     loadTransitionTimeoutConfig();
 }
 
-int SupervisorV2::getMaxRecoveries() const {
+int Supervisor::getMaxRecoveries() const {
     return retryPolicy_.maxRecoveries;
 }
 
-void SupervisorV2::setMaxRecoveries(int recoveries) {
+void Supervisor::setMaxRecoveries(int recoveries) {
     if (recoveries >= 1) {
         retryPolicy_.maxRecoveries = recoveries;
     }
 }
 
-uint32_t SupervisorV2::getTransitionTimeout(SystemState state, bool isForward) const {
+uint32_t Supervisor::getTransitionTimeout(SystemState state, bool isForward) const {
     int idx = getIndex(state);
     if (idx >= 0 && idx < static_cast<int>(stateCount)) {
         return isForward ? timeoutConfig_.forwardTimeouts[idx]
@@ -259,20 +259,20 @@ uint32_t SupervisorV2::getTransitionTimeout(SystemState state, bool isForward) c
     return 0;
 }
 
-void SupervisorV2::loadTransitionTimeoutConfig() {
+void Supervisor::loadTransitionTimeoutConfig() {
     timeoutConfig_.forwardTimeouts = kDefaultForwardTimeouts;
     timeoutConfig_.backwardTimeouts = kDefaultBackwardTimeouts;
 }
 
-SystemState SupervisorV2::getObservedState() const {
+SystemState Supervisor::getObservedState() const {
     return observedState_;
 }
 
-SystemState SupervisorV2::getTargetState() const {
+SystemState Supervisor::getTargetState() const {
     return targetState_;
 }
 
-void SupervisorV2::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
+void Supervisor::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
     componentMailboxes_[static_cast<int>(id)] = mailbox;
     isRequired_[static_cast<int>(id)] = isRequired;
 }
@@ -354,9 +354,9 @@ git commit -m "step 4.1a: extract state_machine.cpp from supervisor_v2.cpp"
 - [ ] **Step 4.1b.1: Create `src/supervisor/orchestrator.cpp`**
 
 ```cpp
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 
-void SupervisorV2::postNextComponentState(ComponentID id) {
+void Supervisor::postNextComponentState(ComponentID id) {
     ComponentMailbox* mailbox = componentMailboxes_[static_cast<int>(id)];
     if (mailbox == nullptr) return;
     portENTER_CRITICAL(&mailbox->spinlock);
@@ -365,7 +365,7 @@ void SupervisorV2::postNextComponentState(ComponentID id) {
     portEXIT_CRITICAL(&mailbox->spinlock);
 }
 
-void SupervisorV2::completeTransition(ComponentID id, TransitionStatus status) {
+void Supervisor::completeTransition(ComponentID id, TransitionStatus status) {
     if (status == TransitionStatus::Completed) {
         xEventGroupSetBits(eventGroup_, 1 << static_cast<int>(id));
         return;
@@ -378,14 +378,14 @@ void SupervisorV2::completeTransition(ComponentID id, TransitionStatus status) {
     }
 }
 
-void SupervisorV2::postStateRequest(SystemState target) {
+void Supervisor::postStateRequest(SystemState target) {
     portENTER_CRITICAL(&stateRequestMailbox_.spinlock);
     stateRequestMailbox_.pending = true;
     stateRequestMailbox_.requestedTarget = target;
     portEXIT_CRITICAL(&stateRequestMailbox_.spinlock);
 }
 
-void SupervisorV2::postErrorEvent(DebugReason reason, ComponentID source) {
+void Supervisor::postErrorEvent(DebugReason reason, ComponentID source) {
     portENTER_CRITICAL(&errorEvent_.spinlock);
     if (!errorEvent_.pending) {
         errorEvent_.pending = true;
@@ -448,7 +448,7 @@ git commit -m "step 4.1b: extract orchestrator.cpp from supervisor_v2.cpp"
 ```cpp
 #pragma once
 
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 ```
 
 - [ ] **Step 4.1c.2: Create `src/supervisor/state_machine.h`**
@@ -456,7 +456,7 @@ git commit -m "step 4.1b: extract orchestrator.cpp from supervisor_v2.cpp"
 ```cpp
 #pragma once
 
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 ```
 
 - [ ] **Step 4.1c.3: Run full suite** (headers are unused at this point, but verify no breakage)

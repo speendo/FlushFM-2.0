@@ -15,7 +15,7 @@
 ## File Structure
 
 - **Modify:** `src/supervisor/native_stubs.h` — add `constexpr TickType_t portMAX_DELAY`
-- **Modify:** `src/supervisor/supervisor_v2.h` — add `stepTowardTarget()` declaration
+- **Modify:** `src/supervisor/supervisor.h` — add `stepTowardTarget()` declaration
 - **Modify:** `src/supervisor/state_machine.cpp` — add `stepTowardTarget()`, add `run()`
 - **Create:** `test/test_supervisor_v2_run/test_main.cpp` — 14 tests
 - **Modify:** `platformio.ini` — add/remove `test_ignore` during development
@@ -76,7 +76,7 @@ struct TestComponent {
 // must remain false and the observed state unchanged.
 
 void test_run_already_at_target_does_nothing() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
     // Both observed and target are BOOTING — no transition possible.
     supervisor.observedState_ = SystemState::BOOTING;
@@ -102,7 +102,7 @@ void test_run_already_at_target_does_nothing() {
 void test_run_steps_toward_target() {
     // Register at least one component so startOrchestration has mailboxes
     // to write and can compute the expected-bits mask.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifiComponent;
     supervisor.registerComponent(ComponentID::WiFi, &wifiComponent.mailbox, true);
 
@@ -128,7 +128,7 @@ void test_run_step_noop_when_already_at_target() {
     // no orchestration is started even after event processing.
     // Event processing may change targetState_, so this test isolates
     // the step-toward-path by confirming the condition check.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     // No components registered — would not matter here since the
     // stepping path is never entered.
 
@@ -155,7 +155,7 @@ void test_run_checks_orchestration_response_completed() {
     // indicating all expected bits were set before the deadline.
     // Expected: observedState_ advances to the orchestration target,
     // active orchestration flag is cleared.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifiComponent;
     supervisor.registerComponent(ComponentID::WiFi, &wifiComponent.mailbox, true);
 
@@ -176,7 +176,7 @@ void test_run_checks_orchestration_response_timed_out() {
     // expected bits were never set before the deadline. For required
     // components, this should mark the component as FAILED and post an
     // error event so the next run() tick initiates ERROR recovery.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifiComponent;
     supervisor.registerComponent(ComponentID::WiFi, &wifiComponent.mailbox, true);
     supervisor.setMaxRecoveries(3);
@@ -197,7 +197,7 @@ void test_run_active_orchestration_blocks_stepping() {
     // An in-flight orchestration prevents new stepping even when
     // targetState_ differs from observedState_. Verify that the step
     // is not taken and the orchestration remains in progress.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifiComponent;
     supervisor.registerComponent(ComponentID::WiFi, &wifiComponent.mailbox, true);
 
@@ -224,7 +224,7 @@ void test_run_active_orchestration_blocks_stepping() {
 void test_run_consumes_state_request() {
     // A state request should update targetState_ via setTargetState().
     // No components are registered — state stepping is not tested here.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
     supervisor.observedState_ = SystemState::BOOTING;
     supervisor.targetState_ = SystemState::BOOTING;
@@ -242,7 +242,7 @@ void test_run_consumes_error_event() {
     // An error event should increment the recovery counter and set the
     // target to ERROR (recoverable). The recovery budget (maxRecoveries=3)
     // is not exhausted after a single error, so FATAL is not reached.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
     supervisor.observedState_ = SystemState::BOOTING;
     supervisor.targetState_ = SystemState::LIVE;
@@ -264,7 +264,7 @@ void test_run_consumes_both_events_and_steps() {
     // the mailbox (updates targetState_), then sees target != observed and
     // steps toward the new target. Verifies the complete pipeline: event
     // drain → stepping → orchestration start.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifiComponent;
     supervisor.registerComponent(ComponentID::WiFi, &wifiComponent.mailbox, true);
 
@@ -292,7 +292,7 @@ void test_run_consumes_both_events_and_steps() {
 void test_run_skips_event_processing_in_fatal() {
     // In FATAL, pending events must remain untouched. The supervisor
     // does not accept new state requests or error events once FATAL.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
     supervisor.observedState_ = SystemState::FATAL;
     supervisor.targetState_ = SystemState::BOOTING;
@@ -311,7 +311,7 @@ void test_run_skips_state_stepping_in_fatal() {
     // In FATAL, stepping toward any target is prohibited. Even if
     // targetState_ differs from observedState_, stepTowardTarget()
     // must NOT be called. The system stays in FATAL permanently.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifiComponent;
     supervisor.registerComponent(ComponentID::WiFi, &wifiComponent.mailbox, true);
 
@@ -330,7 +330,7 @@ void test_run_calls_handle_fatal() {
     // When observedState_ == FATAL, handleFatal() must be called.
     // Verify the side effect: fatalEntered_ is set to true and the
     // dwell timer deadline is recorded.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
     supervisor.observedState_ = SystemState::FATAL;
     supervisor.fatalEntered_ = false;
@@ -352,7 +352,7 @@ void test_run_error_recovery_posts_state_request() {
     // From ERROR with lastTargetBeforeError_ = LIVE, recovery should post
     // a state request for LIVE. This goes through the mailbox so it will
     // be consumed on the next run() tick.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
     supervisor.observedState_ = SystemState::ERROR;
     supervisor.hasActiveOrchestration_ = false;
@@ -369,7 +369,7 @@ void test_run_error_recovery_noop_when_target_matches() {
     // If the saved recovery target equals the current error state (should
     // not happen in practice due to the restamp guard, but defensive),
     // no state request should be posted.
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
     supervisor.observedState_ = SystemState::ERROR;
     supervisor.hasActiveOrchestration_ = false;
@@ -431,7 +431,7 @@ git commit -m "step 7: add test file for run() tick sequence"
 
 **Files:**
 - Modify: `src/supervisor/native_stubs.h` — add `portMAX_DELAY`
-- Modify: `src/supervisor/supervisor_v2.h` — add `stepTowardTarget()` declaration
+- Modify: `src/supervisor/supervisor.h` — add `stepTowardTarget()` declaration
 
 - [ ] **Step 7a.1: Add `portMAX_DELAY` to `native_stubs.h`**
 
@@ -471,7 +471,7 @@ Add after the `checkOrchestrationResponse()` declaration (after line 364):
 - [ ] **Step 7a.3: Commit**
 
 ```bash
-git add src/supervisor/native_stubs.h src/supervisor/supervisor_v2.h
+git add src/supervisor/native_stubs.h src/supervisor/supervisor.h
 git commit -m "step 7a: add portMAX_DELAY stub and stepTowardTarget declaration"
 ```
 
@@ -497,7 +497,7 @@ Add after the closing brace of `handleFatal()`:
  *  Called by run() when targetState_ != observedState_ and no orchestration
  *  is currently in flight (hasActiveOrchestration_ == false).
  */
-void SupervisorV2::stepTowardTarget() {
+void Supervisor::stepTowardTarget() {
     SystemState nextSteppingState = getNextState(observedState_, targetState_);
     if (nextSteppingState == observedState_) return;
     startOrchestration(nextSteppingState);
@@ -591,7 +591,7 @@ Add after the closing brace of `stepTowardTarget()`:
  *    expires. FATAL is absorbent: no state transitions can exit it, so
  *    event processing and state stepping are unconditionally skipped.
  */
-void SupervisorV2::run() {
+void Supervisor::run() {
     // --- Phase 1: Block until woken by a notification ---
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 

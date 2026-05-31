@@ -7,9 +7,9 @@
 #include "core/debug.h"
 #include "settings.h"
 #include "components/network/wifi_manager.h"
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 
-extern SupervisorV2 s_supervisorV2;
+extern Supervisor s_supervisor;
 
 // -- ISystemComponent base class --------------------------------------------
 
@@ -33,12 +33,12 @@ void ISystemComponent::dispatch(SystemState target) {
     }
 }
 
-void ISystemComponent::registerWithSupervisor(SupervisorV2& supervisor) {
+void ISystemComponent::registerWithSupervisor(Supervisor& supervisor) {
     supervisor.registerComponent(id_, &mailbox_, isRequired_);
 }
 
 void ISystemComponent::completeTransition(TransitionStatus status) {
-    s_supervisorV2.completeTransition(id_, status);
+    s_supervisor.completeTransition(id_, status);
 }
 
 BoardInfoComponent::BoardInfoComponent()
@@ -46,7 +46,7 @@ BoardInfoComponent::BoardInfoComponent()
 
 bool BoardInfoComponent::setup() {
     board_info::print();
-    registerWithSupervisor(s_supervisorV2);
+    registerWithSupervisor(s_supervisor);
     return true;
 }
 
@@ -64,7 +64,7 @@ WiFiComponent::WiFiComponent()
     : ISystemComponent(ComponentID::WiFi, "WiFi", true) {}
 
 bool WiFiComponent::setup() {
-    registerWithSupervisor(s_supervisorV2);
+    registerWithSupervisor(s_supervisor);
 
     wifi_manager::setConnectedCallback(&WiFiComponent::onConnected, this);
     wifi_manager::setDisconnectedCallback(&WiFiComponent::onDisconnected, this);
@@ -160,7 +160,7 @@ void WiFiComponent::onDisconnected(void* context) {
         self->transitionPending_ = false;
         self->completeTransition(TransitionStatus::Failed);
     } else {
-        s_supervisorV2.postErrorEvent("wifi disconnected", ComponentID::WiFi);
+        s_supervisor.postErrorEvent("wifi disconnected", ComponentID::WiFi);
     }
 }
 
@@ -168,12 +168,12 @@ AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer** audio)
     : ISystemComponent(ComponentID::AudioRuntime, "AudioRuntime", true), audio_(audio) {}
 
 bool AudioRuntimeComponent::setup() {
-    registerWithSupervisor(s_supervisorV2);
+    registerWithSupervisor(s_supervisor);
 
     audio_runtime::setSignalHandler(&AudioRuntimeComponent::onAudioSignal, this);
     const bool started = audio_runtime::start(**audio_);
     if (!started) {
-        s_supervisorV2.postErrorEvent("audio task init failed", ComponentID::AudioRuntime);
+        s_supervisor.postErrorEvent("audio task init failed", ComponentID::AudioRuntime);
     }
     return started;
 }
@@ -274,14 +274,14 @@ void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* co
             self->transitionPending_ = false;
             self->completeTransition(TransitionStatus::Failed);
         } else {
-            s_supervisorV2.postErrorEvent("stream lost", ComponentID::AudioRuntime);
+            s_supervisor.postErrorEvent("stream lost", ComponentID::AudioRuntime);
         }
     } else {
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
             self->transitionPending_ = false;
             self->completeTransition(TransitionStatus::Failed);
         } else {
-            s_supervisorV2.postErrorEvent("audio init failed", ComponentID::AudioRuntime);
+            s_supervisor.postErrorEvent("audio init failed", ComponentID::AudioRuntime);
         }
     }
 }
@@ -290,8 +290,8 @@ CliComponent::CliComponent(IAudioPlayer** audio)
     : ISystemComponent(ComponentID::CLI, "CLI", false), audio_(audio) {}
 
 bool CliComponent::setup() {
-    registerWithSupervisor(s_supervisorV2);
-    cli::init(**audio_, audio_runtime::taskHandlePtr(), &s_supervisorV2);
+    registerWithSupervisor(s_supervisor);
+    cli::init(**audio_, audio_runtime::taskHandlePtr(), &s_supervisor);
     cli::printHelp();
     return true;
 }

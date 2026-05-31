@@ -1,7 +1,7 @@
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 #include "supervisor/orchestrator.h"
 
-void SupervisorV2::postNextComponentState(ComponentID id) {
+void Supervisor::postNextComponentState(ComponentID id) {
     // Write the current stepping state to a component's mailbox under spinlock.
     // The component will read this in its own loop and react.
     ComponentMailbox* mailbox = componentMailboxes_[static_cast<int>(id)];
@@ -12,7 +12,7 @@ void SupervisorV2::postNextComponentState(ComponentID id) {
     portEXIT_CRITICAL(&mailbox->spinlock);
 }
 
-void SupervisorV2::completeTransition(ComponentID id, TransitionStatus status) {
+void Supervisor::completeTransition(ComponentID id, TransitionStatus status) {
     if (status == TransitionStatus::Completed) {
         if (eventGroup_ == nullptr) return;
         // Set this component's bit in the event group. The orchestration
@@ -39,7 +39,7 @@ void SupervisorV2::completeTransition(ComponentID id, TransitionStatus status) {
     }
 }
 
-void SupervisorV2::postStateRequest(SystemState target) {
+void Supervisor::postStateRequest(SystemState target) {
     portENTER_CRITICAL(&stateRequestMailbox_.spinlock);
     stateRequestMailbox_.pending = true;
     stateRequestMailbox_.requestedTarget = target;
@@ -50,7 +50,7 @@ void SupervisorV2::postStateRequest(SystemState target) {
     }
 }
 
-void SupervisorV2::postErrorEvent(DebugReason reason, ComponentID source) {
+void Supervisor::postErrorEvent(DebugReason reason, ComponentID source) {
     portENTER_CRITICAL(&errorEvent_.spinlock);
     if (!errorEvent_.pending) {
         errorEvent_.pending = true;
@@ -69,7 +69,7 @@ void SupervisorV2::postErrorEvent(DebugReason reason, ComponentID source) {
  *  component mailboxes, and posts an OrchestrationOrder for the worker task.
  *  @param target The intermediate stepping state to orchestrate toward.
  */
-void SupervisorV2::startOrchestration(SystemState target) {
+void Supervisor::startOrchestration(SystemState target) {
     // Set the transition target before writing mailboxes — postNextComponentState
     // reads nextState_.transitionTarget to know what to write.
     nextState_.transitionTarget = target;
@@ -111,7 +111,7 @@ void SupervisorV2::startOrchestration(SystemState target) {
  *  On COMPLETED: advances observedState_ to the orchestration target.
  *  On TIMED_OUT: clears the active flag and handles overdue components.
  */
-void SupervisorV2::checkOrchestrationResponse() {
+void Supervisor::checkOrchestrationResponse() {
     OrchestrationResult result;
     EventBits_t timedOutComponents;
     if (!responseMailbox_.consume(result, timedOutComponents)) return;
@@ -140,10 +140,10 @@ void SupervisorV2::checkOrchestrationResponse() {
 /** @brief Orchestration worker task. Reads orders from orderMailbox_ and blocks
  *  on xEventGroupWaitBits until all expected bits are set or the deadline expires.
  *  Posts a result back to responseMailbox_ for the state machine to consume.
- *  @param param Pointer to the SupervisorV2 instance (cast from void*).
+ *  @param param Pointer to the Supervisor instance (cast from void*).
  */
 void orchestrationWorker(void* param) {
-    auto* supervisor = static_cast<SupervisorV2*>(param);
+    auto* supervisor = static_cast<Supervisor*>(param);
     for (;;) {
         EventBits_t expectedBits;
         TickType_t timeoutTicks;

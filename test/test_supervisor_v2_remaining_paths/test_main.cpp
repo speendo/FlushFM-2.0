@@ -1,6 +1,6 @@
 #include <unity.h>
 
-#include "support/s2v2_access.h"
+#include "support/supervisor_access.h"
 
 namespace {
 
@@ -42,16 +42,16 @@ void test_get_next_state_invalid_falls_back_to_fatal() {
 // ============================================================================
 
 void test_complete_transition_required_failed_writes_error_event() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifi;
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
 
     supervisor.completeTransition(ComponentID::WiFi, TransitionStatus::Failed);
 
-    TEST_ASSERT_TRUE(S2V2Access::errorEvent(supervisor).pending);
-    TEST_ASSERT_EQUAL_STRING("component failed", S2V2Access::errorEvent(supervisor).reason);
+    TEST_ASSERT_TRUE(SupervisorAccess::errorEvent(supervisor).pending);
+    TEST_ASSERT_EQUAL_STRING("component failed", SupervisorAccess::errorEvent(supervisor).reason);
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentID::WiFi),
-                      static_cast<int>(S2V2Access::errorEvent(supervisor).source));
+                      static_cast<int>(SupervisorAccess::errorEvent(supervisor).source));
 }
 
 // ============================================================================
@@ -59,28 +59,28 @@ void test_complete_transition_required_failed_writes_error_event() {
 // ============================================================================
 
 void test_check_response_mixed_timeout() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifi, audio, cli;
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
     supervisor.registerComponent(ComponentID::AudioRuntime, &audio.mailbox, true);
     supervisor.registerComponent(ComponentID::CLI, &cli.mailbox, false);
-    S2V2Access::setMaxRecoveries(supervisor, 3);
+    SupervisorAccess::setMaxRecoveries(supervisor, 3);
 
-    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setObservedState(supervisor, SystemState::BOOTING);
     EventBits_t timedOut = (1 << static_cast<int>(ComponentID::WiFi))
                          | (1 << static_cast<int>(ComponentID::AudioRuntime))
                          | (1 << static_cast<int>(ComponentID::CLI));
-    S2V2Access::postResponse(supervisor, OrchestrationResult::TIMED_OUT, timedOut);
+    SupervisorAccess::postResponse(supervisor, OrchestrationResult::TIMED_OUT, timedOut);
 
-    S2V2Access::checkOrchestrationResponse(supervisor);
+    SupervisorAccess::checkOrchestrationResponse(supervisor);
 
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentStatus::FAILED),
-                      static_cast<int>(S2V2Access::getComponentStatus(supervisor, ComponentID::WiFi)));
+                      static_cast<int>(SupervisorAccess::getComponentStatus(supervisor, ComponentID::WiFi)));
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentStatus::FAILED),
-                      static_cast<int>(S2V2Access::getComponentStatus(supervisor, ComponentID::AudioRuntime)));
+                      static_cast<int>(SupervisorAccess::getComponentStatus(supervisor, ComponentID::AudioRuntime)));
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentStatus::DEGRADED),
-                      static_cast<int>(S2V2Access::getComponentStatus(supervisor, ComponentID::CLI)));
-    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+                      static_cast<int>(SupervisorAccess::getComponentStatus(supervisor, ComponentID::CLI)));
+    TEST_ASSERT_FALSE(SupervisorAccess::getHasActiveOrchestration(supervisor));
 }
 
 // ============================================================================
@@ -88,14 +88,14 @@ void test_check_response_mixed_timeout() {
 // ============================================================================
 
 void test_start_orchestration_empty_bits_mask() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.setup();
 
-    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
-    S2V2Access::startOrchestration(supervisor, SystemState::CONNECTING);
+    SupervisorAccess::setObservedState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::startOrchestration(supervisor, SystemState::CONNECTING);
 
-    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
-    TEST_ASSERT_EQUAL(0, S2V2Access::getOrderExpectedBits(supervisor));
+    TEST_ASSERT_TRUE(SupervisorAccess::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_EQUAL(0, SupervisorAccess::getOrderExpectedBits(supervisor));
 }
 
 // ============================================================================
@@ -103,24 +103,24 @@ void test_start_orchestration_empty_bits_mask() {
 // ============================================================================
 
 void test_set_max_recoveries_rejects_invalid_values() {
-    SupervisorV2 supervisor;
-    int original = S2V2Access::retryPolicy(supervisor).maxRecoveries;
+    Supervisor supervisor;
+    int original = SupervisorAccess::retryPolicy(supervisor).maxRecoveries;
 
-    S2V2Access::setMaxRecoveries(supervisor, 0);
-    TEST_ASSERT_EQUAL(original, S2V2Access::retryPolicy(supervisor).maxRecoveries);
+    SupervisorAccess::setMaxRecoveries(supervisor, 0);
+    TEST_ASSERT_EQUAL(original, SupervisorAccess::retryPolicy(supervisor).maxRecoveries);
 
-    S2V2Access::setMaxRecoveries(supervisor, -1);
-    TEST_ASSERT_EQUAL(original, S2V2Access::retryPolicy(supervisor).maxRecoveries);
+    SupervisorAccess::setMaxRecoveries(supervisor, -1);
+    TEST_ASSERT_EQUAL(original, SupervisorAccess::retryPolicy(supervisor).maxRecoveries);
 }
 
 void test_set_max_recoveries_accepts_valid_value() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
-    S2V2Access::setMaxRecoveries(supervisor, 1);
-    TEST_ASSERT_EQUAL(1, S2V2Access::retryPolicy(supervisor).maxRecoveries);
+    SupervisorAccess::setMaxRecoveries(supervisor, 1);
+    TEST_ASSERT_EQUAL(1, SupervisorAccess::retryPolicy(supervisor).maxRecoveries);
 
-    S2V2Access::setMaxRecoveries(supervisor, 5);
-    TEST_ASSERT_EQUAL(5, S2V2Access::retryPolicy(supervisor).maxRecoveries);
+    SupervisorAccess::setMaxRecoveries(supervisor, 5);
+    TEST_ASSERT_EQUAL(5, SupervisorAccess::retryPolicy(supervisor).maxRecoveries);
 }
 
 // ============================================================================
@@ -128,21 +128,21 @@ void test_set_max_recoveries_accepts_valid_value() {
 // ============================================================================
 
 void test_get_transition_timeout_forward_and_backward() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.setup();
 
-    uint32_t forward = S2V2Access::getTransitionTimeout(supervisor, SystemState::BOOTING, true);
-    uint32_t backward = S2V2Access::getTransitionTimeout(supervisor, SystemState::BOOTING, false);
+    uint32_t forward = SupervisorAccess::getTransitionTimeout(supervisor, SystemState::BOOTING, true);
+    uint32_t backward = SupervisorAccess::getTransitionTimeout(supervisor, SystemState::BOOTING, false);
 
     TEST_ASSERT_EQUAL(5000, forward);
     TEST_ASSERT_EQUAL(5000, backward);
 }
 
 void test_get_transition_timeout_invalid_state_returns_zero() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     SystemState badState = static_cast<SystemState>(99);
 
-    uint32_t result = S2V2Access::getTransitionTimeout(supervisor, badState, true);
+    uint32_t result = SupervisorAccess::getTransitionTimeout(supervisor, badState, true);
 
     TEST_ASSERT_EQUAL(0, result);
 }

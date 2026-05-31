@@ -1,8 +1,8 @@
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 
-SupervisorV2::SupervisorV2() = default;
+Supervisor::Supervisor() = default;
 
-void SupervisorV2::setup() {
+void Supervisor::setup() {
     eventGroup_ = xEventGroupCreateStatic(&eventGroupBuffer_);
     if (eventGroup_ == nullptr) {
         return;
@@ -22,17 +22,17 @@ void SupervisorV2::setup() {
     );
 }
 
-int SupervisorV2::getMaxRecoveries() const {
+int Supervisor::getMaxRecoveries() const {
     return retryPolicy_.maxRecoveries;
 }
 
-void SupervisorV2::setMaxRecoveries(int recoveries) {
+void Supervisor::setMaxRecoveries(int recoveries) {
     if (recoveries >= 1) {
         retryPolicy_.maxRecoveries = recoveries;
     }
 }
 
-uint32_t SupervisorV2::getTransitionTimeout(SystemState state, bool isForward) const {
+uint32_t Supervisor::getTransitionTimeout(SystemState state, bool isForward) const {
     int idx = getIndex(state);
     if (idx >= 0 && idx < static_cast<int>(stateCount)) {
         return isForward ? timeoutConfig_.forwardTimeouts[idx]
@@ -41,20 +41,20 @@ uint32_t SupervisorV2::getTransitionTimeout(SystemState state, bool isForward) c
     return 0;
 }
 
-void SupervisorV2::loadTransitionTimeoutConfig() {
+void Supervisor::loadTransitionTimeoutConfig() {
     timeoutConfig_.forwardTimeouts = kDefaultForwardTimeouts;
     timeoutConfig_.backwardTimeouts = kDefaultBackwardTimeouts;
 }
 
-SystemState SupervisorV2::getObservedState() const {
+SystemState Supervisor::getObservedState() const {
     return observedState_;
 }
 
-SystemState SupervisorV2::getTargetState() const {
+SystemState Supervisor::getTargetState() const {
     return targetState_;
 }
 
-void SupervisorV2::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
+void Supervisor::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
     configASSERT(static_cast<size_t>(id) < componentCount);
     // Store the mailbox pointer for cross-core writes. Null means absent.
     componentMailboxes_[static_cast<size_t>(id)] = mailbox;

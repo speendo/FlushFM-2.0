@@ -1,4 +1,4 @@
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 
 #include "core/debug.h"
 
@@ -50,7 +50,7 @@ SystemState getNextState(SystemState current, SystemState target) {
     return current; // Already at target
 }
 
-void SupervisorV2::checkComponentPresence() {
+void Supervisor::checkComponentPresence() {
     for (size_t i = 0; i < componentCount; i++) {
         if (componentMailboxes_[i] == nullptr && isRequired_[i]) {
             postErrorEvent("component absent", static_cast<ComponentID>(i));
@@ -68,13 +68,13 @@ void SupervisorV2::checkComponentPresence() {
  *  Called by run() when targetState_ != observedState_ and no orchestration
  *  is currently in flight (hasActiveOrchestration_ == false).
  */
-void SupervisorV2::stepTowardTarget() {
+void Supervisor::stepTowardTarget() {
     SystemState nextSteppingState = getNextState(observedState_, targetState_);
     if (nextSteppingState == observedState_) return;
     startOrchestration(nextSteppingState);
 }
 
-void SupervisorV2::spawnFatalTask() {
+void Supervisor::spawnFatalTask() {
     fatalEnteredTicks_ = xTaskGetTickCount();
     PROD_LOG(kLogSource, "Spawning FATAL task, dwell=%ums", static_cast<unsigned int>(pdTICKS_TO_MS(pdMS_TO_TICKS(60000))));
 #if defined(ARDUINO)
@@ -122,7 +122,7 @@ void SupervisorV2::spawnFatalTask() {
  *    dwell timer and triggers deep sleep once the timer expires. FATAL is
  *    absorbent: no state transitions can exit it.
  */
-void SupervisorV2::run() {
+void Supervisor::run() {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
     if (observedState_ != SystemState::FATAL) {
@@ -149,7 +149,7 @@ void SupervisorV2::run() {
     }
 }
 
-bool SupervisorV2::consumeStateRequest() {
+bool Supervisor::consumeStateRequest() {
     SystemState target;
     bool hadPending = false;
 
@@ -167,7 +167,7 @@ bool SupervisorV2::consumeStateRequest() {
     return hadPending;
 }
 
-void SupervisorV2::consumeErrorEvent() {
+void Supervisor::consumeErrorEvent() {
     DebugReason reasonCopy = nullptr;
     ComponentID sourceCopy = ComponentID::Count;
     bool gotError = false;
@@ -198,7 +198,7 @@ void SupervisorV2::consumeErrorEvent() {
     }
 }
 
-void SupervisorV2::setTargetState(SystemState target) {
+void Supervisor::setTargetState(SystemState target) {
     if (isErrorState(target) && !isErrorState(targetState_)) {
         lastTargetBeforeError_ = targetState_;
     }
@@ -207,7 +207,7 @@ void SupervisorV2::setTargetState(SystemState target) {
     targetState_ = target;
 }
 
-void SupervisorV2::resetRecoveryIfOutOfError() {
+void Supervisor::resetRecoveryIfOutOfError() {
     if (!isErrorState(observedState_)) {
         retryPolicy_.recoveryCounter = 0;
     }
@@ -218,7 +218,7 @@ void SupervisorV2::resetRecoveryIfOutOfError() {
  *  state, and clears the active orchestration flag.
  *  @param state The new observed state.
  */
-void SupervisorV2::setObservedState(SystemState state) {
+void Supervisor::setObservedState(SystemState state) {
     PROD_LOG(kLogSource, "%s -> %s",
              stateToString(observedState_), stateToString(state));
 
@@ -233,6 +233,6 @@ void SupervisorV2::setObservedState(SystemState state) {
  *  be replaced with real logic once recovery policies are defined.
  *  @return The recovery target state.
  */
-SystemState SupervisorV2::determineRecoveryTarget() {
+SystemState Supervisor::determineRecoveryTarget() {
     return lastTargetBeforeError_;
 }

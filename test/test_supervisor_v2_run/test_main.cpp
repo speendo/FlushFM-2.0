@@ -1,6 +1,6 @@
 #include <unity.h>
 
-#include "support/s2v2_access.h"
+#include "support/supervisor_access.h"
 
 namespace {
 
@@ -11,229 +11,229 @@ struct TestComponent {
 // --- idle (no transition needed) ---
 
 void test_run_already_at_target_does_nothing() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
-    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
-    S2V2Access::setTargetState(supervisor, SystemState::BOOTING);
-    S2V2Access::setHasActiveOrchestration(supervisor, false);
+    SupervisorAccess::setObservedState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setTargetState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, false);
 
     supervisor.run();
 
-    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_FALSE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::BOOTING),
-                      static_cast<int>(S2V2Access::getObservedState(supervisor)));
+                      static_cast<int>(SupervisorAccess::getObservedState(supervisor)));
 }
 
 // --- stepping toward target ---
 
 void test_run_steps_toward_target() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifiComponent;
     supervisor.registerComponent(ComponentID::WiFi, &wifiComponent.mailbox, true);
 
-    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
-    S2V2Access::setTargetState(supervisor, SystemState::CONNECTING);
-    S2V2Access::setHasActiveOrchestration(supervisor, false);
+    SupervisorAccess::setObservedState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setTargetState(supervisor, SystemState::CONNECTING);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, false);
 
     supervisor.run();
 
-    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_TRUE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING),
-                      static_cast<int>(S2V2Access::nextState(supervisor).transitionTarget));
-    TEST_ASSERT_TRUE(S2V2Access::getOrderPending(supervisor));
+                      static_cast<int>(SupervisorAccess::nextState(supervisor).transitionTarget));
+    TEST_ASSERT_TRUE(SupervisorAccess::getOrderPending(supervisor));
 }
 
 void test_run_step_noop_when_already_at_target() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
-    S2V2Access::setObservedState(supervisor, SystemState::LIVE);
-    S2V2Access::setTargetState(supervisor, SystemState::LIVE);
-    S2V2Access::setHasActiveOrchestration(supervisor, false);
+    SupervisorAccess::setObservedState(supervisor, SystemState::LIVE);
+    SupervisorAccess::setTargetState(supervisor, SystemState::LIVE);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, false);
 
     supervisor.run();
 
-    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_FALSE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE),
-                      static_cast<int>(S2V2Access::getObservedState(supervisor)));
+                      static_cast<int>(SupervisorAccess::getObservedState(supervisor)));
 }
 
 // --- active orchestration: check response ---
 
 void test_run_checks_orchestration_response_completed() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifiComponent;
     supervisor.registerComponent(ComponentID::WiFi, &wifiComponent.mailbox, true);
 
-    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
-    S2V2Access::setHasActiveOrchestration(supervisor, true);
-    S2V2Access::nextState(supervisor).transitionTarget = SystemState::CONNECTING;
-    S2V2Access::postResponse(supervisor, OrchestrationResult::COMPLETED, 0);
+    SupervisorAccess::setObservedState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, true);
+    SupervisorAccess::nextState(supervisor).transitionTarget = SystemState::CONNECTING;
+    SupervisorAccess::postResponse(supervisor, OrchestrationResult::COMPLETED, 0);
 
     supervisor.run();
 
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING),
-                      static_cast<int>(S2V2Access::getObservedState(supervisor)));
-    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+                      static_cast<int>(SupervisorAccess::getObservedState(supervisor)));
+    TEST_ASSERT_FALSE(SupervisorAccess::getHasActiveOrchestration(supervisor));
 }
 
 void test_run_checks_orchestration_response_timed_out() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifiComponent;
     supervisor.registerComponent(ComponentID::WiFi, &wifiComponent.mailbox, true);
-    S2V2Access::setMaxRecoveries(supervisor, 3);
+    SupervisorAccess::setMaxRecoveries(supervisor, 3);
 
-    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
-    S2V2Access::setHasActiveOrchestration(supervisor, true);
-    S2V2Access::postResponse(supervisor, OrchestrationResult::TIMED_OUT,
+    SupervisorAccess::setObservedState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, true);
+    SupervisorAccess::postResponse(supervisor, OrchestrationResult::TIMED_OUT,
         1 << static_cast<int>(ComponentID::WiFi));
 
     supervisor.run();
 
     TEST_ASSERT_EQUAL(static_cast<int>(ComponentStatus::FAILED),
-                      static_cast<int>(S2V2Access::getComponentStatus(supervisor, ComponentID::WiFi)));
-    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+                      static_cast<int>(SupervisorAccess::getComponentStatus(supervisor, ComponentID::WiFi)));
+    TEST_ASSERT_FALSE(SupervisorAccess::getHasActiveOrchestration(supervisor));
 }
 
 void test_run_active_orchestration_blocks_stepping() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifiComponent;
     supervisor.registerComponent(ComponentID::WiFi, &wifiComponent.mailbox, true);
 
-    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
-    S2V2Access::setTargetState(supervisor, SystemState::LIVE);
-    S2V2Access::setHasActiveOrchestration(supervisor, true);
+    SupervisorAccess::setObservedState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setTargetState(supervisor, SystemState::LIVE);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, true);
 
     supervisor.run();
 
-    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_TRUE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::BOOTING),
-                      static_cast<int>(S2V2Access::getObservedState(supervisor)));
+                      static_cast<int>(SupervisorAccess::getObservedState(supervisor)));
 }
 
 // --- event processing ---
 
 void test_run_consumes_state_request() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
-    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
-    S2V2Access::setTargetState(supervisor, SystemState::BOOTING);
-    S2V2Access::stateRequestMailbox(supervisor).pending = true;
-    S2V2Access::stateRequestMailbox(supervisor).requestedTarget = SystemState::LIVE;
+    SupervisorAccess::setObservedState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setTargetState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::stateRequestMailbox(supervisor).pending = true;
+    SupervisorAccess::stateRequestMailbox(supervisor).requestedTarget = SystemState::LIVE;
 
     supervisor.run();
 
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE),
-                      static_cast<int>(S2V2Access::getTargetState(supervisor)));
-    TEST_ASSERT_FALSE(S2V2Access::stateRequestMailbox(supervisor).pending);
+                      static_cast<int>(SupervisorAccess::getTargetState(supervisor)));
+    TEST_ASSERT_FALSE(SupervisorAccess::stateRequestMailbox(supervisor).pending);
 }
 
 void test_run_consumes_error_event() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
-    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
-    S2V2Access::setTargetState(supervisor, SystemState::LIVE);
-    S2V2Access::retryPolicy(supervisor).recoveryCounter = 0;
-    S2V2Access::setMaxRecoveries(supervisor, 3);
-    S2V2Access::errorEvent(supervisor).pending = true;
-    S2V2Access::errorEvent(supervisor).reason = "test error";
-    S2V2Access::errorEvent(supervisor).source = ComponentID::WiFi;
+    SupervisorAccess::setObservedState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setTargetState(supervisor, SystemState::LIVE);
+    SupervisorAccess::retryPolicy(supervisor).recoveryCounter = 0;
+    SupervisorAccess::setMaxRecoveries(supervisor, 3);
+    SupervisorAccess::errorEvent(supervisor).pending = true;
+    SupervisorAccess::errorEvent(supervisor).reason = "test error";
+    SupervisorAccess::errorEvent(supervisor).source = ComponentID::WiFi;
 
     supervisor.run();
 
-    TEST_ASSERT_EQUAL(1, S2V2Access::retryPolicy(supervisor).recoveryCounter);
+    TEST_ASSERT_EQUAL(1, SupervisorAccess::retryPolicy(supervisor).recoveryCounter);
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::ERROR),
-                      static_cast<int>(S2V2Access::getTargetState(supervisor)));
+                      static_cast<int>(SupervisorAccess::getTargetState(supervisor)));
 }
 
 void test_run_consumes_both_events_and_steps() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifiComponent;
     supervisor.registerComponent(ComponentID::WiFi, &wifiComponent.mailbox, true);
 
-    S2V2Access::setObservedState(supervisor, SystemState::BOOTING);
-    S2V2Access::setTargetState(supervisor, SystemState::BOOTING);
-    S2V2Access::stateRequestMailbox(supervisor).pending = true;
-    S2V2Access::stateRequestMailbox(supervisor).requestedTarget = SystemState::CONNECTING;
+    SupervisorAccess::setObservedState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::setTargetState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::stateRequestMailbox(supervisor).pending = true;
+    SupervisorAccess::stateRequestMailbox(supervisor).requestedTarget = SystemState::CONNECTING;
 
     supervisor.run();
 
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING),
-                      static_cast<int>(S2V2Access::getTargetState(supervisor)));
-    TEST_ASSERT_FALSE(S2V2Access::stateRequestMailbox(supervisor).pending);
-    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+                      static_cast<int>(SupervisorAccess::getTargetState(supervisor)));
+    TEST_ASSERT_FALSE(SupervisorAccess::stateRequestMailbox(supervisor).pending);
+    TEST_ASSERT_TRUE(SupervisorAccess::getHasActiveOrchestration(supervisor));
 }
 
 // --- FATAL behavior ---
 
 void test_run_skips_event_processing_in_fatal() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
-    S2V2Access::setObservedState(supervisor, SystemState::FATAL);
-    S2V2Access::setTargetState(supervisor, SystemState::BOOTING);
-    S2V2Access::stateRequestMailbox(supervisor).pending = true;
-    S2V2Access::stateRequestMailbox(supervisor).requestedTarget = SystemState::LIVE;
-    S2V2Access::errorEvent(supervisor).pending = true;
+    SupervisorAccess::setObservedState(supervisor, SystemState::FATAL);
+    SupervisorAccess::setTargetState(supervisor, SystemState::BOOTING);
+    SupervisorAccess::stateRequestMailbox(supervisor).pending = true;
+    SupervisorAccess::stateRequestMailbox(supervisor).requestedTarget = SystemState::LIVE;
+    SupervisorAccess::errorEvent(supervisor).pending = true;
 
     supervisor.run();
 
-    TEST_ASSERT_TRUE(S2V2Access::stateRequestMailbox(supervisor).pending);
-    TEST_ASSERT_TRUE(S2V2Access::errorEvent(supervisor).pending);
+    TEST_ASSERT_TRUE(SupervisorAccess::stateRequestMailbox(supervisor).pending);
+    TEST_ASSERT_TRUE(SupervisorAccess::errorEvent(supervisor).pending);
 }
 
 void test_run_skips_state_stepping_in_fatal() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifiComponent;
     supervisor.registerComponent(ComponentID::WiFi, &wifiComponent.mailbox, true);
 
-    S2V2Access::setObservedState(supervisor, SystemState::FATAL);
-    S2V2Access::setTargetState(supervisor, SystemState::LIVE);
-    S2V2Access::setHasActiveOrchestration(supervisor, false);
+    SupervisorAccess::setObservedState(supervisor, SystemState::FATAL);
+    SupervisorAccess::setTargetState(supervisor, SystemState::LIVE);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, false);
 
     supervisor.run();
 
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::FATAL),
-                      static_cast<int>(S2V2Access::getObservedState(supervisor)));
-    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+                      static_cast<int>(SupervisorAccess::getObservedState(supervisor)));
+    TEST_ASSERT_FALSE(SupervisorAccess::getHasActiveOrchestration(supervisor));
 }
 
 void test_run_calls_handle_fatal() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
-    S2V2Access::setObservedState(supervisor, SystemState::FATAL);
+    SupervisorAccess::setObservedState(supervisor, SystemState::FATAL);
 
     supervisor.run();
 
-    TEST_ASSERT_TRUE(S2V2Access::getFatalTaskSpawned(supervisor));
+    TEST_ASSERT_TRUE(SupervisorAccess::getFatalTaskSpawned(supervisor));
 }
 
 // --- error recovery ---
 
 void test_run_error_recovery_posts_state_request() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
-    S2V2Access::setObservedState(supervisor, SystemState::ERROR);
-    S2V2Access::setTargetState(supervisor, SystemState::ERROR);
-    S2V2Access::setHasActiveOrchestration(supervisor, false);
-    S2V2Access::setLastTargetBeforeError(supervisor, SystemState::LIVE);
+    SupervisorAccess::setObservedState(supervisor, SystemState::ERROR);
+    SupervisorAccess::setTargetState(supervisor, SystemState::ERROR);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, false);
+    SupervisorAccess::setLastTargetBeforeError(supervisor, SystemState::LIVE);
 
     supervisor.run();
 
-    TEST_ASSERT_TRUE(S2V2Access::stateRequestMailbox(supervisor).pending);
+    TEST_ASSERT_TRUE(SupervisorAccess::stateRequestMailbox(supervisor).pending);
     TEST_ASSERT_EQUAL(static_cast<int>(SystemState::LIVE),
-                      static_cast<int>(S2V2Access::stateRequestMailbox(supervisor).requestedTarget));
+                      static_cast<int>(SupervisorAccess::stateRequestMailbox(supervisor).requestedTarget));
 }
 
 void test_run_error_recovery_noop_when_target_matches() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
-    S2V2Access::setObservedState(supervisor, SystemState::ERROR);
-    S2V2Access::setTargetState(supervisor, SystemState::ERROR);
-    S2V2Access::setHasActiveOrchestration(supervisor, false);
-    S2V2Access::setLastTargetBeforeError(supervisor, SystemState::ERROR);
+    SupervisorAccess::setObservedState(supervisor, SystemState::ERROR);
+    SupervisorAccess::setTargetState(supervisor, SystemState::ERROR);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, false);
+    SupervisorAccess::setLastTargetBeforeError(supervisor, SystemState::ERROR);
 
     supervisor.run();
 
-    TEST_ASSERT_FALSE(S2V2Access::stateRequestMailbox(supervisor).pending);
+    TEST_ASSERT_FALSE(SupervisorAccess::stateRequestMailbox(supervisor).pending);
 }
 
 }  // namespace

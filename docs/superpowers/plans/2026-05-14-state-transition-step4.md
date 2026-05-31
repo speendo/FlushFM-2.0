@@ -73,7 +73,7 @@ int main() {
 }
 ```
 
-Note: includes `supervisor_v2.h` only (not .cpp). The `getNextState` is a free function declared in the header, testable without instantiating `SupervisorV2`.
+Note: includes `supervisor_v2.h` only (not .cpp). The `getNextState` is a free function declared in the header, testable without instantiating `Supervisor`.
 
 Add to `platformio.ini`:
 ```ini

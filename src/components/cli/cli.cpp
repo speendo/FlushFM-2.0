@@ -9,7 +9,7 @@
 #include "component_types.h"
 #include "core/config.h"
 #include "settings.h"
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 #include "components/network/wifi_manager.h"
 
 // ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@
 // Module-private state
 // ---------------------------------------------------------------------------
 static IAudioPlayer* s_audio = nullptr;
-static SupervisorV2* s_supervisorV2 = nullptr;
+static Supervisor* s_supervisor = nullptr;
 
 namespace {
 
@@ -99,7 +99,7 @@ public:
 
 CliEnvironment s_env;
 
-void printComponentStatusSummary(const SupervisorV2& supervisorV2) {
+void printComponentStatusSummary(const Supervisor& supervisorV2) {
     Serial.printf("System:     %s\r\n", stateToString(supervisorV2.getObservedState()));
     Serial.printf("Target:     %s\r\n", stateToString(supervisorV2.getTargetState()));
     Serial.println();
@@ -116,9 +116,9 @@ static void printDebugHelp() {
 // ---------------------------------------------------------------------------
 namespace cli {
 
-void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, SupervisorV2* supervisorV2) {
+void init(IAudioPlayer& audio, TaskHandle_t* audioTaskHandle, Supervisor* supervisorV2) {
     s_audio = &audio;
-    s_supervisorV2 = supervisorV2;
+    s_supervisor = supervisorV2;
 #ifdef DEBUG_ENABLED
     debug_cli::init(audioTaskHandle, supervisorV2);
 #else
@@ -166,13 +166,13 @@ void process(const char* line) {
         s_env,
         AUDIO_VOLUME_STEPS);
 
-    if (s_supervisorV2) {
+    if (s_supervisor) {
         if (strcmp(cmd, "play") == 0 && result.key == cli_output::MessageKey::CONNECTING_STREAM) {
-            (void)s_supervisorV2->postStateRequest(SystemState::LIVE);
+            (void)s_supervisor->postStateRequest(SystemState::LIVE);
         } else if (strcmp(cmd, "stop") == 0 && result.key == cli_output::MessageKey::STREAM_STOPPED) {
-            (void)s_supervisorV2->postStateRequest(SystemState::READY);
+            (void)s_supervisor->postStateRequest(SystemState::READY);
         } else if (strcmp(cmd, "reset") == 0 && result.key == cli_output::MessageKey::SESSION_RESET) {
-            (void)s_supervisorV2->postStateRequest(SystemState::READY);
+            (void)s_supervisor->postStateRequest(SystemState::READY);
         }
     }
 
@@ -184,8 +184,8 @@ void process(const char* line) {
 
     cli_output::render(result, &printDebugHelp);
 
-    if (result.key == cli_output::MessageKey::STATUS && s_supervisorV2) {
-        printComponentStatusSummary(*s_supervisorV2);
+    if (result.key == cli_output::MessageKey::STATUS && s_supervisor) {
+        printComponentStatusSummary(*s_supervisor);
     }
 }
 

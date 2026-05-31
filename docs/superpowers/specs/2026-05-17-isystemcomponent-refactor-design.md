@@ -45,7 +45,7 @@ onTransitionTimeout(uint32_t transitionId) -> void
 
 // -- Protected -- helpers (non-virtual) -------------------
 
-registerWithSupervisor(SupervisorV2& supervisor)
+registerWithSupervisor(Supervisor& supervisor)
 completeTransition(TransitionStatus status)
 
 // -- Private ----------------------------------------------
@@ -89,10 +89,10 @@ void ISystemComponent::dispatch(SystemState target) {
 
 ### 2.4 Protected Helpers
 
-**`registerWithSupervisor(SupervisorV2& supervisor)`** replaces the duplicated `registerComponent` + `const_cast` pattern:
+**`registerWithSupervisor(Supervisor& supervisor)`** replaces the duplicated `registerComponent` + `const_cast` pattern:
 
 ```cpp
-void ISystemComponent::registerWithSupervisor(SupervisorV2& supervisor) {
+void ISystemComponent::registerWithSupervisor(Supervisor& supervisor) {
     supervisor.registerComponent(id_, &mailbox_, isRequired_);
 }
 ```
@@ -101,7 +101,7 @@ void ISystemComponent::registerWithSupervisor(SupervisorV2& supervisor) {
 
 ```cpp
 void ISystemComponent::completeTransition(TransitionStatus status) {
-    s_supervisorV2.completeTransition(id_, status);
+    s_supervisor.completeTransition(id_, status);
 }
 ```
 
@@ -148,7 +148,7 @@ Every component overrides all nine. No default bodies -- the compiler enforces c
 | `setOFF/setIDLE/setSTREAMING/setERROR` methods | All 4 components |
 | `(void)transitionId; return ...;` boilerplate | BoardInfo, CLI |
 | `completePendingTransition()` / `startPendingTransition()` | WiFi, AudioRuntime |
-| `extern SupervisorV2 s_supervisorV2` include | `system_components.cpp` (moves to base) |
+| `extern Supervisor s_supervisor` include | `system_components.cpp` (moves to base) |
 
 ---
 

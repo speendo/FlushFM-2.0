@@ -123,7 +123,7 @@ void test_get_next_state_invalid_falls_back_to_fatal() {
 // no-crash smoke test. This test verifies the error event payload.
 
 void test_complete_transition_required_failed_writes_error_event() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifi;
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
 
@@ -142,7 +142,7 @@ void test_complete_transition_required_failed_writes_error_event() {
 // loop over timedOutComponents correctly distinguishes required from optional.
 
 void test_check_response_mixed_timeout() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent wifi, audio, cli;
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
     supervisor.registerComponent(ComponentID::AudioRuntime, &audio.mailbox, true);
@@ -173,7 +173,7 @@ void test_check_response_mixed_timeout() {
 // The orchestration should still start (no components to wait for).
 
 void test_start_orchestration_empty_bits_mask() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.setup();
 
     supervisor.observedState_ = SystemState::BOOTING;
@@ -190,7 +190,7 @@ void test_start_orchestration_empty_bits_mask() {
 // ============================================================================
 
 void test_set_max_recoveries_rejects_invalid_values() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     int original = supervisor.retryPolicy_.maxRecoveries;
 
     supervisor.setMaxRecoveries(0);
@@ -201,7 +201,7 @@ void test_set_max_recoveries_rejects_invalid_values() {
 }
 
 void test_set_max_recoveries_accepts_valid_value() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
     supervisor.setMaxRecoveries(1);
     TEST_ASSERT_EQUAL(1, supervisor.retryPolicy_.maxRecoveries);
@@ -215,7 +215,7 @@ void test_set_max_recoveries_accepts_valid_value() {
 // ============================================================================
 
 void test_get_transition_timeout_forward_and_backward() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
     uint32_t forward = supervisor.getTransitionTimeout(SystemState::BOOTING, true);
     uint32_t backward = supervisor.getTransitionTimeout(SystemState::BOOTING, false);
@@ -225,7 +225,7 @@ void test_get_transition_timeout_forward_and_backward() {
 }
 
 void test_get_transition_timeout_invalid_state_returns_zero() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     SystemState badState = static_cast<SystemState>(99);
 
     uint32_t result = supervisor.getTransitionTimeout(badState, true);

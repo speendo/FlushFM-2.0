@@ -14,7 +14,7 @@
 
 ## File Structure
 
-- **Modify:** `src/supervisor/supervisor_v2.h` — add `bool fatalDeadlineElapsed_` member
+- **Modify:** `src/supervisor/supervisor.h` — add `bool fatalDeadlineElapsed_` member
 - **Modify:** `src/supervisor/state_machine.cpp` — enhance `setObservedState()`, snapshot `lastTargetBeforeError_` in `setTargetState()`, add `determineRecoveryTarget()`, add `handleFatal()`
 - **Create:** `test/test_supervisor_v2_step_6/test_main.cpp` — 12 tests
 - **Modify:** `platformio.ini` — add/remove `test_ignore` during development
@@ -57,7 +57,7 @@ namespace {
 // --- setTargetState snapshot tests ---
 
 void test_set_target_to_error_saves_last_target() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.targetState_ = SystemState::LIVE;
     supervisor.lastTargetBeforeError_ = SystemState::BOOTING;
 
@@ -68,7 +68,7 @@ void test_set_target_to_error_saves_last_target() {
 }
 
 void test_set_target_to_fatal_saves_last_target() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.targetState_ = SystemState::CONNECTING;
     supervisor.lastTargetBeforeError_ = SystemState::BOOTING;
 
@@ -79,7 +79,7 @@ void test_set_target_to_fatal_saves_last_target() {
 }
 
 void test_set_target_error_to_error_does_not_restamp() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.targetState_ = SystemState::ERROR;
     supervisor.lastTargetBeforeError_ = SystemState::LIVE;
 
@@ -90,7 +90,7 @@ void test_set_target_error_to_error_does_not_restamp() {
 }
 
 void test_set_target_non_error_does_not_snapshot() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.lastTargetBeforeError_ = SystemState::READY;
 
     supervisor.setTargetState(SystemState::CONNECTING);
@@ -102,7 +102,7 @@ void test_set_target_non_error_does_not_snapshot() {
 // --- setObservedState enhancement tests ---
 
 void test_set_observed_state_logs_and_resets_recovery() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.retryPolicy_.recoveryCounter = 2;
     supervisor.hasActiveOrchestration_ = true;
 
@@ -115,7 +115,7 @@ void test_set_observed_state_logs_and_resets_recovery() {
 }
 
 void test_set_observed_state_during_error_does_not_reset_recovery() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.retryPolicy_.recoveryCounter = 2;
 
     supervisor.setObservedState(SystemState::ERROR);
@@ -126,7 +126,7 @@ void test_set_observed_state_during_error_does_not_reset_recovery() {
 }
 
 void test_set_observed_state_during_fatal_does_not_reset_recovery() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.retryPolicy_.recoveryCounter = 3;
 
     supervisor.setObservedState(SystemState::FATAL);
@@ -137,7 +137,7 @@ void test_set_observed_state_during_fatal_does_not_reset_recovery() {
 }
 
 void test_set_observed_state_clears_active_orchestration() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.hasActiveOrchestration_ = true;
 
     supervisor.setObservedState(SystemState::CONNECTING);
@@ -148,7 +148,7 @@ void test_set_observed_state_clears_active_orchestration() {
 // --- determineRecoveryTarget tests ---
 
 void test_determine_recovery_target_returns_saved_target() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.lastTargetBeforeError_ = SystemState::LIVE;
 
     SystemState result = supervisor.determineRecoveryTarget();
@@ -158,7 +158,7 @@ void test_determine_recovery_target_returns_saved_target() {
 }
 
 void test_determine_recovery_target_after_booting() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.lastTargetBeforeError_ = SystemState::CONNECTING;
 
     SystemState result = supervisor.determineRecoveryTarget();
@@ -170,7 +170,7 @@ void test_determine_recovery_target_after_booting() {
 // --- handleFatal tests ---
 
 void test_handle_fatal_sets_deadline_on_first_call() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
 
     supervisor.handleFatal();
 
@@ -179,7 +179,7 @@ void test_handle_fatal_sets_deadline_on_first_call() {
 }
 
 void test_handle_fatal_no_elapsed_before_deadline() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.handleFatal();  // sets deadline to 60000
     // xTaskGetTickCount() returns 0 on native, so deadline is not reached
 
@@ -190,7 +190,7 @@ void test_handle_fatal_no_elapsed_before_deadline() {
 }
 
 void test_handle_fatal_detects_elapsed_deadline() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.fatalEntered_ = true;
     supervisor.fatalDeadlineMs_ = 0;
 
@@ -249,7 +249,7 @@ git commit -m "step 6: add test file for setObservedState, determineRecoveryTarg
 
 **Files:**
 - Modify: `src/supervisor/state_machine.cpp:128-131`
-- Modify: `src/supervisor/supervisor_v2.h` — add `fatalDeadlineElapsed_` member (needed by later tasks, added now to avoid churn)
+- Modify: `src/supervisor/supervisor.h` — add `fatalDeadlineElapsed_` member (needed by later tasks, added now to avoid churn)
 
 - [x] **Step 6a.1: Add `fatalDeadlineElapsed_` member to `supervisor_v2.h`**
 
@@ -279,7 +279,7 @@ So the block becomes:
 In `src/supervisor/state_machine.cpp`, replace the existing `setTargetState()`:
 
 ```cpp
-void SupervisorV2::setTargetState(SystemState target) {
+void Supervisor::setTargetState(SystemState target) {
     PROD_LOG(kLogSource, "Setting target state to %s", stateToString(target));
     targetState_ = target;
 }
@@ -288,7 +288,7 @@ void SupervisorV2::setTargetState(SystemState target) {
 With:
 
 ```cpp
-void SupervisorV2::setTargetState(SystemState target) {
+void Supervisor::setTargetState(SystemState target) {
     // When transitioning TO an error state, save the current pre-error target
     // for recovery. The determineRecoveryTarget() placeholder reads this value.
     if (isErrorState(target) && !isErrorState(targetState_)) {
@@ -311,7 +311,7 @@ Expected: 4 snapshot tests PASS. 9 other tests FAIL (setObservedState not enhanc
 - [x] **Step 6a.4: Commit**
 
 ```bash
-git add src/supervisor/supervisor_v2.h src/supervisor/state_machine.cpp
+git add src/supervisor/supervisor.h src/supervisor/state_machine.cpp
 git commit -m "step 6a: snapshot lastTargetBeforeError_ in setTargetState when entering error state"
 ```
 
@@ -330,7 +330,7 @@ In `src/supervisor/state_machine.cpp`, replace the existing `setObservedState()`
 /** @brief Commit a new observed state. Minimal version — step 6 adds logging and resetRecoveryIfOutOfError.
  *  @param state The new observed state.
  */
-void SupervisorV2::setObservedState(SystemState state) {
+void Supervisor::setObservedState(SystemState state) {
     observedState_ = state;
     hasActiveOrchestration_ = false;
 }
@@ -344,7 +344,7 @@ With:
  *  state, and clears the active orchestration flag.
  *  @param state The new observed state.
  */
-void SupervisorV2::setObservedState(SystemState state) {
+void Supervisor::setObservedState(SystemState state) {
     PROD_LOG(kLogSource, "%s -> %s",
              stateToString(observedState_), stateToString(state));
 
@@ -388,7 +388,7 @@ Add after the closing brace of `setObservedState()`:
  *  be replaced with real logic once recovery policies are defined.
  *  @return The recovery target state.
  */
-SystemState SupervisorV2::determineRecoveryTarget() {
+SystemState Supervisor::determineRecoveryTarget() {
     return lastTargetBeforeError_;
 }
 ```
@@ -426,7 +426,7 @@ Add after the closing brace of `determineRecoveryTarget()`:
  *  fatalDeadlineElapsed_ flag so tests can observe the state. On actual
  *  hardware, this would also trigger esp_deep_sleep_start().
  */
-void SupervisorV2::handleFatal() {
+void Supervisor::handleFatal() {
     if (!fatalEntered_) {
         fatalEntered_ = true;
         fatalDeadlineMs_ = xTaskGetTickCount() + pdMS_TO_TICKS(60000);

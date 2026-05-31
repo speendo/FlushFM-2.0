@@ -97,7 +97,7 @@ git commit -m "step 4.1d: restore comments in state_machine.cpp (getNextState)"
 - [ ] **Step 1: Add inline comment before `checkComponentPresence()` loop**
 
 ```cpp
-void SupervisorV2::checkComponentPresence() {
+void Supervisor::checkComponentPresence() {
     // Scan all registered components. Post an error for any required
     // component that never called registerComponent (null mailbox pointer).
     for (size_t i = 0; i < componentCount; i++) {
@@ -127,7 +127,7 @@ git commit -m "step 4.1d: restore comment for checkComponentPresence()"
 - [ ] **Step 1: Add inline comment before `postNextComponentState()`**
 
 ```cpp
-void SupervisorV2::postNextComponentState(ComponentID id) {
+void Supervisor::postNextComponentState(ComponentID id) {
     // Write the current stepping state to a component's mailbox under spinlock.
     // The component will read this in its own loop and react.
     ComponentMailbox* mailbox = componentMailboxes_[static_cast<int>(id)];
@@ -157,7 +157,7 @@ git commit -m "step 4.1d: restore comment for postNextComponentState()"
 - [ ] **Step 1: Add multi-line comment to `completeTransition()`**
 
 ```cpp
-void SupervisorV2::completeTransition(ComponentID id, TransitionStatus status) {
+void Supervisor::completeTransition(ComponentID id, TransitionStatus status) {
     if (status == TransitionStatus::Completed) {
         // Set this component's bit in the event group. The orchestration
         // completes when all required, non-degraded components have set
@@ -200,7 +200,7 @@ git commit -m "step 4.1d: restore comments for completeTransition()"
 - [ ] **Step 1: Add inline comments to `registerComponent()`**
 
 ```cpp
-void SupervisorV2::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
+void Supervisor::registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired) {
     // Store the mailbox pointer for cross-core writes. Null means absent.
     componentMailboxes_[static_cast<int>(id)] = mailbox;
     // Track required/optional for boot presence checks and failure handling.

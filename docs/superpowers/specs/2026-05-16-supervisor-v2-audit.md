@@ -1,7 +1,7 @@
 # Supervisor V2 Code Audit
 
 **Date:** 2026-05-16
-**Scope:** `SupervisorV2`, state machine (`state_machine.cpp`), orchestrator (`orchestrator.cpp`), supporting files (`supervisor_v2.h`, `supervisor_v2.cpp`, `native_stubs.h`, `component_types.h`, `main.cpp`), and all 7 test suites.
+**Scope:** `Supervisor`, state machine (`state_machine.cpp`), orchestrator (`orchestrator.cpp`), supporting files (`supervisor_v2.h`, `supervisor_v2.cpp`, `native_stubs.h`, `component_types.h`, `main.cpp`), and all 7 test suites.
 **Type:** Architecture & correctness review.
 
 ---
@@ -74,7 +74,7 @@ Both `deadlineMs` and `now` are `TickType_t` (unsigned 32-bit). If `now > deadli
 
 ## Architecture & Design Issues
 
-### D1. God class: `SupervisorV2` owns everything
+### D1. God class: `Supervisor` owns everything
 
 **File:** `supervisor_v2.h`
 
@@ -89,15 +89,15 @@ The class has ~25 member variables and ~22 methods (public + private), owning:
 - Event group management (`eventGroup_`, `kAllComponentBits`)
 - Timeout config (`TransitionTimeoutConfig`, `getTransitionTimeout`, `loadTransitionTimeoutConfig`)
 
-The files are split (`state_machine.cpp`, `orchestrator.cpp`) but all methods land on the same class. The split is cosmetic — every method is `SupervisorV2::method()`.
+The files are split (`state_machine.cpp`, `orchestrator.cpp`) but all methods land on the same class. The split is cosmetic — every method is `Supervisor::method()`.
 
 **Recommendation:** Extract into separate classes:
 - `StateMachine` — pure transition logic (no FreeRTOS deps)
 - `Orchestrator` — worker task, event group, component coordination
-- `SupervisorV2` — composition of the above, public API surface
+- `Supervisor` — composition of the above, public API surface
 
 **Status: OPEN**
-**Evidence:** `supervisor_v2.h:161-383` — the class still has ~25 members and ~22 methods. `state_machine.cpp` and `orchestrator.cpp` exclusively define `SupervisorV2::method()` — no separate `StateMachine` or `Orchestrator` class.
+**Evidence:** `supervisor_v2.h:161-383` — the class still has ~25 members and ~22 methods. `state_machine.cpp` and `orchestrator.cpp` exclusively define `Supervisor::method()` — no separate `StateMachine` or `Orchestrator` class.
 
 ---
 
@@ -107,13 +107,13 @@ The files are split (`state_machine.cpp`, `orchestrator.cpp`) but all methods la
 
 ```cpp
 #pragma once
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 ```
 
-This is not a separation — it's a forwarding header that exists because the directory structure expected a file here. If `SupervisorV2` were refactored into separate classes, `StateMachine` would get its own header.
+This is not a separation — it's a forwarding header that exists because the directory structure expected a file here. If `Supervisor` were refactored into separate classes, `StateMachine` would get its own header.
 
 **Status: OPEN**
-**Evidence:** `src/supervisor/state_machine.h` is still 3 lines (`#pragma once`, `#include "supervisor/supervisor_v2.h"`), no own content.
+**Evidence:** `src/supervisor/state_machine.h` is still 3 lines (`#pragma once`, `#include "supervisor/supervisor.h"`), no own content.
 
 ---
 
@@ -183,7 +183,7 @@ SystemState targetState_;    // default-initialized to 0 = FATAL
 
 `SystemState::FATAL = 0` per the enum. Both start as FATAL. The system is parked in FATAL until something calls `setObservedState()` to move out. The `run()` method's FATAL guard (`if (observedState_ != SystemState::FATAL)`) skips event processing, so state requests sent before any initialization are silently dropped.
 
-While `main.cpp` calls `SupervisorV2::setup()` which doesn't change these states, the system relies on external components posting state requests to leave FATAL. A more natural default would be `BOOTING` for `observedState_` and `SLEEP` for `targetState_`.
+While `main.cpp` calls `Supervisor::setup()` which doesn't change these states, the system relies on external components posting state requests to leave FATAL. A more natural default would be `BOOTING` for `observedState_` and `SLEEP` for `targetState_`.
 
 **Status: FIXED** — Both default to `SystemState::BOOTING` now (`supervisor_v2.h:333-334`).
 **Evidence:** `supervisor_v2.h:333-334`: `SystemState observedState_{SystemState::BOOTING};` and `SystemState targetState_{SystemState::BOOTING};`. The old default of `FATAL` (0) has been replaced.
@@ -300,7 +300,7 @@ Each test `#include`s the `.cpp` source files directly, meaning:
 The `#include` approach combined with `#define private public` means tests are **compiled into the same translation unit** as the source, giving them access to everything. This is the root cause of the coupling in T1.
 
 **Status: OPEN**
-**Evidence:** `grep '#include.*\.cpp"' test/` finds in each of the 7 SupervisorV2 test directories the lines `#include "../../src/supervisor/supervisor_v2.cpp"`, `#include "../../src/supervisor/orchestrator.cpp"` and `#include "../../src/supervisor/state_machine.cpp"`. No test includes `.h` files instead of `.cpp`.
+**Evidence:** `grep '#include.*\.cpp"' test/` finds in each of the 7 Supervisor test directories the lines `#include "../../src/supervisor/supervisor_v2.cpp"`, `#include "../../src/supervisor/orchestrator.cpp"` and `#include "../../src/supervisor/state_machine.cpp"`. No test includes `.h` files instead of `.cpp`.
 
 ---
 
@@ -379,7 +379,7 @@ The architecture (split-task, mailbox protocol, event-group bits) and test cover
 
 | File | Lines | Role |
 |------|-------|------|
-| `src/supervisor/supervisor_v2.h` | 364 | Class definition, rank table, types |
+| `src/supervisor/supervisor.h` | 364 | Class definition, rank table, types |
 | `src/supervisor/supervisor_v2.cpp` | 59 | Setup, config, registration |
 | `src/supervisor/state_machine.cpp` | 241 | Transition logic, `run()` loop |
 | `src/supervisor/state_machine.h` | 3 | Empty forwarding header |

@@ -139,9 +139,9 @@ constexpr std::array<uint32_t, stateCount> makeUniformTimeouts(uint32_t value) {
 constexpr auto kDefaultForwardTimeouts = makeUniformTimeouts(5000);
 constexpr auto kDefaultBackwardTimeouts = makeUniformTimeouts(5000);
 
-class SupervisorV2 {
+class Supervisor {
 public:
-	SupervisorV2();
+	Supervisor();
 
 	/** @brief Initialise the supervisor.
 	 *  Creates the FreeRTOS event group via xEventGroupCreateStatic(),
@@ -194,10 +194,10 @@ public:
 	 */
 	void registerComponent(ComponentID id, ComponentMailbox* mailbox, bool isRequired);
 
-	friend void fatalTask(SupervisorV2* supervisor);
+	friend void fatalTask(Supervisor* supervisor);
 
 #ifdef UNIT_TEST
-	friend struct S2V2Access;
+	friend struct SupervisorAccess;
 #endif
 
 private:
@@ -374,4 +374,4 @@ private:
 /* Forward declaration for the FATAL task function.
  * Defined in fatal_task.cpp; friend-declared inside the class.
  * Separate declaration needed for non-ADL name lookup (e.g. address-of). */
-void fatalTask(SupervisorV2* supervisor);
+void fatalTask(Supervisor* supervisor);

@@ -1,11 +1,11 @@
-# Design: SupervisorV2 State Transition Implementation (run() + Event Group Orchestration)
+# Design: Supervisor State Transition Implementation (run() + Event Group Orchestration)
 
 **Date:** 2026-05-14 (revised 2026-05-15)
 **Status:** Draft
 
 ## Overview
 
-Implement the active state transition loop (`run()`) for SupervisorV2 with a split-task architecture: a **state machine task** (Core 0) handles mailbox consumption and state stepping, and an **orchestration worker task** blocks on `xEventGroupWaitBits()` for component completion. Components run on any core and communicate via shared mailboxes (spinlock-guarded).
+Implement the active state transition loop (`run()`) for Supervisor with a split-task architecture: a **state machine task** (Core 0) handles mailbox consumption and state stepping, and an **orchestration worker task** blocks on `xEventGroupWaitBits()` for component completion. Components run on any core and communicate via shared mailboxes (spinlock-guarded).
 
 ---
 
@@ -135,11 +135,11 @@ struct OrchestrationResponse {
 };
 ```
 
-### Removed members (no longer needed on SupervisorV2)
+### Removed members (no longer needed on Supervisor)
 - `expectedBits_` — moved into `OrchestrationOrder`
 - `orchestrationDeadlineMs_` — moved into `OrchestrationOrder`
 
-### New members on SupervisorV2
+### New members on Supervisor
 - `OrchestrationOrder orderMailbox_` — state machine writes, worker reads
 - `OrchestrationResponse responseMailbox_` — worker writes, state machine reads
 - `TaskHandle_t workerTaskHandle_` — handle for the orchestration worker task
@@ -165,7 +165,7 @@ Used when clearing the event group before each orchestration. Auto-scales with `
 Called in a loop by the FreeRTOS state machine task. Blocks on `ulTaskNotifyTake(pdTRUE, portMAX_DELAY)` until woken by a notification from `postStateRequest()`, `postErrorEvent()`, or the orchestration worker's response. No polling, no periodic ticks.
 
 ```
-void SupervisorV2::run() {
+void Supervisor::run() {
     // Block until notified — woken by postStateRequest, postErrorEvent, or worker response
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
@@ -303,7 +303,7 @@ The `orchestrationWorker` task runs a loop:
 
 ### Report completion (component -> event group)
 ```cpp
-void SupervisorV2::completeTransition(ComponentID id, TransitionStatus status) {
+void Supervisor::completeTransition(ComponentID id, TransitionStatus status) {
     if (status == TransitionStatus::Completed) {
         xEventGroupSetBits(eventGroup_, 1 << static_cast<int>(id));
     } else if (!isRequired_[static_cast<int>(id)]) {
@@ -335,7 +335,7 @@ All spinlocks are embedded in the structs they protect:
 
 ---
 
-## 8. New Methods on SupervisorV2
+## 8. New Methods on Supervisor
 
 ### Public
 | Method | Purpose |
@@ -362,10 +362,10 @@ All spinlocks are embedded in the structs they protect:
 ```cpp
 void orchestrationWorker(void* param);
 ```
-- Receives `SupervisorV2*` as parameter
+- Receives `Supervisor*` as parameter
 - Loops: reads `orderMailbox_`, calls `xEventGroupWaitBits()`, writes `responseMailbox_`
 - After posting a response, calls `xTaskNotifyGive(supervisorTaskHandle_)` to wake the state machine
-- Declared as `friend` in `SupervisorV2` to access private members
+- Declared as `friend` in `Supervisor` to access private members
 
 ### Updated public methods
 - `void postStateRequest(SystemState target)` — now calls `xTaskNotifyGive(supervisorTaskHandle_)` after writing the mailbox

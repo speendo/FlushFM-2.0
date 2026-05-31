@@ -5,7 +5,7 @@
 **Goal:** Fix two bugs: (1) state machine requires multiple `postStateRequest()` calls to traverse multi-rank transitions, and (2) `AudioRuntimeComponent::handleCONNECTING()` starts audio streaming even during backward transitions where audio should remain off.
 
 **Architecture:**
-- **Fix 1**: In `SupervisorV2::checkOrchestrationResponse()`, after advancing `observedState_` on COMPLETED, if `targetState_ != observedState_`, call `xTaskNotifyGive(supervisorTaskHandle_)` to self-wake the state machine. This causes the next `ulTaskNotifyTake` in `run()` to return immediately, continuing the march toward the target without waiting for an external event.
+- **Fix 1**: In `Supervisor::checkOrchestrationResponse()`, after advancing `observedState_` on COMPLETED, if `targetState_ != observedState_`, call `xTaskNotifyGive(supervisorTaskHandle_)` to self-wake the state machine. This causes the next `ulTaskNotifyTake` in `run()` to return immediately, continuing the march toward the target without waiting for an external event.
 - **Fix 2**: Remove audio streaming logic from `AudioRuntimeComponent::handleCONNECTING()`. CONNECTING is for network-level connectivity (WiFi) only. Audio streaming is deferred to `handleLIVE()`. This resolves audio turning on during backward transitions (e.g. READY → SLEEP passes through CONNECTING, which previously started streaming).
 
 **Tech Stack:** C++20, FreeRTOS (ESP32-S3), Arduino framework, Unity test framework
@@ -34,7 +34,7 @@
 In `checkOrchestrationResponse()`, after the `setObservedState()` call in the COMPLETED branch, add a self-wake when the target state has not yet been reached:
 
 ```cpp
-void SupervisorV2::checkOrchestrationResponse() {
+void Supervisor::checkOrchestrationResponse() {
     OrchestrationResult result;
     EventBits_t timedOutComponents;
     if (!responseMailbox_.consume(result, timedOutComponents)) return;

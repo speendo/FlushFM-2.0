@@ -8,7 +8,7 @@
 #include "core/config.h"
 #include "core/debug.h"
 #include "settings.h"
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 #include "components/composition/system_components.h"
 
 namespace {
@@ -19,7 +19,7 @@ constexpr const char* kLogSource = "Main";
 
 static IAudioPlayer* s_audio = nullptr;
 
-SupervisorV2 s_supervisorV2;
+Supervisor s_supervisor;
 static BoardInfoComponent s_boardInfo;
 static WiFiComponent s_wifi;
 static AudioRuntimeComponent s_audioRuntime(&s_audio);
@@ -33,7 +33,7 @@ static ISystemComponent* s_components[] = {
 };
 
 static void stateMachineTask(void* param) {
-    auto* supervisorV2 = static_cast<SupervisorV2*>(param);
+    auto* supervisorV2 = static_cast<Supervisor*>(param);
     supervisorV2->setup();
     for (;;) {
         supervisorV2->run();
@@ -57,7 +57,7 @@ void setup() {
         stateMachineTask,
         "StateMachine",
         8192,
-        &s_supervisorV2,
+        &s_supervisor,
         2,
         nullptr,
         0

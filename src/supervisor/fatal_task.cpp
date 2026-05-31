@@ -1,4 +1,4 @@
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 #include "core/debug.h"
 
 namespace fatal {
@@ -8,7 +8,7 @@ constexpr TickType_t kDwellMs = 60000;
 
 }  // namespace fatal
 
-void fatalTask(SupervisorV2* supervisor) {
+void fatalTask(Supervisor* supervisor) {
     PROD_LOG(fatal::kLogSource, "FATAL — system entering fatal state");
 
     // TODO: LED signalling placeholder

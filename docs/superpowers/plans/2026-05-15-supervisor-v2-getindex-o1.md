@@ -1,8 +1,8 @@
-# SupervisorV2 getIndex() O(1) Implementation Plan
+# Supervisor getIndex() O(1) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the O(n) linear-scan `getIndex()` in SupervisorV2 with an O(1) compile-time lookup table built from the SYSTEM_STATE_X macro.
+**Goal:** Replace the O(n) linear-scan `getIndex()` in Supervisor with an O(1) compile-time lookup table built from the SYSTEM_STATE_X macro.
 
 **Architecture:** A constexpr `detail` namespace in the header extracts state rank values from the X-macro at compile time, builds a `kRankTable[]` indexed by rank value (0, 10, 20...), and `getIndex()` reads it with a single array load. Backward-compatible aliases (`stateRoute`, `stateCount`) keep the `.cpp` and existing tests unchanged.
 

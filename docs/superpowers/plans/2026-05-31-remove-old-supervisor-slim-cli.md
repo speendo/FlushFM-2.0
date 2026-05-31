@@ -2,10 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** (A) Remove the obsolete `Supervisor` class, rename `SupervisorV2` to `Supervisor`, migrate valuable old tests. (B) Remove `suspend`/`resume` debug commands, consolidate `play`/`stop` with `transition` to eliminate command duplication.
+**Goal:** (A) Remove the obsolete `Supervisor` class, rename `Supervisor` to `Supervisor`, migrate valuable old tests. (B) Remove `suspend`/`resume` debug commands, consolidate `play`/`stop` with `transition` to eliminate command duplication.
 
 **Architecture:**
-- **Phase A**: Delete dead code (`src/supervisor/supervisor.h` + `.cpp`, guarded by `#ifndef PRODUCTION_BUILD`) and 3 old test files. Add missing downward multi-step transition tests to the V2 suite. Rename `SupervisorV2` → `Supervisor`, `S2V2Access` → `SupervisorAccess`, and files `supervisor_v2.*` → `supervisor.*`.
+- **Phase A**: Delete dead code (`src/supervisor/supervisor.h` + `.cpp`, guarded by `#ifndef PRODUCTION_BUILD`) and 3 old test files. Add missing downward multi-step transition tests to the V2 suite. Rename `Supervisor` → `Supervisor`, `SupervisorAccess` → `SupervisorAccess`, and files `supervisor_v2.*` → `supervisor.*`.
 - **Phase B**: Remove `suspend`/`resume` from `debug_cli.cpp`. Make `play`/`stop` route through `postStateRequest()` (same as `transition live`/`transition ready`) instead of having duplicate code paths. Move `transition` from debug to production. Remove obsolete `CONNECTING_STREAM`/`STREAM_STOPPED` MessageKeys.
 
 **Tech Stack:** C++20, FreeRTOS (ESP32-S3), Arduino framework, Unity test framework
@@ -31,37 +31,37 @@
 
 | Old Path | New Path |
 |----------|----------|
-| `src/supervisor/supervisor_v2.h` | `src/supervisor/supervisor.h` |
+| `src/supervisor/supervisor.h` | `src/supervisor/supervisor.h` |
 | `src/supervisor/supervisor_v2.cpp` | `src/supervisor/supervisor.cpp` |
-| `test/support/s2v2_access.h` | `test/support/supervisor_access.h` |
+| `test/support/supervisor_access.h` | `test/support/supervisor_access.h` |
 
 ### Files to Modify (class name replacement)
 
-Every file containing `SupervisorV2`, `s_supervisorV2`, or `S2V2Access`:
+Every file containing `Supervisor`, `s_supervisor`, or `SupervisorAccess`:
 
 | File | String replacement |
 |------|--------------------|
-| `src/main.cpp` | `SupervisorV2` → `Supervisor`, `s_supervisorV2` → `s_supervisor`, `supervisor_v2.h` → `supervisor.h` |
-| `src/components/composition/system_components.h` | `class SupervisorV2` → `class Supervisor` |
-| `src/components/composition/system_components.cpp` | `SupervisorV2 s_supervisorV2` → `Supervisor s_supervisor`, `s_supervisorV2` → `s_supervisor`, `supervisor_v2.h` → `supervisor.h` |
-| `src/components/cli/cli.h` | `class SupervisorV2` → `class Supervisor` |
-| `src/components/cli/cli.cpp` | `SupervisorV2` → `Supervisor`, `s_supervisorV2` → `s_supervisor`, `supervisor_v2.h` → `supervisor.h` |
-| `src/components/cli/debug_cli.h` | `class SupervisorV2` → `class Supervisor` |
-| `src/components/cli/debug_cli.cpp` | `SupervisorV2` → `Supervisor`, `s_supervisorV2` → `s_supervisor` |
-| `src/supervisor/supervisor_v2.h` | Rename + `SupervisorV2` → `Supervisor` |
-| `src/supervisor/supervisor_v2.cpp` | Rename + `SupervisorV2` → `Supervisor`, `supervisor_v2.h` → `supervisor.h` |
-| `src/supervisor/state_machine.cpp` | `SupervisorV2` → `Supervisor`, `supervisor_v2.h` → `supervisor.h` |
-| `src/supervisor/orchestrator.cpp` | `SupervisorV2` → `Supervisor`, `supervisor_v2.h` → `supervisor.h` |
-| `src/supervisor/fatal_task.cpp` | `SupervisorV2` → `Supervisor`, `supervisor_v2.h` → `supervisor.h` |
-| `test/support/s2v2_access.h` | Rename file, `S2V2Access` → `SupervisorAccess`, `SupervisorV2` → `Supervisor`, `supervisor_v2.h` → `supervisor.h` |
-| `test/test_supervisor_v2_orchestration/test_main.cpp` | `S2V2Access` → `SupervisorAccess`, `SupervisorV2` → `Supervisor`, `s2v2_access.h` → `supervisor_access.h` |
+| `src/main.cpp` | `Supervisor` → `Supervisor`, `s_supervisor` → `s_supervisor`, `supervisor_v2.h` → `supervisor.h` |
+| `src/components/composition/system_components.h` | `class Supervisor` → `class Supervisor` |
+| `src/components/composition/system_components.cpp` | `Supervisor s_supervisor` → `Supervisor s_supervisor`, `s_supervisor` → `s_supervisor`, `supervisor_v2.h` → `supervisor.h` |
+| `src/components/cli/cli.h` | `class Supervisor` → `class Supervisor` |
+| `src/components/cli/cli.cpp` | `Supervisor` → `Supervisor`, `s_supervisor` → `s_supervisor`, `supervisor_v2.h` → `supervisor.h` |
+| `src/components/cli/debug_cli.h` | `class Supervisor` → `class Supervisor` |
+| `src/components/cli/debug_cli.cpp` | `Supervisor` → `Supervisor`, `s_supervisor` → `s_supervisor` |
+| `src/supervisor/supervisor.h` | Rename + `Supervisor` → `Supervisor` |
+| `src/supervisor/supervisor_v2.cpp` | Rename + `Supervisor` → `Supervisor`, `supervisor_v2.h` → `supervisor.h` |
+| `src/supervisor/state_machine.cpp` | `Supervisor` → `Supervisor`, `supervisor_v2.h` → `supervisor.h` |
+| `src/supervisor/orchestrator.cpp` | `Supervisor` → `Supervisor`, `supervisor_v2.h` → `supervisor.h` |
+| `src/supervisor/fatal_task.cpp` | `Supervisor` → `Supervisor`, `supervisor_v2.h` → `supervisor.h` |
+| `test/support/supervisor_access.h` | Rename file, `SupervisorAccess` → `SupervisorAccess`, `Supervisor` → `Supervisor`, `supervisor_v2.h` → `supervisor.h` |
+| `test/test_supervisor_v2_orchestration/test_main.cpp` | `SupervisorAccess` → `SupervisorAccess`, `Supervisor` → `Supervisor`, `s2v2_access.h` → `supervisor_access.h` |
 | `test/test_supervisor_v2_get_next_state/test_main.cpp` | `supervisor_v2.h` → `supervisor.h` |
-| `test/test_supervisor_v2_mailbox_spinlock/test_main.cpp` | `S2V2Access` → `SupervisorAccess`, `SupervisorV2` → `Supervisor`, `s2v2_access.h` → `supervisor_access.h` |
-| `test/test_supervisor_v2_run/test_main.cpp` | `S2V2Access` → `SupervisorAccess`, `SupervisorV2` → `Supervisor`, `s2v2_access.h` → `supervisor_access.h` |
-| `test/test_supervisor_v2_remaining_paths/test_main.cpp` | `S2V2Access` → `SupervisorAccess`, `SupervisorV2` → `Supervisor`, `s2v2_access.h` → `supervisor_access.h` |
-| `test/test_supervisor_v2_registration/test_main.cpp` | `S2V2Access` → `SupervisorAccess`, `SupervisorV2` → `Supervisor`, `s2v2_access.h` → `supervisor_access.h` |
-| `test/test_supervisor_v2_step_6/test_main.cpp` | `S2V2Access` → `SupervisorAccess`, `SupervisorV2` → `Supervisor`, `s2v2_access.h` → `supervisor_access.h` |
-| `test/test_fatal_task/test_main.cpp` | `SupervisorV2` → `Supervisor`, `supervisor_v2.h` → `supervisor.h` |
+| `test/test_supervisor_v2_mailbox_spinlock/test_main.cpp` | `SupervisorAccess` → `SupervisorAccess`, `Supervisor` → `Supervisor`, `s2v2_access.h` → `supervisor_access.h` |
+| `test/test_supervisor_v2_run/test_main.cpp` | `SupervisorAccess` → `SupervisorAccess`, `Supervisor` → `Supervisor`, `s2v2_access.h` → `supervisor_access.h` |
+| `test/test_supervisor_v2_remaining_paths/test_main.cpp` | `SupervisorAccess` → `SupervisorAccess`, `Supervisor` → `Supervisor`, `s2v2_access.h` → `supervisor_access.h` |
+| `test/test_supervisor_v2_registration/test_main.cpp` | `SupervisorAccess` → `SupervisorAccess`, `Supervisor` → `Supervisor`, `s2v2_access.h` → `supervisor_access.h` |
+| `test/test_supervisor_v2_step_6/test_main.cpp` | `SupervisorAccess` → `SupervisorAccess`, `Supervisor` → `Supervisor`, `s2v2_access.h` → `supervisor_access.h` |
+| `test/test_fatal_task/test_main.cpp` | `Supervisor` → `Supervisor`, `supervisor_v2.h` → `supervisor.h` |
 
 **Note:** Test directory names (`test_supervisor_v2_*`) stay as-is to keep git history clean. Only file contents change.
 
@@ -84,7 +84,7 @@ Add these test functions after the existing multi-step tests but before the clos
 
 ```cpp
 void test_multi_step_transition_live_to_sleep_completes_autonomously() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent board, wifi, audio, cli;
     supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
@@ -93,68 +93,68 @@ void test_multi_step_transition_live_to_sleep_completes_autonomously() {
     supervisor.setup();
 
     // Path: LIVE(60) → READY(50) → CONNECTING(40) → BOOTING(30) → SLEEP(20)
-    S2V2Access::setObservedState(supervisor, SystemState::LIVE);
-    S2V2Access::setTargetState(supervisor, SystemState::SLEEP);
-    S2V2Access::setHasActiveOrchestration(supervisor, false);
+    SupervisorAccess::setObservedState(supervisor, SystemState::LIVE);
+    SupervisorAccess::setTargetState(supervisor, SystemState::SLEEP);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, false);
 
     // Run 1: LIVE → start READY
     supervisor.run();
-    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_TRUE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(SystemState::READY,
-                      S2V2Access::nextState(supervisor).transitionTarget);
+                      SupervisorAccess::nextState(supervisor).transitionTarget);
 
     completeInFlightOrchestration(supervisor);
 
     // Run 2: READY complete → advance to READY, self-wake
     supervisor.run();
     TEST_ASSERT_EQUAL(SystemState::READY,
-                      S2V2Access::getObservedState(supervisor));
+                      SupervisorAccess::getObservedState(supervisor));
 
     // Run 3: READY → start CONNECTING
     supervisor.run();
-    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_TRUE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(SystemState::CONNECTING,
-                      S2V2Access::nextState(supervisor).transitionTarget);
+                      SupervisorAccess::nextState(supervisor).transitionTarget);
 
     completeInFlightOrchestration(supervisor);
 
     // Run 4: CONNECTING complete → advance to CONNECTING, self-wake
     supervisor.run();
     TEST_ASSERT_EQUAL(SystemState::CONNECTING,
-                      S2V2Access::getObservedState(supervisor));
+                      SupervisorAccess::getObservedState(supervisor));
 
     // Run 5: CONNECTING → start BOOTING
     supervisor.run();
-    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_TRUE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(SystemState::BOOTING,
-                      S2V2Access::nextState(supervisor).transitionTarget);
+                      SupervisorAccess::nextState(supervisor).transitionTarget);
 
     completeInFlightOrchestration(supervisor);
 
     // Run 6: BOOTING complete → advance to BOOTING, self-wake
     supervisor.run();
     TEST_ASSERT_EQUAL(SystemState::BOOTING,
-                      S2V2Access::getObservedState(supervisor));
+                      SupervisorAccess::getObservedState(supervisor));
 
     // Run 7: BOOTING → start SLEEP
     supervisor.run();
-    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_TRUE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(SystemState::SLEEP,
-                      S2V2Access::nextState(supervisor).transitionTarget);
+                      SupervisorAccess::nextState(supervisor).transitionTarget);
 
     completeInFlightOrchestration(supervisor);
 
     // Run 8: SLEEP complete → at target
     supervisor.run();
     TEST_ASSERT_EQUAL(SystemState::SLEEP,
-                      S2V2Access::getObservedState(supervisor));
-    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+                      SupervisorAccess::getObservedState(supervisor));
+    TEST_ASSERT_FALSE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(SystemState::SLEEP,
-                      S2V2Access::getTargetState(supervisor));
+                      SupervisorAccess::getTargetState(supervisor));
 }
 
 void test_multi_step_transition_ready_to_sleep_completes_autonomously() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     TestComponent board, wifi, audio, cli;
     supervisor.registerComponent(ComponentID::BoardInfo, &board.mailbox, true);
     supervisor.registerComponent(ComponentID::WiFi, &wifi.mailbox, true);
@@ -163,51 +163,51 @@ void test_multi_step_transition_ready_to_sleep_completes_autonomously() {
     supervisor.setup();
 
     // Path: READY(50) → CONNECTING(40) → BOOTING(30) → SLEEP(20)
-    S2V2Access::setObservedState(supervisor, SystemState::READY);
-    S2V2Access::setTargetState(supervisor, SystemState::SLEEP);
-    S2V2Access::setHasActiveOrchestration(supervisor, false);
+    SupervisorAccess::setObservedState(supervisor, SystemState::READY);
+    SupervisorAccess::setTargetState(supervisor, SystemState::SLEEP);
+    SupervisorAccess::setHasActiveOrchestration(supervisor, false);
 
     // Run 1: READY → start CONNECTING
     supervisor.run();
-    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_TRUE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(SystemState::CONNECTING,
-                      S2V2Access::nextState(supervisor).transitionTarget);
+                      SupervisorAccess::nextState(supervisor).transitionTarget);
 
     completeInFlightOrchestration(supervisor);
 
     // Run 2: CONNECTING complete → advance to CONNECTING, self-wake
     supervisor.run();
     TEST_ASSERT_EQUAL(SystemState::CONNECTING,
-                      S2V2Access::getObservedState(supervisor));
+                      SupervisorAccess::getObservedState(supervisor));
 
     // Run 3: CONNECTING → start BOOTING
     supervisor.run();
-    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_TRUE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(SystemState::BOOTING,
-                      S2V2Access::nextState(supervisor).transitionTarget);
+                      SupervisorAccess::nextState(supervisor).transitionTarget);
 
     completeInFlightOrchestration(supervisor);
 
     // Run 4: BOOTING complete → advance to BOOTING, self-wake
     supervisor.run();
     TEST_ASSERT_EQUAL(SystemState::BOOTING,
-                      S2V2Access::getObservedState(supervisor));
+                      SupervisorAccess::getObservedState(supervisor));
 
     // Run 5: BOOTING → start SLEEP
     supervisor.run();
-    TEST_ASSERT_TRUE(S2V2Access::getHasActiveOrchestration(supervisor));
+    TEST_ASSERT_TRUE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(SystemState::SLEEP,
-                      S2V2Access::nextState(supervisor).transitionTarget);
+                      SupervisorAccess::nextState(supervisor).transitionTarget);
 
     completeInFlightOrchestration(supervisor);
 
     // Run 6: SLEEP complete → at target
     supervisor.run();
     TEST_ASSERT_EQUAL(SystemState::SLEEP,
-                      S2V2Access::getObservedState(supervisor));
-    TEST_ASSERT_FALSE(S2V2Access::getHasActiveOrchestration(supervisor));
+                      SupervisorAccess::getObservedState(supervisor));
+    TEST_ASSERT_FALSE(SupervisorAccess::getHasActiveOrchestration(supervisor));
     TEST_ASSERT_EQUAL(SystemState::SLEEP,
-                      S2V2Access::getTargetState(supervisor));
+                      SupervisorAccess::getTargetState(supervisor));
 }
 ```
 
@@ -279,16 +279,16 @@ git commit -m "refactor: remove obsolete Supervisor class and old test files"
 
 ---
 
-### Task A3: Rename SupervisorV2 → Supervisor in all source and test files
+### Task A3: Rename Supervisor → Supervisor in all source and test files
 
 - [ ] **Step 1: Rename using sed across all .cpp, .h files**
 
 ```bash
 find src/ test/ -name '*.cpp' -o -name '*.h' | while read f; do
     sed -i \
-        -e 's/SupervisorV2/Supervisor/g' \
-        -e 's/s_supervisorV2/s_supervisor/g' \
-        -e 's/S2V2Access/SupervisorAccess/g' \
+        -e 's/Supervisor/Supervisor/g' \
+        -e 's/s_supervisor/s_supervisor/g' \
+        -e 's/SupervisorAccess/SupervisorAccess/g' \
         -e 's|supervisor/supervisor_v2\.h|supervisor/supervisor.h|g' \
         "$f"
 done
@@ -297,14 +297,14 @@ done
 - [ ] **Step 2: Rename source files**
 
 ```bash
-mv src/supervisor/supervisor_v2.h src/supervisor/supervisor.h
+mv src/supervisor/supervisor.h src/supervisor/supervisor.h
 mv src/supervisor/supervisor_v2.cpp src/supervisor/supervisor.cpp
-mv test/support/s2v2_access.h test/support/supervisor_access.h
+mv test/support/supervisor_access.h test/support/supervisor_access.h
 ```
 
 - [ ] **Step 3: Rename test includes that reference support header**
 
-In all test .cpp files, replace `#include "support/s2v2_access.h"` with `#include "support/supervisor_access.h"`:
+In all test .cpp files, replace `#include "support/supervisor_access.h"` with `#include "support/supervisor_access.h"`:
 
 ```bash
 find test/ -name '*.cpp' -exec sed -i 's|support/s2v2_access\.h|support/supervisor_access.h|g' {} +
@@ -322,7 +322,7 @@ Expected: All remaining ~108 tests PASS.
 
 ```bash
 git add -A
-git commit -m "refactor: rename SupervisorV2 to Supervisor, S2V2Access to SupervisorAccess"
+git commit -m "refactor: rename Supervisor to Supervisor, SupervisorAccess to SupervisorAccess"
 ```
 
 ---
@@ -461,18 +461,18 @@ In `cli_output.cpp`, in the `printHelp()` function, add after the `balance` line
 
 In `cli.cpp`, in the `process()` function, after the existing `dispatchCommand()` call (line 167), add handling for `STATE_TRANSITION_REQUESTED`:
 
-In the `if (s_supervisorV2)` block, add a new condition:
+In the `if (s_supervisor)` block, add a new condition:
 
 ```cpp
         if (result.key == cli_output::MessageKey::STATE_TRANSITION_REQUESTED) {
             const char* target = result.text;
             if (target) {
                 if (strcmp(target, "live") == 0 || strcmp(target, "streaming") == 0) {
-                    s_supervisorV2->postStateRequest(SystemState::LIVE);
+                    s_supervisor->postStateRequest(SystemState::LIVE);
                 } else if (strcmp(target, "ready") == 0 || strcmp(target, "idle") == 0) {
-                    s_supervisorV2->postStateRequest(SystemState::READY);
+                    s_supervisor->postStateRequest(SystemState::READY);
                 } else if (strcmp(target, "sleep") == 0) {
-                    s_supervisorV2->postStateRequest(SystemState::SLEEP);
+                    s_supervisor->postStateRequest(SystemState::SLEEP);
                 }
             }
         }
@@ -559,27 +559,27 @@ The key change: return `{MessageKey::NONE}` instead of `{MessageKey::STREAM_STOP
 
 In `cli.cpp`, replace the special-cased `play`/`stop`/`reset` routing with a generic approach. The dispatch already returns NONE for these commands, so postStateRequest directly:
 
-Replace the entire `if (s_supervisorV2)` block (lines 169-177) with:
+Replace the entire `if (s_supervisor)` block (lines 169-177) with:
 
 ```cpp
-    if (s_supervisorV2) {
+    if (s_supervisor) {
         if (result.key == cli_output::MessageKey::STATE_TRANSITION_REQUESTED) {
             const char* target = result.text;
             if (target) {
                 if (strcmp(target, "live") == 0 || strcmp(target, "streaming") == 0) {
-                    s_supervisorV2->postStateRequest(SystemState::LIVE);
+                    s_supervisor->postStateRequest(SystemState::LIVE);
                 } else if (strcmp(target, "ready") == 0 || strcmp(target, "idle") == 0) {
-                    s_supervisorV2->postStateRequest(SystemState::READY);
+                    s_supervisor->postStateRequest(SystemState::READY);
                 } else if (strcmp(target, "sleep") == 0) {
-                    s_supervisorV2->postStateRequest(SystemState::SLEEP);
+                    s_supervisor->postStateRequest(SystemState::SLEEP);
                 }
             }
         } else if (strcmp(cmd, "play") == 0) {
-            s_supervisorV2->postStateRequest(SystemState::LIVE);
+            s_supervisor->postStateRequest(SystemState::LIVE);
         } else if (strcmp(cmd, "stop") == 0) {
-            s_supervisorV2->postStateRequest(SystemState::READY);
+            s_supervisor->postStateRequest(SystemState::READY);
         } else if (strcmp(cmd, "reset") == 0) {
-            s_supervisorV2->postStateRequest(SystemState::READY);
+            s_supervisor->postStateRequest(SystemState::READY);
         }
     }
 ```
@@ -613,16 +613,16 @@ In `cli_output.cpp`, remove these two `case` blocks from the `render()` switch:
 The `play` command now returns NONE with the URL as text. The render() no-ops for NONE. Instead, print the "Connecting" message when the state request is posted. In `cli.cpp`, after the `postStateRequest(LIVE)` call for `play`, add:
 
 ```cpp
-    if (s_supervisorV2) {
+    if (s_supervisor) {
         if (result.key == cli_output::MessageKey::STATE_TRANSITION_REQUESTED) {
             // ... transition routing ...
         } else if (strcmp(cmd, "play") == 0) {
-            s_supervisorV2->postStateRequest(SystemState::LIVE);
+            s_supervisor->postStateRequest(SystemState::LIVE);
             PROD_LOG("CLI", "Connecting to stream: %s", result.text ? result.text : "");
         } else if (strcmp(cmd, "stop") == 0) {
-            s_supervisorV2->postStateRequest(SystemState::READY);
+            s_supervisor->postStateRequest(SystemState::READY);
         } else if (strcmp(cmd, "reset") == 0) {
-            s_supervisorV2->postStateRequest(SystemState::READY);
+            s_supervisor->postStateRequest(SystemState::READY);
         }
     }
 ```
@@ -641,7 +641,7 @@ Find the `postManualTransition` function and replace the live/streaming branch:
 
 ```cpp
 static bool postManualTransition(const char* targetState) {
-    if (!s_supervisorV2) {
+    if (!s_supervisor) {
         ERROR_LOG(kLogSource, "Supervisor not available for transition command");
         return true;
     }
@@ -649,7 +649,7 @@ static bool postManualTransition(const char* targetState) {
     // ... existing logic ...
 
     if (strcmp(targetState, "live") == 0 || strcmp(targetState, "streaming") == 0) {
-        s_supervisorV2->postStateRequest(SystemState::LIVE);
+        s_supervisor->postStateRequest(SystemState::LIVE);
         PROD_LOG(kLogSource, "Requesting transition to LIVE");
         return true;
     }
@@ -798,7 +798,7 @@ git commit -m "feat: add station command to set stream URL without playback"
 
 ## Self-Review Checklist
 
-- [ ] **Phase A spec coverage:** Old Supervisor deleted, SupervisorV2 renamed to Supervisor, old test files deleted (4), new downward tests added (2). All references updated across 20+ files.
+- [ ] **Phase A spec coverage:** Old Supervisor deleted, Supervisor renamed to Supervisor, old test files deleted (4), new downward tests added (2). All references updated across 20+ files.
 - [ ] **Phase B spec coverage:** `suspend`/`resume` removed from debug CLI. `play`/`stop` consolidated to route through `postStateRequest()`. `transition` moved to production. `CONNECTING_STREAM`/`STREAM_STOPPED` MessageKeys removed. `station` command added for URL-only setting.
 - [ ] **Placeholder scan:** No TBD, TODO, or placeholder patterns. All code shown in full.
-- [ ] **Type consistency:** `SupervisorV2` → `Supervisor` rename is mechanical string-replace. No API changes. CLI message key removal is verified via test assertion updates.
+- [ ] **Type consistency:** `Supervisor` → `Supervisor` rename is mechanical string-replace. No API changes. CLI message key removal is verified via test assertion updates.

@@ -16,7 +16,7 @@
 |------|---------------|-------|
 | `src/supervisor/orchestrator.h` | OrchestrationOrder, OrchestrationResponse structs | 2, 3 |
 | `src/supervisor/orchestrator.cpp` | startOrchestration, orchestrationWorker, completeTransition, postStateRequest, postErrorEvent, checkOrchestrationResponse | 1, 2, 3, 4, 6 |
-| `src/supervisor/supervisor_v2.h` | SupervisorV2 class, member declarations | 1, 5 |
+| `src/supervisor/supervisor.h` | Supervisor class, member declarations | 1, 5 |
 | `src/supervisor/supervisor_v2.cpp` | setup(), constructor | 1 |
 | `src/supervisor/state_machine.cpp` | getNextState, stepTowardTarget, handleFatal | 1, 5 |
 | `test/test_supervisor_v2_orchestration/test_main.cpp` | Start orchestration, complete transition, check response tests | 3 |
@@ -28,14 +28,14 @@
 ### Task 1: Trivial batch (#5, #6, #10, #13, #15, #16)
 
 **Files:**
-- Modify: `src/supervisor/supervisor_v2.h` — add member initializers, add `firstOrchestration_` flag
+- Modify: `src/supervisor/supervisor.h` — add member initializers, add `firstOrchestration_` flag
 - Modify: `src/supervisor/supervisor_v2.cpp` — add EventGroup NULL check
 - Modify: `src/supervisor/orchestrator.cpp` — guard xTaskNotifyGive, fix comment in completeTransition, add checkComponentPresence call in startOrchestration
 - Modify: `src/supervisor/state_machine.cpp` — fix comment in getNextState
 
 - [ ] **Step 1: Add member initializers (#5)**
 
-Edit `src/supervisor/supervisor_v2.h`. Add initializers to the four uninitialized members and the `ActiveTransition` struct:
+Edit `src/supervisor/supervisor.h`. Add initializers to the four uninitialized members and the `ActiveTransition` struct:
 
 In the `ActiveTransition` struct (line 101-104), add an initializer for `transitionTarget`:
 ```cpp
@@ -45,7 +45,7 @@ struct ActiveTransition {
 };
 ```
 
-In the `SupervisorV2` class (lines 329-371), change:
+In the `Supervisor` class (lines 329-371), change:
 ```cpp
 SystemState observedState_;
 SystemState targetState_;
@@ -69,7 +69,7 @@ SystemState lastTargetBeforeError_{SystemState::BOOTING};
 
 Edit `src/supervisor/orchestrator.cpp`. In `postStateRequest()` (line 45), wrap `xTaskNotifyGive`:
 ```cpp
-void SupervisorV2::postStateRequest(SystemState target) {
+void Supervisor::postStateRequest(SystemState target) {
     portENTER_CRITICAL(&stateRequestMailbox_.spinlock);
     stateRequestMailbox_.pending = true;
     stateRequestMailbox_.requestedTarget = target;
@@ -92,7 +92,7 @@ In `postErrorEvent()` (line 57), wrap the same way:
 
 Edit `src/supervisor/supervisor_v2.cpp`. In `setup()`, after `xEventGroupCreateStatic` (line 5-8), add a null check:
 ```cpp
-void SupervisorV2::setup() {
+void Supervisor::setup() {
     eventGroup_ = xEventGroupCreateStatic(&eventGroupBuffer_);
     if (eventGroup_ == nullptr) {
         // Allocation failure — cannot operate without event group.
@@ -152,7 +152,7 @@ to:
 
 - [ ] **Step 6: Add firstOrchestration_ flag and call checkComponentPresence (#16)**
 
-Edit `src/supervisor/supervisor_v2.h`. In the private member section, add after `fatalEntered_` (around line 365):
+Edit `src/supervisor/supervisor.h`. In the private member section, add after `fatalEntered_` (around line 365):
 ```cpp
     bool fatalDeadlineElapsed_{};
     bool fatalEntered_{};
@@ -161,7 +161,7 @@ Edit `src/supervisor/supervisor_v2.h`. In the private member section, add after 
 
 Edit `src/supervisor/orchestrator.cpp`. In `startOrchestration()`, add at the top (after setting nextState_.transitionTarget):
 ```cpp
-void SupervisorV2::startOrchestration(SystemState target) {
+void Supervisor::startOrchestration(SystemState target) {
     nextState_.transitionTarget = target;
 
     if (firstOrchestration_) {
@@ -239,7 +239,7 @@ Edit `src/supervisor/orchestrator.h`. Replace the `consume()` method in `Orchest
 Edit `src/supervisor/orchestrator.cpp`. Replace the worker loop body (lines 132-173) with:
 ```cpp
 void orchestrationWorker(void* param) {
-    auto* supervisor = static_cast<SupervisorV2*>(param);
+    auto* supervisor = static_cast<Supervisor*>(param);
     for (;;) {
         EventBits_t expectedBits;
         TickType_t deadlineTicks;
@@ -274,7 +274,7 @@ void orchestrationWorker(void* param) {
 
 Edit `src/supervisor/orchestrator.cpp`. Replace `checkOrchestrationResponse()` (lines 98-123):
 ```cpp
-void SupervisorV2::checkOrchestrationResponse() {
+void Supervisor::checkOrchestrationResponse() {
     OrchestrationResult result;
     EventBits_t timedOutComponents;
     if (!responseMailbox_.consume(result, timedOutComponents)) return;
@@ -435,7 +435,7 @@ The exact change in the file: move line 84 (`xEventGroupClearBits(eventGroup_, k
 
 The resulting `startOrchestration()` should look like:
 ```cpp
-void SupervisorV2::startOrchestration(SystemState target) {
+void Supervisor::startOrchestration(SystemState target) {
     nextState_.transitionTarget = target;
 
     if (firstOrchestration_) {
@@ -481,7 +481,7 @@ git commit -m "fix: clear EventGroup bits before writing component mailboxes (#4
 ### Task 5: TickType_t wrap-around in handleFatal (#12)
 
 **Files:**
-- Modify: `src/supervisor/supervisor_v2.h` — rename `fatalDeadlineMs_` to `fatalEnteredTicks_`
+- Modify: `src/supervisor/supervisor.h` — rename `fatalDeadlineMs_` to `fatalEnteredTicks_`
 - Modify: `src/supervisor/state_machine.cpp` — change handleFatal to delta comparison
 - Modify: `src/supervisor/supervisor_v2.cpp` — update any reference to the renamed field (there should be none since it's just a member declaration)
 - Modify: `test/test_supervisor_v2_step_6/test_main.cpp` — update tests for renamed field
@@ -489,7 +489,7 @@ git commit -m "fix: clear EventGroup bits before writing component mailboxes (#4
 
 - [ ] **Step 1: Rename fatalDeadlineMs_ to fatalEnteredTicks_ in header**
 
-Edit `src/supervisor/supervisor_v2.h`. Change line 363:
+Edit `src/supervisor/supervisor.h`. Change line 363:
 ```cpp
     TickType_t fatalDeadlineMs_{};
 ```
@@ -502,7 +502,7 @@ to:
 
 Edit `src/supervisor/state_machine.cpp`. Replace `handleFatal()` (lines 228-241):
 ```cpp
-void SupervisorV2::handleFatal() {
+void Supervisor::handleFatal() {
     if (!fatalEntered_) {
         fatalEntered_ = true;
         fatalEnteredTicks_ = xTaskGetTickCount();
@@ -534,7 +534,7 @@ change to:
 In `test_handle_fatal_detects_elapsed_deadline` (lines 136-144), the old test set `fatalDeadlineMs_ = 0` which was a "past deadline" value (xTaskGetTickCount() would always be >= 0). With the delta approach, `(0 - 0) >= 60000` is false. Change to set `fatalEnteredTicks_` to a value that makes the delta large:
 ```cpp
 void test_handle_fatal_detects_elapsed_deadline() {
-    SupervisorV2 supervisor;
+    Supervisor supervisor;
     supervisor.fatalEntered_ = true;
     supervisor.fatalEnteredTicks_ = 1;  // xTaskGetTickCount() returns 0, so 0 - 1 = UINT32_MAX >= 60000 ✓
     supervisor.fatalDeadlineElapsed_ = false;

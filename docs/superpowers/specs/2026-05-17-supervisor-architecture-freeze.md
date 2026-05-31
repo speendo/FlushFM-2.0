@@ -4,7 +4,7 @@
 
 ## 1. Frozen Architecture
 
-SupervisorV2 (`src/supervisor/supervisor_v2.h`) is the production supervisor. Its public API is frozen as-is:
+Supervisor (`src/supervisor/supervisor.h`) is the production supervisor. Its public API is frozen as-is:
 
 | Method | Purpose |
 |--------|---------|
@@ -56,7 +56,7 @@ These are deferred implementation items, documented for a future story.
 | **US-0023** (Firmware size) | Build optimization |
 | **US-0024** (Audio fade) | AudioRuntime domain |
 | **US-0038** (NVS persistence) | Deferred placeholder — hooks exist (`loadTransitionTimeoutConfig`, `setMaxRecoveries`), no implementation planned yet |
-| **US-0039** (Class extraction) | Cosmetic file split — state_machine.cpp and orchestrator.cpp exist but contain `SupervisorV2::method()` implementations |
+| **US-0039** (Class extraction) | Cosmetic file split — state_machine.cpp and orchestrator.cpp exist but contain `Supervisor::method()` implementations |
 
 ---
 

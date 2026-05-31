@@ -12,14 +12,14 @@
 #include "component_types.h"
 #include "core/config.h"
 #include "core/debug.h"
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 
 // ---------------------------------------------------------------------------
 // Module-private state
 // ---------------------------------------------------------------------------
 static constexpr const char* kLogSource = "DebugCLI";
 static TaskHandle_t* s_audioTaskHandle = nullptr;
-static SupervisorV2* s_supervisorV2 = nullptr;
+static Supervisor* s_supervisor = nullptr;
 
 // ---------------------------------------------------------------------------
 // Forward declarations
@@ -34,7 +34,7 @@ static void loadtestTask(void* param);
 namespace debug_cli {
 
 static bool postManualTransition(const char* targetState) {
-    if (!s_supervisorV2) {
+    if (!s_supervisor) {
         ERROR_LOG(kLogSource, "Supervisor not available for transition command");
         return true;
     }
@@ -45,7 +45,7 @@ static bool postManualTransition(const char* targetState) {
     }
 
     if (strcmp(targetState, "idle") == 0 || strcmp(targetState, "ready") == 0) {
-        (void)s_supervisorV2->postStateRequest(SystemState::READY);
+        (void)s_supervisor->postStateRequest(SystemState::READY);
         PROD_LOG(kLogSource, "Transition request posted: ready");
         return true;
     }
@@ -57,13 +57,13 @@ static bool postManualTransition(const char* targetState) {
     }
 
     if (strcmp(targetState, "sleep") == 0) {
-        (void)s_supervisorV2->postStateRequest(SystemState::SLEEP);
+        (void)s_supervisor->postStateRequest(SystemState::SLEEP);
         PROD_LOG(kLogSource, "Transition request posted: sleep");
         return true;
     }
 
     if (strcmp(targetState, "error") == 0) {
-        (void)s_supervisorV2->postStateRequest(SystemState::ERROR);
+        (void)s_supervisor->postStateRequest(SystemState::ERROR);
         PROD_LOG(kLogSource, "Transition request posted: error");
         return true;
     }
@@ -73,9 +73,9 @@ static bool postManualTransition(const char* targetState) {
     return true;
 }
 
-void init(TaskHandle_t* audioTaskHandle, SupervisorV2* supervisorV2) {
+void init(TaskHandle_t* audioTaskHandle, Supervisor* supervisorV2) {
     s_audioTaskHandle = audioTaskHandle;
-    s_supervisorV2 = supervisorV2;
+    s_supervisor = supervisorV2;
 }
 
 bool process(const char* cmd, const char* arg) {
@@ -159,14 +159,14 @@ static void printTaskList() {
 }
 
 static void printTransitionStatus() {
-    if (!s_supervisorV2) {
+    if (!s_supervisor) {
         ERROR_LOG(kLogSource, "Supervisor not available");
         return;
     }
 
     Serial.println();
-    Serial.printf("SM state:        %s\r\n", stateToString(s_supervisorV2->getObservedState()));
-    Serial.printf("Target:          %s\r\n", stateToString(s_supervisorV2->getTargetState()));
+    Serial.printf("SM state:        %s\r\n", stateToString(s_supervisor->getObservedState()));
+    Serial.printf("Target:          %s\r\n", stateToString(s_supervisor->getTargetState()));
     Serial.println();
 }
 

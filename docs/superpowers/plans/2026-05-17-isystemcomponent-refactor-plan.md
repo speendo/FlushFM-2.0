@@ -20,7 +20,7 @@
 | `test/test_component_interface/test_main.cpp` | Create | Compilation smoke test for the new interface |
 | `src/main.cpp` | No change | Already iterates `ISystemComponent*` via `setup()` and `loop()` — still works |
 | `src/component_types.h` | No change | SystemState enum unchanged |
-| `src/supervisor/supervisor_v2.h` | No change | Frozen API |
+| `src/supervisor/supervisor.h` | No change | Frozen API |
 
 ---
 

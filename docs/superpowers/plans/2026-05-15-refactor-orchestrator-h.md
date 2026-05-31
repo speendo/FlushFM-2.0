@@ -15,7 +15,7 @@
 ## File Structure
 
 - **Modify:** `src/supervisor/orchestrator.h` — rewrite from 3-line passthrough to standalone header with `OrchestrationResult`, `OrchestrationOrder`, `OrchestrationResponse`
-- **Modify:** `src/supervisor/supervisor_v2.h` — remove the three types, add `#include "orchestrator.h"`
+- **Modify:** `src/supervisor/supervisor.h` — remove the three types, add `#include "orchestrator.h"`
 - **Modify:** `src/supervisor/orchestrator.cpp` — add `#include "orchestrator.h"` alongside `supervisor_v2.h`
 - **Modify:** `src/supervisor/state_machine.h` — verify it still works as a thin wrapper (no changes needed)
 - **Modify:** ALL `.cpp` files in `test/` and `src/` that include `supervisor_v2.h` — verify they still compile (no changes expected: everything is available transitively)
@@ -35,12 +35,12 @@ cat src/supervisor/orchestrator.h
 
 Expected output:
 ```cpp
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 ```
 
 - [x] **Step 1.2: Read the three types from supervisor_v2.h to know exactly what to extract**
 
-The types to move are defined in `src/supervisor/supervisor_v2.h`:
+The types to move are defined in `src/supervisor/supervisor.h`:
 
 1. `OrchestrationResult` enum (lines ~139–142)
 2. `OrchestrationOrder` struct (lines ~148–174) with `post()` and `consume()` methods
@@ -87,7 +87,7 @@ git commit -m "refactor: extract OrchestrationResult/Order/Response into orchest
 ### Task 2: Remove the three types from supervisor_v2.h, add include
 
 **Files:**
-- Modify: `src/supervisor/supervisor_v2.h`
+- Modify: `src/supervisor/supervisor.h`
 
 - [x] **Step 2.1: Remove `OrchestrationResult` enum**
 
@@ -135,7 +135,7 @@ Expected: Both succeed. The types are now available via the new include.
 - [x] **Step 2.6: Commit**
 
 ```bash
-git add src/supervisor/supervisor_v2.h
+git add src/supervisor/supervisor.h
 git commit -m "refactor: supervisor_v2.h includes orchestrator.h instead of defining types inline"
 ```
 
@@ -150,10 +150,10 @@ git commit -m "refactor: supervisor_v2.h includes orchestrator.h instead of defi
 
 Currently `orchestrator.cpp` includes `"supervisor/orchestrator.h"` which is the OLD 3-line wrapper that just included `supervisor_v2.h`. Now `orchestrator.h` is a real header. Add it explicitly:
 
-In `orchestrator.cpp`, after the existing `#include "supervisor/supervisor_v2.h"`, add:
+In `orchestrator.cpp`, after the existing `#include "supervisor/supervisor.h"`, add:
 
 ```cpp
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 #include "supervisor/orchestrator.h"
 ```
 
@@ -189,7 +189,7 @@ cat src/supervisor/state_machine.h
 
 Expected:
 ```cpp
-#include "supervisor/supervisor_v2.h"
+#include "supervisor/supervisor.h"
 ```
 
 This file stays as-is. No changes needed.
