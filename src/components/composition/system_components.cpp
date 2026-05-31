@@ -58,6 +58,8 @@ void BoardInfoComponent::handleLIVE()       { completeTransition(TransitionStatu
 void BoardInfoComponent::handleERROR()      { completeTransition(TransitionStatus::Completed); }
 void BoardInfoComponent::handleFATAL()      { completeTransition(TransitionStatus::Completed); }
 
+void BoardInfoComponent::poll() {}
+
 WiFiComponent::WiFiComponent()
     : ISystemComponent(ComponentID::WiFi, "WiFi", true) {}
 
