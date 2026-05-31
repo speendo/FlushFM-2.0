@@ -151,7 +151,7 @@ private:
  *  stream and poll() / audio signal callbacks report completion. */
 class AudioRuntimeComponent final : public ISystemComponent {
 public:
-    explicit AudioRuntimeComponent(IAudioPlayer& audio);
+    explicit AudioRuntimeComponent(IAudioPlayer* audio);
     bool setup() override;
     void handleBOOTING() override;
     void handleSLEEP() override;
@@ -169,7 +169,7 @@ private:
     bool pendingStreamingTarget_ = false;
     uint32_t pendingTransitionId_ = 0;
     bool pendingErrorTarget_ = false;
-    IAudioPlayer& audio_;
+    IAudioPlayer* audio_;
 };
 
 /** @brief Serial CLI interface. Optional component -- not required for quorum.
@@ -177,7 +177,7 @@ private:
  *  cli::readLine() / cli::process(). */
 class CliComponent final : public ISystemComponent {
 public:
-    explicit CliComponent(IAudioPlayer& audio);
+    explicit CliComponent(IAudioPlayer* audio);
     bool setup() override;
     void handleBOOTING() override;
     void handleSLEEP() override;
@@ -190,5 +190,5 @@ public:
     void onTransitionTimeout(uint32_t) override {}
 
 private:
-    IAudioPlayer& audio_;
+    IAudioPlayer* audio_;
 };
