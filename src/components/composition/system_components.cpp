@@ -331,56 +331,26 @@ void AudioRuntimeComponent::completePendingTransition(TransitionStatus status) {
 }
 
 CliComponent::CliComponent(IAudioPlayer& audio)
-    : ISystemComponent(ComponentID::CLI, kCliName), audio_(audio) {}
+    : ISystemComponent(ComponentID::CLI, "CLI", false), audio_(audio) {}
 
 bool CliComponent::setup() {
-    s_supervisorV2.registerComponent(
-        id(), &const_cast<CliComponent*>(this)->supervisorV2Mailbox, false);
+    registerWithSupervisor(s_supervisorV2);
     cli::init(audio_, audio_runtime::taskHandlePtr(), &s_supervisorV2);
     cli::printHelp();
     return true;
 }
 
-void CliComponent::loop() {
-    SystemState target;
-    if (supervisorV2Mailbox.consumeNextState(target)) {
-        switch (target) {
-            case SystemState::SLEEP:     setOFF(0); break;
-            case SystemState::READY:     setIDLE(0); break;
-            case SystemState::LIVE:      setSTREAMING(0); break;
-            case SystemState::ERROR:
-            case SystemState::FATAL:     setERROR(0); break;
-            default: break;
-        }
-        s_supervisorV2.completeTransition(id(), TransitionStatus::Completed);
-    }
+void CliComponent::handleBOOTING()    { completeTransition(TransitionStatus::Completed); }
+void CliComponent::handleSLEEP()      { completeTransition(TransitionStatus::Completed); }
+void CliComponent::handleCONNECTING() { completeTransition(TransitionStatus::Completed); }
+void CliComponent::handleREADY()      { completeTransition(TransitionStatus::Completed); }
+void CliComponent::handleLIVE()       { completeTransition(TransitionStatus::Completed); }
+void CliComponent::handleERROR()      { completeTransition(TransitionStatus::Completed); }
+void CliComponent::handleFATAL()      { completeTransition(TransitionStatus::Completed); }
 
+void CliComponent::poll() {
     static char cmdBuf[SERIAL_CMD_BUF_SIZE];
     if (cli::readLine(cmdBuf, sizeof(cmdBuf))) {
         cli::process(cmdBuf);
     }
-}
-
-uint32_t CliComponent::setOFF(uint32_t transitionId) {
-    (void)transitionId;
-    return kCliTimeoutOffMs;
-}
-
-uint32_t CliComponent::setIDLE(uint32_t transitionId) {
-    (void)transitionId;
-    return kCliTimeoutIdleMs;
-}
-
-uint32_t CliComponent::setSTREAMING(uint32_t transitionId) {
-    (void)transitionId;
-    return kCliTimeoutStreamingMs;
-}
-
-uint32_t CliComponent::setERROR(uint32_t transitionId) {
-    (void)transitionId;
-    return kCliTimeoutErrorMs;
-}
-
-void CliComponent::onTransitionTimeout(uint32_t transitionId) {
-    (void)transitionId;
 }
