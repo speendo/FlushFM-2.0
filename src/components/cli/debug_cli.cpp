@@ -93,23 +93,6 @@ bool process(const char* cmd, const char* arg) {
         }
         return true;
 
-    } else if (strcmp(cmd, "suspend") == 0) {
-        if (!s_audioTaskHandle || !*s_audioTaskHandle) {
-            ERROR_LOG(kLogSource, "Audio task handle not available");
-            return true;
-        }
-        PROD_LOG(kLogSource, "Suspending AudioTask – audio will stop");
-        vTaskSuspend(*s_audioTaskHandle);
-        return true;
-
-    } else if (strcmp(cmd, "resume") == 0) {
-        if (!s_audioTaskHandle || !*s_audioTaskHandle) {
-            ERROR_LOG(kLogSource, "Audio task handle not available");
-            return true;
-        }
-        vTaskResume(*s_audioTaskHandle);
-        PROD_LOG(kLogSource, "AudioTask resumed");
-        return true;
     } else if (strcmp(cmd, "tstatus") == 0) {
         printTransitionStatus();
         return true;
@@ -123,8 +106,6 @@ bool process(const char* cmd, const char* arg) {
 void printHelp() {
     Serial.println("  tasks               Print FreeRTOS task list (core, state, stack HWM)");
     Serial.println("  loadtest            Run 5s busy-loop on Core 0, check audio stability");
-    Serial.println("  suspend             Suspend AudioTask");
-    Serial.println("  resume              Resume AudioTask");
     Serial.println("  tstatus             Show transition and component lifecycle status");
     Serial.println("  transition <s>      Request state transition: ready|live|sleep|error");
 }
