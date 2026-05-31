@@ -20,8 +20,7 @@ constexpr const char* kLogSource = "Main";
 // ---------------------------------------------------------------------------
 // Audio – concrete instance wired here; rest of code depends on interface only
 // ---------------------------------------------------------------------------
-static AudioPlayerESP32 s_playerImpl(I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
-static IAudioPlayer& s_audio = s_playerImpl;
+static IAudioPlayer* s_audio = nullptr;
 
 // ---------------------------------------------------------------------------
 // Components — no old Supervisor dependency
@@ -65,6 +64,8 @@ void setup() {
 
     PROD_LOG(kLogSource, "Hello FlushFM");
     registerAudioLibraryCallbacks();
+
+    s_audio = new AudioPlayerESP32(I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
 
     for (ISystemComponent* component : s_components) {
         component->setup();
