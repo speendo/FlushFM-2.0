@@ -41,23 +41,6 @@ void ISystemComponent::completeTransition(TransitionStatus status) {
     s_supervisorV2.completeTransition(id_, status);
 }
 
-namespace {
-
-constexpr const char* kAudioRuntimeName = "AudioRuntime";
-constexpr const char* kCliName = "CLI";
-
-constexpr const char* kAudioRuntimeName = "AudioRuntime";
-constexpr uint32_t kAudioTimeoutIdleMs = 2000;
-constexpr uint32_t kAudioTimeoutStreamingMs = 5000;
-constexpr uint32_t kAudioTimeoutErrorMs = 1000;
-
-constexpr uint32_t kCliTimeoutOffMs = 0;
-constexpr uint32_t kCliTimeoutIdleMs = 0;
-constexpr uint32_t kCliTimeoutStreamingMs = 0;
-constexpr uint32_t kCliTimeoutErrorMs = 0;
-
-}  // namespace
-
 BoardInfoComponent::BoardInfoComponent()
     : ISystemComponent(ComponentID::BoardInfo, "BoardInfo", false) {}
 
@@ -180,11 +163,10 @@ void WiFiComponent::onDisconnected(void* context) {
 }
 
 AudioRuntimeComponent::AudioRuntimeComponent(IAudioPlayer& audio)
-    : ISystemComponent(ComponentID::AudioRuntime, kAudioRuntimeName), audio_(audio) {}
+    : ISystemComponent(ComponentID::AudioRuntime, "AudioRuntime", true), audio_(audio) {}
 
 bool AudioRuntimeComponent::setup() {
-    s_supervisorV2.registerComponent(
-        id(), &const_cast<AudioRuntimeComponent*>(this)->supervisorV2Mailbox, true);
+    registerWithSupervisor(s_supervisorV2);
 
     audio_runtime::setSignalHandler(&AudioRuntimeComponent::onAudioSignal, this);
     const bool started = audio_runtime::start(audio_);
@@ -194,83 +176,100 @@ bool AudioRuntimeComponent::setup() {
     return started;
 }
 
-uint32_t AudioRuntimeComponent::setOFF(uint32_t transitionId) {
-    startPendingTransition(false, transitionId);
-    pendingErrorTarget_ = false;
-    audio_.stop();
-    return kAudioTimeoutOffMs;
+void AudioRuntimeComponent::handleBOOTING() {
+    completeTransition(TransitionStatus::Completed);
 }
 
-uint32_t AudioRuntimeComponent::setIDLE(uint32_t transitionId) {
-    startPendingTransition(false, transitionId);
+void AudioRuntimeComponent::handleSLEEP() {
+    transitionPending_ = false;
     pendingErrorTarget_ = false;
     audio_.stop();
-    return kAudioTimeoutIdleMs;
+    completeTransition(TransitionStatus::Completed);
 }
 
-uint32_t AudioRuntimeComponent::setSTREAMING(uint32_t transitionId) {
-    startPendingTransition(true, transitionId);
+void AudioRuntimeComponent::handleREADY() {
+    transitionPending_ = false;
+    pendingErrorTarget_ = false;
+    audio_.stop();
+    completeTransition(TransitionStatus::Completed);
+}
+
+void AudioRuntimeComponent::handleCONNECTING() {
+    transitionPending_ = true;
+    pendingStreamingTarget_ = true;
     pendingErrorTarget_ = false;
 
     char station[settings::kStationMaxLen] = {};
     if (!settings::loadStation(station, sizeof(station)) || station[0] == '\0') {
-        completePendingTransition(TransitionStatus::Failed);
-        return kAudioTimeoutStreamingMs;
+        transitionPending_ = false;
+        completeTransition(TransitionStatus::Failed);
+        return;
     }
 
     if (!audio_.connectToHost(station)) {
-        completePendingTransition(TransitionStatus::Failed);
+        transitionPending_ = false;
+        completeTransition(TransitionStatus::Failed);
     }
-
-    return kAudioTimeoutStreamingMs;
 }
 
-uint32_t AudioRuntimeComponent::setERROR(uint32_t transitionId) {
-    startPendingTransition(false, transitionId);
+void AudioRuntimeComponent::handleLIVE() {
+    transitionPending_ = true;
+    pendingStreamingTarget_ = true;
+    pendingErrorTarget_ = false;
+
+    char station[settings::kStationMaxLen] = {};
+    if (!settings::loadStation(station, sizeof(station)) || station[0] == '\0') {
+        transitionPending_ = false;
+        completeTransition(TransitionStatus::Failed);
+        return;
+    }
+
+    if (!audio_.connectToHost(station)) {
+        transitionPending_ = false;
+        completeTransition(TransitionStatus::Failed);
+    }
+}
+
+void AudioRuntimeComponent::handleERROR() {
+    transitionPending_ = false;
     pendingErrorTarget_ = true;
     audio_.stop();
-    return kAudioTimeoutErrorMs;
+    completeTransition(TransitionStatus::Completed);
 }
 
-void AudioRuntimeComponent::onTransitionTimeout(uint32_t transitionId) {
-    (void)transitionId;
-    if (transitionPending_ && pendingTransitionId_ == transitionId) {
-        audio_.stop();
-        completePendingTransition(TransitionStatus::Failed);
-    }
+void AudioRuntimeComponent::handleFATAL() {
+    completeTransition(TransitionStatus::Completed);
 }
 
-void AudioRuntimeComponent::loop() {
-    SystemState target;
-    if (supervisorV2Mailbox.consumeNextState(target)) {
-        switch (target) {
-            case SystemState::SLEEP:       setOFF(0); break;
-            case SystemState::READY:       setIDLE(0); break;
-            case SystemState::CONNECTING:
-            case SystemState::LIVE:        setSTREAMING(0); break;
-            case SystemState::ERROR:
-            case SystemState::FATAL:       setERROR(0); break;
-            default: break;
-        }
-    }
-
+void AudioRuntimeComponent::poll() {
     if (!transitionPending_) return;
 
     const IAudioPlayer::RuntimeState runtimeState = audio_.runtimeState();
     if (pendingStreamingTarget_) {
         if (runtimeState == IAudioPlayer::RuntimeState::LIVE) {
-            completePendingTransition(TransitionStatus::Completed);
+            transitionPending_ = false;
+            completeTransition(TransitionStatus::Completed);
         } else if (runtimeState == IAudioPlayer::RuntimeState::ERROR) {
-            completePendingTransition(TransitionStatus::Failed);
+            transitionPending_ = false;
+            completeTransition(TransitionStatus::Failed);
         }
         return;
     }
 
     if (runtimeState == IAudioPlayer::RuntimeState::SLEEP) {
-        completePendingTransition(TransitionStatus::Completed);
+        transitionPending_ = false;
+        completeTransition(TransitionStatus::Completed);
     } else if (runtimeState == IAudioPlayer::RuntimeState::ERROR && !pendingErrorTarget_) {
-        completePendingTransition(TransitionStatus::Failed);
+        transitionPending_ = false;
+        completeTransition(TransitionStatus::Failed);
     }
+}
+
+void AudioRuntimeComponent::onTransitionTimeout(uint32_t transitionId) {
+    if (!transitionPending_ || pendingTransitionId_ != transitionId) return;
+    audio_.stop();
+    transitionPending_ = false;
+    completeTransition(TransitionStatus::Failed);
 }
 
 void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* context) {
@@ -279,33 +278,24 @@ void AudioRuntimeComponent::onAudioSignal(audio_runtime::Signal signal, void* co
 
     if (signal == audio_runtime::Signal::INIT_OK) {
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
-            self->completePendingTransition(TransitionStatus::Completed);
+            self->transitionPending_ = false;
+            self->completeTransition(TransitionStatus::Completed);
         }
     } else if (signal == audio_runtime::Signal::STREAM_LOST) {
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
-            self->completePendingTransition(TransitionStatus::Failed);
+            self->transitionPending_ = false;
+            self->completeTransition(TransitionStatus::Failed);
         } else {
             s_supervisorV2.postErrorEvent("stream lost", ComponentID::AudioRuntime);
         }
     } else {
         if (self->transitionPending_ && self->pendingStreamingTarget_) {
-            self->completePendingTransition(TransitionStatus::Failed);
+            self->transitionPending_ = false;
+            self->completeTransition(TransitionStatus::Failed);
         } else {
             s_supervisorV2.postErrorEvent("audio init failed", ComponentID::AudioRuntime);
         }
     }
-}
-
-void AudioRuntimeComponent::startPendingTransition(bool streamingTarget, uint32_t transitionId) {
-    transitionPending_ = true;
-    pendingStreamingTarget_ = streamingTarget;
-    pendingTransitionId_ = transitionId;
-}
-
-void AudioRuntimeComponent::completePendingTransition(TransitionStatus status) {
-    if (!transitionPending_) return;
-    transitionPending_ = false;
-    s_supervisorV2.completeTransition(id(), status);
 }
 
 CliComponent::CliComponent(IAudioPlayer& audio)
