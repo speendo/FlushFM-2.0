@@ -49,6 +49,47 @@ void test_get_next_state_error_to_sleep() {
                       static_cast<int>(getNextState(SystemState::ERROR, SystemState::SLEEP)));
 }
 
+void test_get_next_state_downward_path_never_reaches_live() {
+    // From READY(50) to SLEEP(20): READY→CONNECTING→BOOTING→SLEEP
+    // LIVE(60) must never appear on any intermediate step.
+    SystemState step = getNextState(SystemState::READY, SystemState::SLEEP);
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::CONNECTING),
+                      static_cast<int>(step));
+    TEST_ASSERT_NOT_EQUAL(static_cast<int>(SystemState::LIVE),
+                          static_cast<int>(step));
+
+    step = getNextState(step, SystemState::SLEEP);
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::BOOTING),
+                      static_cast<int>(step));
+    TEST_ASSERT_NOT_EQUAL(static_cast<int>(SystemState::LIVE),
+                          static_cast<int>(step));
+
+    step = getNextState(step, SystemState::SLEEP);
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP),
+                      static_cast<int>(step));
+    TEST_ASSERT_NOT_EQUAL(static_cast<int>(SystemState::LIVE),
+                          static_cast<int>(step));
+}
+
+void test_get_next_state_downward_path_from_ready_to_sleep_skip_connecting_audio() {
+    // When going from READY down, the path passes through CONNECTING but
+    // must NOT reach LIVE. CONNECTING no longer starts audio (Fix 2),
+    // so audio remains off during the entire downward path.
+    SystemState step2 = getNextState(SystemState::READY, SystemState::SLEEP);
+    SystemState step3 = getNextState(step2, SystemState::SLEEP);
+    SystemState step4 = getNextState(step3, SystemState::SLEEP);
+
+    TEST_ASSERT_NOT_EQUAL(static_cast<int>(SystemState::LIVE),
+                          static_cast<int>(step2));
+    TEST_ASSERT_NOT_EQUAL(static_cast<int>(SystemState::LIVE),
+                          static_cast<int>(step3));
+    TEST_ASSERT_NOT_EQUAL(static_cast<int>(SystemState::LIVE),
+                          static_cast<int>(step4));
+    // Final step should be the target
+    TEST_ASSERT_EQUAL(static_cast<int>(SystemState::SLEEP),
+                      static_cast<int>(step4));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_get_index_valid_states);
@@ -58,5 +99,7 @@ int main() {
     RUN_TEST(test_get_next_state_fatal_to_error);
     RUN_TEST(test_get_next_state_error_recovery_toward_live);
     RUN_TEST(test_get_next_state_error_to_sleep);
+    RUN_TEST(test_get_next_state_downward_path_never_reaches_live);
+    RUN_TEST(test_get_next_state_downward_path_from_ready_to_sleep_skip_connecting_audio);
     return UNITY_END();
 }

@@ -197,21 +197,7 @@ void AudioRuntimeComponent::handleREADY() {
 }
 
 void AudioRuntimeComponent::handleCONNECTING() {
-    transitionPending_ = true;
-    pendingStreamingTarget_ = true;
-    pendingErrorTarget_ = false;
-
-    char station[settings::kStationMaxLen] = {};
-    if (!settings::loadStation(station, sizeof(station)) || station[0] == '\0') {
-        transitionPending_ = false;
-        completeTransition(TransitionStatus::Failed);
-        return;
-    }
-
-    if (!(*audio_)->connectToHost(station)) {
-        transitionPending_ = false;
-        completeTransition(TransitionStatus::Failed);
-    }
+    completeTransition(TransitionStatus::Completed);
 }
 
 void AudioRuntimeComponent::handleLIVE() {

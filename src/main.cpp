@@ -17,14 +17,8 @@ constexpr const char* kLogSource = "Main";
 
 }  // namespace
 
-// ---------------------------------------------------------------------------
-// Audio – concrete instance wired here; rest of code depends on interface only
-// ---------------------------------------------------------------------------
 static IAudioPlayer* s_audio = nullptr;
 
-// ---------------------------------------------------------------------------
-// Components — no old Supervisor dependency
-// ---------------------------------------------------------------------------
 SupervisorV2 s_supervisorV2;
 static BoardInfoComponent s_boardInfo;
 static WiFiComponent s_wifi;
@@ -38,10 +32,6 @@ static ISystemComponent* s_components[] = {
     &s_cli,
 };
 
-// ---------------------------------------------------------------------------
-// SupervisorV2 state machine task — pinned to Core 0
-// ---------------------------------------------------------------------------
-
 static void stateMachineTask(void* param) {
     auto* supervisorV2 = static_cast<SupervisorV2*>(param);
     supervisorV2->setup();
@@ -50,17 +40,9 @@ static void stateMachineTask(void* param) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Arduino entry points
-// ---------------------------------------------------------------------------
-
 void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
-
-    const uint32_t start = millis();
-    while (!Serial && (millis() - start) < SERIAL_TIMEOUT_MS) {
-        delay(10);
-    }
+    delay(SERIAL_USB_ENUMERATION_MS);
 
     PROD_LOG(kLogSource, "Hello FlushFM");
     registerAudioLibraryCallbacks();
@@ -89,4 +71,3 @@ void loop() {
 }
 
 #endif  // UNIT_TEST
-

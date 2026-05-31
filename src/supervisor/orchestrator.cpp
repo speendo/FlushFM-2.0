@@ -120,6 +120,10 @@ void SupervisorV2::checkOrchestrationResponse() {
 
     if (result == OrchestrationResult::COMPLETED) {
         setObservedState(nextState_.transitionTarget);
+
+        if (targetState_ != observedState_) {
+            xTaskNotifyGive(supervisorTaskHandle_);
+        }
     } else {
         for (size_t i = 0; i < componentCount; i++) {
             if (!(timedOutComponents & (1 << i))) continue;

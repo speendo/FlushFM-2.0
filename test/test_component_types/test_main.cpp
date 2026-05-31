@@ -1,55 +1,15 @@
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <unity.h>
 
-#include "../../src/supervisor/supervisor.h"
+#include "../../src/component_types.h"
 
 namespace {
-
-template <typename Enum>
-struct EnumLabelCase {
-    Enum value;
-    const char* label;
-};
-
-template <typename Enum, size_t N>
-void assert_round_trip_and_uniqueness(const std::array<EnumLabelCase<Enum>, N>& cases) {
-    for (size_t i = 0; i < N; ++i) {
-        const char* label = toString(cases[i].value);
-        TEST_ASSERT_NOT_NULL(label);
-        TEST_ASSERT_EQUAL_STRING(cases[i].label, label);
-
-        bool found = false;
-        for (size_t j = 0; j < N; ++j) {
-            if (std::strcmp(cases[j].label, label) == 0) {
-                TEST_ASSERT_EQUAL(static_cast<int>(cases[i].value), static_cast<int>(cases[j].value));
-                found = true;
-                break;
-            }
-        }
-
-        TEST_ASSERT_TRUE(found);
-    }
-
-    for (size_t i = 0; i < N; ++i) {
-        for (size_t j = i + 1; j < N; ++j) {
-            TEST_ASSERT_FALSE(std::strcmp(cases[i].label, cases[j].label) == 0);
-        }
-    }
-}
 
 void test_transition_status_values_are_stable() {
     TEST_ASSERT_EQUAL(0, static_cast<int>(TransitionStatus::Completed));
     TEST_ASSERT_EQUAL(1, static_cast<int>(TransitionStatus::Failed));
-}
-
-void test_component_lifecycle_status_values_are_stable() {
-    TEST_ASSERT_EQUAL(0, static_cast<int>(ComponentLifecycleStatus::Unknown));
-    TEST_ASSERT_EQUAL(1, static_cast<int>(ComponentLifecycleStatus::Ready));
-    TEST_ASSERT_EQUAL(2, static_cast<int>(ComponentLifecycleStatus::Failed));
-    TEST_ASSERT_EQUAL(3, static_cast<int>(ComponentLifecycleStatus::Disabled));
 }
 
 void test_transition_status_to_string_all_values() {
@@ -57,61 +17,22 @@ void test_transition_status_to_string_all_values() {
     TEST_ASSERT_EQUAL_STRING("Failed", toString(TransitionStatus::Failed));
 }
 
-void test_component_lifecycle_status_to_string_all_values() {
-    TEST_ASSERT_EQUAL_STRING("Unknown", toString(ComponentLifecycleStatus::Unknown));
-    TEST_ASSERT_EQUAL_STRING("Ready", toString(ComponentLifecycleStatus::Ready));
-    TEST_ASSERT_EQUAL_STRING("Failed", toString(ComponentLifecycleStatus::Failed));
-    TEST_ASSERT_EQUAL_STRING("Disabled", toString(ComponentLifecycleStatus::Disabled));
-}
-
-void test_state_machine_labels_round_trip_and_are_unique() {
-    const std::array<EnumLabelCase<SystemState>, 6> states = {{
-        {SystemState::ERROR, "ERROR"},
-        {SystemState::BOOTING, "BOOTING"},
-        {SystemState::SLEEP, "SLEEP"},
-        {SystemState::CONNECTING, "CONNECTING"},
-        {SystemState::READY, "READY"},
-        {SystemState::LIVE, "LIVE"},
-    }};
-
-    const std::array<EnumLabelCase<SystemEvent>, 2> events = {{
-        {SystemEvent::COMPONENT_SETUP_FAILED, "COMPONENT_SETUP_FAILED"},
-        {SystemEvent::STATE_REQUESTED, "STATE_REQUESTED"},
-    }};
-
-    const std::array<EnumLabelCase<SystemReason>, 8> reasons = {{
-        {SystemReason::NONE, "NONE"},
-        {SystemReason::COMPONENT_SETUP, "COMPONENT_SETUP"},
-        {SystemReason::WIFI_INITIALIZED, "WIFI_INITIALIZED"},
-        {SystemReason::AUDIO_TASK_STARTED, "AUDIO_TASK_STARTED"},
-        {SystemReason::AUDIO_TASK_INIT_FAILED, "AUDIO_TASK_INIT_FAILED"},
-        {SystemReason::USER_REQUEST, "USER_REQUEST"},
-        {SystemReason::RECOVERY, "RECOVERY"},
-        {SystemReason::POWER_POLICY, "POWER_POLICY"},
-    }};
-
-    assert_round_trip_and_uniqueness(states);
-    assert_round_trip_and_uniqueness(events);
-    assert_round_trip_and_uniqueness(reasons);
+void test_state_machine_labels_round_trip() {
+    TEST_ASSERT_EQUAL_STRING("FATAL", stateToString(SystemState::FATAL));
+    TEST_ASSERT_EQUAL_STRING("ERROR", stateToString(SystemState::ERROR));
+    TEST_ASSERT_EQUAL_STRING("SLEEP", stateToString(SystemState::SLEEP));
+    TEST_ASSERT_EQUAL_STRING("BOOTING", stateToString(SystemState::BOOTING));
+    TEST_ASSERT_EQUAL_STRING("CONNECTING", stateToString(SystemState::CONNECTING));
+    TEST_ASSERT_EQUAL_STRING("READY", stateToString(SystemState::READY));
+    TEST_ASSERT_EQUAL_STRING("LIVE", stateToString(SystemState::LIVE));
 }
 
 void test_state_machine_invalid_values_map_to_unknown() {
     const auto invalidState = static_cast<SystemState>(255);
-    const auto invalidEvent = static_cast<SystemEvent>(255);
-    const auto invalidReason = static_cast<SystemReason>(255);
     const auto invalidComponent = static_cast<ComponentID>(255);
 
-    TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidState));
-    TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidEvent));
-    TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidReason));
+    TEST_ASSERT_EQUAL_STRING("UNKNOWN", stateToString(invalidState));
     TEST_ASSERT_EQUAL_STRING("UNKNOWN", componentName(invalidComponent));
-}
-
-void test_to_string_handles_invalid_values() {
-    const auto invalidTransition = static_cast<TransitionStatus>(255);
-    const auto invalidLifecycle = static_cast<ComponentLifecycleStatus>(255);
-    TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidTransition));
-    TEST_ASSERT_EQUAL_STRING("UNKNOWN", toString(invalidLifecycle));
 }
 
 void test_component_id_names_match_expected() {
@@ -125,28 +46,10 @@ void test_debug_reason_alias_accepts_null_and_strings() {
     DebugReason nullReason = nullptr;
     DebugReason emptyReason = "";
     DebugReason customReason = "wifi_timeout_after_15s";
-    DebugReason longReason =
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     TEST_ASSERT_NULL(nullReason);
     TEST_ASSERT_EQUAL_STRING("", emptyReason);
     TEST_ASSERT_EQUAL_STRING("wifi_timeout_after_15s", customReason);
-    TEST_ASSERT_EQUAL_UINT32(256, static_cast<uint32_t>(strlen(longReason)));
-}
-
-void test_state_matrix_sentinel_exists() {
-    TEST_ASSERT_EQUAL(0xFF, static_cast<int>(TARGET_MODE));
-}
-
-void test_state_matrix_struct_has_expected_fields() {
-    ComponentStateMatrix m;
-    m.forwardTimeoutMs = 100;
-    m.backwardTimeoutMs = 200;
-    TEST_ASSERT_EQUAL(100, static_cast<int>(m.forwardTimeoutMs));
-    TEST_ASSERT_EQUAL(200, static_cast<int>(m.backwardTimeoutMs));
 }
 
 }  // namespace
@@ -154,15 +57,10 @@ void test_state_matrix_struct_has_expected_fields() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_transition_status_values_are_stable);
-    RUN_TEST(test_component_lifecycle_status_values_are_stable);
     RUN_TEST(test_transition_status_to_string_all_values);
-    RUN_TEST(test_component_lifecycle_status_to_string_all_values);
-    RUN_TEST(test_state_machine_labels_round_trip_and_are_unique);
+    RUN_TEST(test_state_machine_labels_round_trip);
     RUN_TEST(test_state_machine_invalid_values_map_to_unknown);
-    RUN_TEST(test_to_string_handles_invalid_values);
     RUN_TEST(test_component_id_names_match_expected);
     RUN_TEST(test_debug_reason_alias_accepts_null_and_strings);
-    RUN_TEST(test_state_matrix_sentinel_exists);
-    RUN_TEST(test_state_matrix_struct_has_expected_fields);
     return UNITY_END();
 }

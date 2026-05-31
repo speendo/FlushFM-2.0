@@ -9,9 +9,10 @@
 // ---------------------------------------------------------------------------
 
 // Serial
-static constexpr uint32_t SERIAL_BAUD_RATE      = 115200;
-static constexpr uint32_t SERIAL_TIMEOUT_MS     = 3000;
-static constexpr size_t   SERIAL_CMD_BUF_SIZE   = 256;
+static constexpr uint32_t SERIAL_BAUD_RATE           = 115200;
+static constexpr uint32_t SERIAL_USB_ENUMERATION_MS  = 2000;
+static constexpr uint32_t SERIAL_TIMEOUT_MS          = 3000;
+static constexpr size_t   SERIAL_CMD_BUF_SIZE        = 256;
 
 // WiFi
 static constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
