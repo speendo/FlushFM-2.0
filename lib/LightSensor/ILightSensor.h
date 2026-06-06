@@ -2,6 +2,17 @@
 
 #include <stdint.h>
 
+enum class LightZone : uint8_t {
+    DARK,
+    HYSTERESIS_GAP,
+    BRIGHT
+};
+
+enum class LightState : uint8_t {
+    DARK,
+    BRIGHT
+};
+
 /// Abstract interface for a two-threshold light sensor.
 ///
 /// The sensor exposes two views of the same measurement:
@@ -35,4 +46,10 @@ public:
     /// band that prevents flickering near the switching point.
     /// Returns false if the thresholds are invalid (e.g. brightToDark > darkToBright).
     virtual bool setThresholds(uint16_t brightToDark, uint16_t darkToBright) = 0;
+
+    /// Return the current bright-to-dark threshold.
+    virtual uint16_t getBrightToDarkThreshold() const = 0;
+
+    /// Return the current dark-to-bright threshold.
+    virtual uint16_t getDarkToBrightThreshold() const = 0;
 };

@@ -24,6 +24,8 @@ public:
     LightZone readZone() const override;
     LightState readState() const override;
     bool setThresholds(uint16_t brightToDark, uint16_t darkToBright) override;
+    uint16_t getBrightToDarkThreshold() const override { return brightToDarkThreshold_; }
+    uint16_t getDarkToBrightThreshold() const override { return darkToBrightThreshold_; }
 
 private:
     int pin_;
