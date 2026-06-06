@@ -4,6 +4,7 @@
 
 #include "AudioPlayerESP32.h"
 #include "IAudioPlayer.h"
+#include "LightSensor.h"
 #include "components/audio/audio_callbacks.h"
 #include "core/config.h"
 #include "core/debug.h"
@@ -18,18 +19,21 @@ constexpr const char* kLogSource = "Main";
 }  // namespace
 
 static IAudioPlayer* s_audio = nullptr;
+static LightSensor s_lightSensor(LIGHT_SENSOR_PIN);
 
 Supervisor s_supervisor;
 static BoardInfoComponent s_boardInfo;
 static WiFiComponent s_wifi;
 static AudioRuntimeComponent s_audioRuntime(&s_audio);
 static CliComponent s_cli(&s_audio);
+static LightSensorComponent s_lightSensorComponent(s_lightSensor);
 
 static ISystemComponent* s_components[] = {
     &s_boardInfo,
     &s_wifi,
     &s_audioRuntime,
     &s_cli,
+    &s_lightSensorComponent,
 };
 
 static void stateMachineTask(void* param) {
