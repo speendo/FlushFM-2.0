@@ -100,7 +100,8 @@ inline const char* toString(TransitionStatus status) {
     V(BoardInfo) \
     V(WiFi) \
     V(AudioRuntime) \
-    V(CLI)
+    V(CLI) \
+    V(LightSensor)
 
 #define COMPONENT_ID_ENUM(name) name,
 enum class ComponentID : uint8_t {
