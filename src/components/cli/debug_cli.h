@@ -1,5 +1,4 @@
-// debug_cli.h – Debug-only Serial commands (tasks, loadtest, suspend, resume)
-// The entire module is compiled only when DEBUG_ENABLED is defined.
+// debug_cli.h – Debug-only Serial commands (tasks, loadtest, light sensor)
 #pragma once
 
 #ifdef DEBUG_ENABLED
@@ -8,15 +7,14 @@
 #include <freertos/task.h>
 
 class Supervisor;
+class ILightSensor;
 
 namespace debug_cli {
 
-// Store the audio task handle used by suspend/resume commands.
-// Pass a pointer so the value is picked up after the task is created.
-void init(TaskHandle_t* audioTaskHandle, Supervisor* supervisorV2);
+void init(TaskHandle_t* audioTaskHandle, Supervisor* supervisorV2, ILightSensor* lightSensor = nullptr);
 
-// Attempt to handle cmd+arg as a debug command.
-// Returns true if the command was handled; false if unknown (caller should continue).
+void setLightSensor(ILightSensor* lightSensor);
+
 bool process(const char* cmd, const char* arg);
 
 void printHelp();

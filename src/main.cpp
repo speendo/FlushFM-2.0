@@ -10,6 +10,7 @@
 #include "core/debug.h"
 #include "settings.h"
 #include "supervisor/supervisor.h"
+#include "components/cli/debug_cli.h"
 #include "components/composition/system_components.h"
 
 namespace {
@@ -56,6 +57,10 @@ void setup() {
     for (ISystemComponent* component : s_components) {
         component->setup();
     }
+
+#ifdef DEBUG_ENABLED
+    debug_cli::setLightSensor(&s_lightSensor);
+#endif
 
     xTaskCreatePinnedToCore(
         stateMachineTask,
