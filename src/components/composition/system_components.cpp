@@ -310,3 +310,28 @@ void CliComponent::poll() {
         cli::process(cmdBuf);
     }
 }
+
+#include "LightSensor.h"
+
+LightSensorComponent::LightSensorComponent(ILightSensor& sensor)
+    : ISystemComponent(ComponentID::LightSensor, "LightSensor", true)
+    , sensor_(sensor)
+{}
+
+bool LightSensorComponent::setup() {
+    sensor_.begin();
+    registerWithSupervisor(s_supervisor);
+    return true;
+}
+
+void LightSensorComponent::handleBOOTING()    { completeTransition(TransitionStatus::Completed); }
+void LightSensorComponent::handleSLEEP()      { completeTransition(TransitionStatus::Completed); }
+void LightSensorComponent::handleCONNECTING() { completeTransition(TransitionStatus::Completed); }
+void LightSensorComponent::handleREADY()      { completeTransition(TransitionStatus::Completed); }
+void LightSensorComponent::handleLIVE()       { completeTransition(TransitionStatus::Completed); }
+void LightSensorComponent::handleERROR()      { completeTransition(TransitionStatus::Completed); }
+void LightSensorComponent::handleFATAL()      { completeTransition(TransitionStatus::Completed); }
+
+void LightSensorComponent::poll() {
+    // US-0045: no-op — light-driven state transitions are added in US-0046
+}

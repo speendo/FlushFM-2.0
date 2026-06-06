@@ -192,3 +192,26 @@ public:
 private:
     IAudioPlayer** audio_;
 };
+
+class ILightSensor;
+
+/** @brief Monitors TEMT6000 light sensor. Required for quorum.
+ *  All handleX() complete immediately. poll() reads light state for
+ *  use by US-0046 (light-driven transitions). */
+class LightSensorComponent final : public ISystemComponent {
+public:
+    explicit LightSensorComponent(ILightSensor& sensor);
+    bool setup() override;
+    void handleBOOTING() override;
+    void handleSLEEP() override;
+    void handleCONNECTING() override;
+    void handleREADY() override;
+    void handleLIVE() override;
+    void handleERROR() override;
+    void handleFATAL() override;
+    void poll() override;
+    void onTransitionTimeout(uint32_t) override {}
+
+private:
+    ILightSensor& sensor_;
+};

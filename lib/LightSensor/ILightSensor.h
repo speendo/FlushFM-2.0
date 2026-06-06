@@ -52,4 +52,8 @@ public:
 
     /// Return the current dark-to-bright threshold.
     virtual uint16_t getDarkToBrightThreshold() const = 0;
+
+    /// Initialise the sensor hardware (ADC pin, etc.).
+    /// Must be called before any read operation.
+    virtual bool begin() = 0;
 };

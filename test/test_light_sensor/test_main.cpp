@@ -27,6 +27,8 @@ public:
         return latchedState_;
     }
 
+    bool begin() override { return true; }
+
     bool setThresholds(uint16_t brightToDark, uint16_t darkToBright) override {
         if (brightToDark > darkToBright) return false;
         brightToDarkThreshold_ = brightToDark;
