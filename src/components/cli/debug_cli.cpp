@@ -33,7 +33,7 @@ static void loadtestTask(void* param);
 static void cmdLightThresh(const char* arg);
 static void cmdLightAtten(const char* arg);
 static void cmdLightInterval(const char* arg);
-static void cmdLightShift(const char* arg);
+static void cmdLightEma(const char* arg);
 static void cmdLightStatus();
 
 // ---------------------------------------------------------------------------
@@ -82,8 +82,8 @@ bool process(const char* cmd, const char* arg) {
         } else if (strncmp(arg, "interval ", 9) == 0) {
             cmdLightInterval(arg + 9);
             return true;
-        } else if (strncmp(arg, "shift ", 6) == 0) {
-            cmdLightShift(arg + 6);
+        } else if (strncmp(arg, "ema ", 4) == 0) {
+            cmdLightEma(arg + 4);
             return true;
         } else if (strcmp(arg, "status") == 0) {
             cmdLightStatus();
@@ -99,10 +99,10 @@ void printHelp() {
     Serial.println("  tasks               Print FreeRTOS task list (core, state, stack HWM)");
     Serial.println("  loadtest            Run 5s busy-loop on Core 0, check audio stability");
     Serial.println("  tstatus             Show transition and component lifecycle status");
-    Serial.println("  light thresh <BTD> <DTB>  Set light sensor thresholds (BTD <= DTB required)");
+    Serial.println("  light thresh <n>     Set base threshold for flank detection (>= 0)");
     Serial.println("  light atten <V>      Set ADC attenuation (1.1, 1.5, 2.2, 3.3)");
     Serial.println("  light interval <ms>  Set raw reading interval in milliseconds");
-    Serial.println("  light shift <1-6>    Set filter shift (lower = faster response)");
+    Serial.println("  light ema <fast> <trend>  Set EMA weights (0 < trend/slowDiv < fast/fastDiv)");
     Serial.println("  light status        Continuous light sensor readout (send x to exit)");
 }
 
@@ -117,25 +117,15 @@ static void cmdLightThresh(const char* arg) {
         ERROR_LOG(kLogSource, "Light sensor not available");
         return;
     }
-    const char* space = strchr(arg, ' ');
-    if (!space) {
-        ERROR_LOG(kLogSource, "Usage: light thresh <brightToDark> <darkToBright>");
+    const long thresh = strtol(arg, nullptr, 10);
+    if (thresh < 0) {
+        ERROR_LOG(kLogSource, "Base threshold must be >= 0");
         return;
     }
-
-    const long btd = strtol(arg, nullptr, 10);
-    const long dtb = strtol(space + 1, nullptr, 10);
-
-    if (btd < 0 || btd > UINT16_MAX || dtb < 0 || dtb > UINT16_MAX) {
-        ERROR_LOG(kLogSource, "Thresholds must be 0-65535");
-        return;
-    }
-
-    if (s_lightSensor->setThresholds(static_cast<uint16_t>(btd),
-                                     static_cast<uint16_t>(dtb))) {
-        PROD_LOG(kLogSource, "Thresholds set: BTD=%ld DTB=%ld", btd, dtb);
+    if (s_lightSensor->setBaseThreshold(static_cast<int32_t>(thresh))) {
+        PROD_LOG(kLogSource, "Base threshold set: %ld", thresh);
     } else {
-        ERROR_LOG(kLogSource, "Invalid thresholds: brightToDark (%ld) must be <= darkToBright (%ld)", btd, dtb);
+        ERROR_LOG(kLogSource, "Invalid base threshold: %ld", thresh);
     }
 }
 
@@ -166,18 +156,28 @@ static void cmdLightInterval(const char* arg) {
     PROD_LOG(kLogSource, "Raw reading interval set: %ld ms", ms);
 }
 
-static void cmdLightShift(const char* arg) {
+static void cmdLightEma(const char* arg) {
     if (!s_lightSensor) {
         ERROR_LOG(kLogSource, "Light sensor not available");
         return;
     }
-    const long shift = strtol(arg, nullptr, 10);
-    if (shift < 1 || shift > 6) {
-        ERROR_LOG(kLogSource, "Filter shift must be 1-6");
+    const char* space = strchr(arg, ' ');
+    if (!space) {
+        ERROR_LOG(kLogSource, "Usage: light ema <fastWeight> <trendWeight>");
         return;
     }
-    s_lightSensor->setFilterShift(static_cast<uint8_t>(shift));
-    PROD_LOG(kLogSource, "Filter shift set: %ld", shift);
+    const long fast = strtol(arg, nullptr, 10);
+    const long trend = strtol(space + 1, nullptr, 10);
+    if (fast < 1 || trend < 1) {
+        ERROR_LOG(kLogSource, "EMA weights must be positive");
+        return;
+    }
+    if (s_lightSensor->setEmaWeights(static_cast<int32_t>(fast), static_cast<int32_t>(trend))) {
+        PROD_LOG(kLogSource, "EMA weights set: fast=%ld trend=%ld", fast, trend);
+    } else {
+        ERROR_LOG(kLogSource,
+                  "Invalid EMA weights: need 0 < trend/slowDiv < fast/fastDiv");
+    }
 }
 
 static void cmdLightStatus() {
@@ -187,34 +187,28 @@ static void cmdLightStatus() {
     }
 
     Serial.println("Light sensor status (send 'x' or 'exit' to stop)");
-    Serial.println("  raw | filtered | zone             | state  | BTD   | DTB   | atten | intv | shift");
+    Serial.println("  raw | fastEMA | trendEMA | flank | state | thresh | atten | intv | fastW | trendW");
 
     for (;;) {
+        s_lightSensor->poll();
+
         const uint16_t raw = s_lightSensor->readRaw();
-        const uint16_t filtered = s_lightSensor->readFiltered();
+        const int32_t fastEma = s_lightSensor->getFastEma();
+        const int32_t trendEma = s_lightSensor->getTrendEma();
+        const int32_t flank = s_lightSensor->getFlank();
+        const bool lightOn = s_lightSensor->isLightOn();
 
-        LightZone zone = s_lightSensor->readZone();
-        const char* zoneStr = "?";
-        switch (zone) {
-            case LightZone::DARK:           zoneStr = "DARK";            break;
-            case LightZone::HYSTERESIS_GAP: zoneStr = "HYSTERESIS_GAP";  break;
-            case LightZone::BRIGHT:         zoneStr = "BRIGHT";          break;
-        }
-
-        LightState state = s_lightSensor->readState();
-        const char* stateStr = "?";
-        switch (state) {
-            case LightState::DARK:   stateStr = "DARK";   break;
-            case LightState::BRIGHT: stateStr = "BRIGHT"; break;
-        }
-
-        Serial.printf("  %4u | %8u | %-16s | %-6s | %4u | %4u | %.1f  | %4u | %u\r\n",
-                      raw, filtered, zoneStr, stateStr,
-                      (unsigned)s_lightSensor->getBrightToDarkThreshold(),
-                      (unsigned)s_lightSensor->getDarkToBrightThreshold(),
+        Serial.printf("  %4u | %7ld | %8ld | %5ld | %-5s | %6ld | %.1f  | %4u | %5ld | %6ld\r\n",
+                      raw,
+                      (long)fastEma,
+                      (long)trendEma,
+                      (long)flank,
+                      lightOn ? "ON" : "OFF",
+                      (long)s_lightSensor->getBaseThreshold(),
                       (double)s_lightSensor->getAttenuation(),
                       (unsigned)s_lightSensor->getRawReadingIntervalMs(),
-                      (unsigned)s_lightSensor->getFilterShift());
+                      (long)s_lightSensor->getEmaFastWeight(),
+                      (long)s_lightSensor->getEmaTrendWeight());
 
         while (Serial.available()) {
             String line = Serial.readStringUntil('\n');

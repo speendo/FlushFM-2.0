@@ -2,93 +2,78 @@
 
 #include <stdint.h>
 
-enum class LightZone : uint8_t {
-    DARK,
-    HYSTERESIS_GAP,
-    BRIGHT
-};
-
-enum class LightState : uint8_t {
-    DARK,
-    BRIGHT
-};
-
-/// Abstract interface for a two-threshold light sensor with a configurable
-/// exponential filter, pin-specific ADC attenuation, and a non-blocking sample
-/// interval.
+/// Abstract interface for a dual-EMA edge-detection light sensor.
 ///
-/// Two views of the same measurement:
-///   - readZone()  -> LightZone  (DARK / HYSTERESIS_GAP / BRIGHT)
-///   - readState() -> LightState (DARK / BRIGHT)
+/// Two EMAs run in parallel on every poll():
+///   - Fast EMA tracks the raw signal closely (default 40% weight).
+///   - Trend EMA follows slowly (default 2% weight), representing ambient baseline.
 ///
-/// Both use readFiltered() internally so thresholds are compared against the
-/// smoothed reading. readRaw() is still available for diagnostics.
+/// The difference (flank = FastEMA - TrendEMA) crosses a single base threshold
+/// to trigger on/off state changes. poll() is non-blocking — it samples ADC only
+/// when the configurable interval has elapsed.
 class ILightSensor {
 public:
     virtual ~ILightSensor() = default;
 
-    // -- Thresholds ----------------------------------------------------------
+    // -- Lifecycle -----------------------------------------------------------
 
-    virtual bool setThresholds(uint16_t brightToDark, uint16_t darkToBright) = 0;
-    virtual uint16_t getBrightToDarkThreshold() const = 0;
-    virtual uint16_t getDarkToBrightThreshold() const = 0;
+    /// Seed both EMAs with the first ADC reading and configure hardware.
+    virtual bool begin() = 0;
+
+    // -- Polling (non-blocking) ----------------------------------------------
+
+    /// Sample ADC on interval, update both EMAs, compute flank, update state.
+    /// Returns immediately if interval has not yet elapsed.
+    virtual void poll() = 0;
 
     // -- Raw reading ---------------------------------------------------------
 
     /// Instantaneous, unfiltered ADC reading (0-4095 on ESP32-S3).
     virtual uint16_t readRaw() const = 0;
 
-    // -- Filtered reading ----------------------------------------------------
+    // -- State ---------------------------------------------------------------
 
-    /// Exponentially smoothed reading. Auto-samples a single ADC value when the
-    /// sample interval has elapsed; returns the cached filtered value otherwise.
-    /// Seeds on first call with the current raw reading so no ramp-up from zero.
-    /// Modifies internal filter state (non-const).
-    virtual uint16_t readFiltered() = 0;
+    /// Current latched on/off state (idempotent — does not sample).
+    virtual bool isLightOn() const = 0;
 
-    // -- Zone and state (use readFiltered() internally) -----------------------
+    // -- Base threshold ------------------------------------------------------
 
-    /// Instantaneous light zone based on the FILTERED reading vs thresholds.
-    /// non-const because it calls readFiltered().
-    virtual LightZone readZone() = 0;
+    /// Set the flank amplitude required to trigger a state change.
+    /// Rejects negative values. Default: 150.
+    virtual bool setBaseThreshold(int32_t threshold) = 0;
+    virtual int32_t getBaseThreshold() const = 0;
 
-    /// Latched stable state based on the FILTERED reading vs thresholds.
-    /// non-const because it calls readFiltered().
-    virtual LightState readState() = 0;
+    // -- EMA weights ---------------------------------------------------------
+
+    /// Set fast and trend EMA weights. Each must be > 0 and < its divisor.
+    /// Trend ratio must be slower than fast ratio:
+    ///   trend / trendDivisor < fast / fastDivisor
+    /// Defaults: fast=400, trend=20 (divisors both 1000).
+    virtual bool setEmaWeights(int32_t fastWeight, int32_t trendWeight) = 0;
+    virtual int32_t getEmaFastWeight() const = 0;
+    virtual int32_t getEmaTrendWeight() const = 0;
 
     // -- Attenuation ---------------------------------------------------------
 
-    /// Set the ADC input range for the light sensor pin only.
-    /// Accepted values: 1.1, 1.5, 2.2, 3.3 (float volts).
-    /// Applied to the pin immediately if begin() has already been called.
-    /// Returns false if the value is not one of the valid voltages.
+    /// Set ADC input range for the sensor pin. Valid: 1.1, 1.5, 2.2, 3.3.
     virtual bool setAttenuation(float volts) = 0;
-
-    /// Return the current attenuation in volts.
     virtual float getAttenuation() const = 0;
-
-    // -- Filter parameters ---------------------------------------------------
-
-    /// Set the exponential filter shift factor (1-6).
-    /// Lower = faster response, less smoothing (1: alpha=1/2, tau~140ms @100ms).
-    /// Higher = slower but smoother (4: alpha=1/16, tau~1.6s @100ms).
-    /// Default is 2 (alpha=1/4, tau~350ms -- fast enough for room-light changes).
-    /// Returns false if value is outside 1-6.
-    virtual bool setFilterShift(uint8_t shift) = 0;
-
-    /// Return the current filter shift factor.
-    virtual uint8_t getFilterShift() const = 0;
 
     // -- Sample interval -----------------------------------------------------
 
-    /// Set how often a new ADC sample is taken (milliseconds).
+    /// How often poll() samples a new ADC reading (ms). Default: 20.
     virtual void setRawReadingIntervalMs(uint16_t ms) = 0;
-
-    /// Return the current sample interval in milliseconds.
     virtual uint16_t getRawReadingIntervalMs() const = 0;
 
-    // -- Lifecycle -----------------------------------------------------------
+    // -- Diagnostic (for CLI status display) ---------------------------------
 
-    /// Initialise the sensor hardware (ADC pin, attenuation, filter seed).
-    virtual bool begin() = 0;
+    virtual int32_t getFastEma() const = 0;
+    virtual int32_t getTrendEma() const = 0;
+    virtual int32_t getFlank() const = 0;
+
+    // -- ULP wake (future deep sleep integration) --------------------------
+
+    /// Prepare the sensor for ULP wake monitoring during deep sleep.
+    /// Default implementation is a no-op.
+    virtual void configureUlpWake() {}
 };

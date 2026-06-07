@@ -325,7 +325,12 @@ bool LightSensorComponent::setup() {
 }
 
 void LightSensorComponent::handleBOOTING()    { completeTransition(TransitionStatus::Completed); }
-void LightSensorComponent::handleSLEEP()      { completeTransition(TransitionStatus::Completed); }
+void LightSensorComponent::handleSLEEP() {
+#if LIGHT_SENSOR_WAKE_ENABLED
+    sensor_.configureUlpWake();
+#endif
+    completeTransition(TransitionStatus::Completed);
+}
 void LightSensorComponent::handleCONNECTING() { completeTransition(TransitionStatus::Completed); }
 void LightSensorComponent::handleREADY()      { completeTransition(TransitionStatus::Completed); }
 void LightSensorComponent::handleLIVE()       { completeTransition(TransitionStatus::Completed); }
@@ -333,5 +338,27 @@ void LightSensorComponent::handleERROR()      { completeTransition(TransitionSta
 void LightSensorComponent::handleFATAL()      { completeTransition(TransitionStatus::Completed); }
 
 void LightSensorComponent::poll() {
-    // US-0045: no-op — light-driven state transitions are added in US-0046
+    sensor_.poll();
+
+    const bool current = sensor_.isLightOn();
+
+    if (!baselineEstablished_) {
+        lastLightState_ = current;
+        baselineEstablished_ = true;
+        return;
+    }
+
+    if (current == lastLightState_) return;
+
+    lastLightState_ = current;
+
+    if (current) {
+        requestState(SystemState::LIVE);
+    } else {
+        requestState(SystemState::READY);
+    }
+}
+
+void LightSensorComponent::requestState(SystemState target) {
+    s_supervisor.postStateRequest(target);
 }

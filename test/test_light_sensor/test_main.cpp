@@ -1,83 +1,112 @@
-// test_light_sensor – native unit tests for LightSensor hysteresis, filter,
-// attenuation, and interval logic
+// test_light_sensor – native unit tests for dual-EMA edge-detection light sensor
 #include <stddef.h>
 #include <stdint.h>
 #include <unity.h>
+#include <math.h>
 
 #include "../../lib/LightSensor/ILightSensor.h"
 #include "../../lib/LightSensor/LightSensor.h"
 
 namespace {
 
+// ---------------------------------------------------------------------------
+// MockLightSensor: implements ILightSensor with the real dual-EMA algorithm
+// so tests verify the actual edge-detection math without Arduino hardware.
+// ---------------------------------------------------------------------------
 class MockLightSensor final : public ILightSensor {
 public:
-    void setRaw(uint16_t v) { raw_ = v; }
+    MockLightSensor() {}
 
-    uint16_t readRaw() const override { return raw_; }
+    // Inject a raw value that poll() will use on its next call.
+    void setRaw(int32_t v) { raw_ = v; }
 
-    uint16_t readFiltered() override { return raw_; }
-
-    LightZone readZone() override {
-        const uint16_t val = readFiltered();
-        if (val > darkToBrightThreshold_) return LightZone::BRIGHT;
-        if (val < brightToDarkThreshold_) return LightZone::DARK;
-        return LightZone::HYSTERESIS_GAP;
+    // Run one iteration of the dual-EMA algorithm with a given raw ADC value.
+    void injectRaw(int32_t v) {
+        fastEma_ = ((v * fastWeight_) + (fastEma_ * (LIGHT_SENSOR_FAST_EMA_DIVISOR - fastWeight_)))
+                 / LIGHT_SENSOR_FAST_EMA_DIVISOR;
+        trendEma_ = ((v * trendWeight_) + (trendEma_ * (LIGHT_SENSOR_TREND_EMA_DIVISOR - trendWeight_)))
+                  / LIGHT_SENSOR_TREND_EMA_DIVISOR;
+        int32_t flank = fastEma_ - trendEma_;
+        if (!isLightOn_ && flank > baseThreshold_)
+            isLightOn_ = true;
+        else if (isLightOn_ && flank < -baseThreshold_)
+            isLightOn_ = false;
     }
 
-    LightState readState() override {
-        const LightZone zone = readZone();
-        if (zone == LightZone::BRIGHT) latchedState_ = LightState::BRIGHT;
-        else if (zone == LightZone::DARK) latchedState_ = LightState::DARK;
-        return latchedState_;
-    }
-
-    bool begin() override { return true; }
-
-    bool setThresholds(uint16_t brightToDark, uint16_t darkToBright) override {
-        if (brightToDark > darkToBright) return false;
-        brightToDarkThreshold_ = brightToDark;
-        darkToBrightThreshold_ = darkToBright;
+    // -- ILightSensor --------------------------------------------------------
+    bool begin() override {
+        // Seed both EMAs to the current raw_ value, matching real hardware
+        // where begin() seeds from analogRead(pin_).
+        fastEma_ = raw_;
+        trendEma_ = raw_;
+        // Always start OFF. The component layer (US-0046) records the first
+        // reading as a baseline and does not trigger a transition on it.
+        baseThreshold_ = LIGHT_SENSOR_DEFAULT_BASE_THRESHOLD;
+        fastWeight_ = LIGHT_SENSOR_DEFAULT_FAST_EMA_WEIGHT;
+        trendWeight_ = LIGHT_SENSOR_DEFAULT_TREND_EMA_WEIGHT;
+        attenuationVolts_ = LIGHT_SENSOR_DEFAULT_ATTENUATION;
+        rawReadingIntervalMs_ = LIGHT_SENSOR_DEFAULT_RAW_READING_INTERVAL_MS;
         return true;
     }
 
-    uint16_t getBrightToDarkThreshold() const override { return brightToDarkThreshold_; }
-    uint16_t getDarkToBrightThreshold() const override { return darkToBrightThreshold_; }
+    void poll() override { injectRaw(raw_); }
+
+    uint16_t readRaw() const override { return static_cast<uint16_t>(raw_); }
+    bool isLightOn() const override { return isLightOn_; }
+
+    bool setBaseThreshold(int32_t t) override {
+        if (t < 0) return false;
+        baseThreshold_ = t;
+        return true;
+    }
+    int32_t getBaseThreshold() const override { return baseThreshold_; }
+
+    bool setEmaWeights(int32_t fast, int32_t trend) override {
+        if (fast <= 0 || fast >= LIGHT_SENSOR_FAST_EMA_DIVISOR) return false;
+        if (trend <= 0 || trend >= LIGHT_SENSOR_TREND_EMA_DIVISOR) return false;
+        if (trend * LIGHT_SENSOR_FAST_EMA_DIVISOR >= fast * LIGHT_SENSOR_TREND_EMA_DIVISOR) return false;
+        fastWeight_ = fast;
+        trendWeight_ = trend;
+        return true;
+    }
+    int32_t getEmaFastWeight() const override { return fastWeight_; }
+    int32_t getEmaTrendWeight() const override { return trendWeight_; }
 
     bool setAttenuation(float volts) override {
         const float valid[] = {1.1f, 1.5f, 2.2f, 3.3f};
         for (float v : valid) {
-            if (volts > v - 0.05f && volts < v + 0.05f) {
-                attenuation_ = v;
+            if (fabsf(volts - v) < 0.05f) {
+                attenuationVolts_ = v;
                 return true;
             }
         }
         return false;
     }
-    float getAttenuation() const override { return attenuation_; }
+    float getAttenuation() const override { return attenuationVolts_; }
 
-    bool setFilterShift(uint8_t shift) override {
-        if (shift < 1 || shift > 6) return false;
-        shift_ = shift;
-        return true;
-    }
-    uint8_t getFilterShift() const override { return shift_; }
+    void setRawReadingIntervalMs(uint16_t ms) override { rawReadingIntervalMs_ = ms; }
+    uint16_t getRawReadingIntervalMs() const override { return rawReadingIntervalMs_; }
 
-    void setRawReadingIntervalMs(uint16_t ms) override { interval_ = ms; }
-    uint16_t getRawReadingIntervalMs() const override { return interval_; }
+    int32_t getFastEma() const override { return fastEma_; }
+    int32_t getTrendEma() const override { return trendEma_; }
+    int32_t getFlank() const override { return fastEma_ - trendEma_; }
 
-    uint16_t raw_ = 0;
-    uint16_t brightToDarkThreshold_ = 1200;
-    uint16_t darkToBrightThreshold_ = 2800;
-    LightState latchedState_ = LightState::DARK;
-    float attenuation_ = 3.3f;
-    uint8_t shift_ = 2;
-    uint16_t interval_ = 20;
+    // Public state for test injection
+    int32_t raw_ = 0;
+    int32_t fastEma_ = 0;
+    int32_t trendEma_ = 0;
+    int32_t baseThreshold_ = 0;
+    int32_t fastWeight_ = 0;
+    int32_t trendWeight_ = 0;
+    bool isLightOn_ = false;
+    float attenuationVolts_ = 3.3f;
+    uint16_t rawReadingIntervalMs_ = 20;
 };
 
 MockLightSensor sensor;
 
 // ---------------------------------------------------------------------------
-// readRaw (unchanged from US-0045)
+// Ported tests (unchanged contract)
 // ---------------------------------------------------------------------------
 
 void test_readRaw_returns_injected_value() {
@@ -89,113 +118,13 @@ void test_readRaw_returns_injected_value() {
     TEST_ASSERT_EQUAL_UINT16(0, sensor.readRaw());
 }
 
-// ---------------------------------------------------------------------------
-// readZone (now uses readFiltered -> same test but via mock filtered path)
-// ---------------------------------------------------------------------------
-
-void test_readZone_dark_below_brightToDark() {
-    sensor.setThresholds(1200, 2800);
-    sensor.setRaw(800);
-    TEST_ASSERT_EQUAL(static_cast<int>(LightZone::DARK),
-                      static_cast<int>(sensor.readZone()));
-}
-
-void test_readZone_bright_above_darkToBright() {
-    sensor.setThresholds(1200, 2800);
-    sensor.setRaw(3000);
-    TEST_ASSERT_EQUAL(static_cast<int>(LightZone::BRIGHT),
-                      static_cast<int>(sensor.readZone()));
-}
-
-void test_readZone_hysteresis_gap_between_thresholds() {
-    sensor.setThresholds(1200, 2800);
-    sensor.setRaw(2000);
-    TEST_ASSERT_EQUAL(static_cast<int>(LightZone::HYSTERESIS_GAP),
-                      static_cast<int>(sensor.readZone()));
-}
-
-void test_readZone_dark_on_boundary_brightToDark() {
-    sensor.setThresholds(1200, 2800);
-    sensor.setRaw(1199);
-    TEST_ASSERT_EQUAL(static_cast<int>(LightZone::DARK),
-                      static_cast<int>(sensor.readZone()));
-}
-
-void test_readZone_bright_on_boundary_darkToBright() {
-    sensor.setThresholds(1200, 2800);
-    sensor.setRaw(2801);
-    TEST_ASSERT_EQUAL(static_cast<int>(LightZone::BRIGHT),
-                      static_cast<int>(sensor.readZone()));
-}
-
-// ---------------------------------------------------------------------------
-// readState (now uses filtered readZone)
-// ---------------------------------------------------------------------------
-
-void test_readState_latches_to_bright_and_holds_through_gap() {
-    sensor.setThresholds(1200, 2800);
-
-    sensor.setRaw(500);
-    TEST_ASSERT_EQUAL(static_cast<int>(LightState::DARK), static_cast<int>(sensor.readState()));
-
-    sensor.setRaw(3000);
-    TEST_ASSERT_EQUAL(static_cast<int>(LightState::BRIGHT), static_cast<int>(sensor.readState()));
-
-    sensor.setRaw(2000);
-    TEST_ASSERT_EQUAL(static_cast<int>(LightState::BRIGHT), static_cast<int>(sensor.readState()));
-}
-
-void test_readState_latches_to_dark_and_holds_through_gap() {
-    sensor.setThresholds(1200, 2800);
-
-    sensor.setRaw(3000);
-    TEST_ASSERT_EQUAL(static_cast<int>(LightState::BRIGHT), static_cast<int>(sensor.readState()));
-
-    sensor.setRaw(500);
-    TEST_ASSERT_EQUAL(static_cast<int>(LightState::DARK), static_cast<int>(sensor.readState()));
-
-    sensor.setRaw(2000);
-    TEST_ASSERT_EQUAL(static_cast<int>(LightState::DARK), static_cast<int>(sensor.readState()));
-}
-
-void test_readState_default_latch_is_dark() {
-    MockLightSensor freshSensor;
-    freshSensor.setThresholds(1200, 2800);
-    freshSensor.setRaw(2000);
-    TEST_ASSERT_EQUAL(static_cast<int>(LightState::DARK),
-                      static_cast<int>(freshSensor.readState()));
-}
-
-// ---------------------------------------------------------------------------
-// setThresholds (unchanged)
-// ---------------------------------------------------------------------------
-
-void test_setThresholds_rejects_btd_greater_than_dtb() {
-    TEST_ASSERT_FALSE(sensor.setThresholds(3000, 2000));
-}
-
-void test_setThresholds_accepts_btd_equal_to_dtb() {
-    TEST_ASSERT_TRUE(sensor.setThresholds(2000, 2000));
-}
-
-void test_setThresholds_accepts_btd_less_than_dtb() {
-    TEST_ASSERT_TRUE(sensor.setThresholds(1000, 3000));
-}
-
-// ---------------------------------------------------------------------------
-// setAttenuation
-// ---------------------------------------------------------------------------
-
 void test_setAttenuation_accepts_valid_values() {
     TEST_ASSERT_TRUE(sensor.setAttenuation(1.1f));
     TEST_ASSERT_EQUAL_FLOAT(1.1f, sensor.getAttenuation());
-
     TEST_ASSERT_TRUE(sensor.setAttenuation(1.5f));
     TEST_ASSERT_EQUAL_FLOAT(1.5f, sensor.getAttenuation());
-
     TEST_ASSERT_TRUE(sensor.setAttenuation(2.2f));
     TEST_ASSERT_EQUAL_FLOAT(2.2f, sensor.getAttenuation());
-
     TEST_ASSERT_TRUE(sensor.setAttenuation(3.3f));
     TEST_ASSERT_EQUAL_FLOAT(3.3f, sensor.getAttenuation());
 }
@@ -209,27 +138,6 @@ void test_setAttenuation_rejects_invalid_values() {
     TEST_ASSERT_FALSE(sensor.setAttenuation(5.0f));
 }
 
-// ---------------------------------------------------------------------------
-// setFilterShift
-// ---------------------------------------------------------------------------
-
-void test_setFilterShift_accepts_valid_range() {
-    for (uint8_t s = 1; s <= 6; ++s) {
-        TEST_ASSERT_TRUE(sensor.setFilterShift(s));
-        TEST_ASSERT_EQUAL_UINT8(s, sensor.getFilterShift());
-    }
-}
-
-void test_setFilterShift_rejects_out_of_range() {
-    TEST_ASSERT_FALSE(sensor.setFilterShift(0));
-    TEST_ASSERT_FALSE(sensor.setFilterShift(7));
-    TEST_ASSERT_FALSE(sensor.setFilterShift(255));
-}
-
-// ---------------------------------------------------------------------------
-// sample interval
-// ---------------------------------------------------------------------------
-
 void test_raw_reading_interval_default_and_set() {
     TEST_ASSERT_EQUAL_UINT16(20, sensor.getRawReadingIntervalMs());
     sensor.setRawReadingIntervalMs(250);
@@ -237,112 +145,268 @@ void test_raw_reading_interval_default_and_set() {
 }
 
 // ---------------------------------------------------------------------------
-// Exponential filter math — tests the formula directly (not via mock)
-// Formula: accum = accum - (accum >> shift) + (raw << shift)
-// Output:  accum >> (shift * 2)
+// Lifecycle tests
 // ---------------------------------------------------------------------------
 
-void test_filter_gain_is_unity_at_steady_state() {
-    // Feed constant raw=1000 for 50 iterations at shift=2 (default)
-    // After 50 iterations (~12τ, τ=4) output must converge to within 1 of 1000
-    uint32_t accum = 0;
-    for (int i = 0; i < 50; i++) {
-        accum = accum - (accum >> 2) + (1000 << 2);
-    }
-    uint16_t output = static_cast<uint16_t>(accum >> 4);
-    TEST_ASSERT_UINT16_WITHIN(1, 1000, output);
+void test_begin_resets_state_and_emas() {
+    MockLightSensor s;
+    s.begin();
+    TEST_ASSERT_EQUAL_INT32(0, s.getFastEma());
+    TEST_ASSERT_EQUAL_INT32(0, s.getTrendEma());
+    TEST_ASSERT_FALSE(s.isLightOn());
+    TEST_ASSERT_EQUAL_INT32(LIGHT_SENSOR_DEFAULT_BASE_THRESHOLD, s.getBaseThreshold());
+    TEST_ASSERT_EQUAL_INT32(LIGHT_SENSOR_DEFAULT_FAST_EMA_WEIGHT, s.getEmaFastWeight());
+    TEST_ASSERT_EQUAL_INT32(LIGHT_SENSOR_DEFAULT_TREND_EMA_WEIGHT, s.getEmaTrendWeight());
 }
 
-void test_filter_zero_input_converges_to_zero() {
-    uint32_t accum = 2000;  // start non-zero
-    for (int i = 0; i < 50; i++) {
-        accum = accum - (accum >> 2) + (0 << 2);
-    }
-    uint16_t output = static_cast<uint16_t>(accum >> 4);
-    TEST_ASSERT_EQUAL_UINT16(0, output);
+void test_default_latch_is_off() {
+    MockLightSensor s;
+    s.begin();
+    TEST_ASSERT_FALSE(s.isLightOn());
 }
 
-void test_filter_fullscale_input_converges() {
-    uint32_t accum = 0;
-    for (int i = 0; i < 50; i++) {
-        accum = accum - (accum >> 2) + (4095 << 2);
-    }
-    uint16_t output = static_cast<uint16_t>(accum >> 4);
-    TEST_ASSERT_UINT16_WITHIN(2, 4095, output);
+void test_poll_applies_ema_math() {
+    MockLightSensor s;
+    s.begin();
+    s.setRaw(1500);
+    // One poll with raw=1500, default weights (400, 20), EMAs start at 0:
+    //   fastEma = (1500*400 + 0*600) / 1000 = 600
+    //   trendEma = (1500*20 + 0*980) / 1000 = 30
+    //   flank = 600 - 30 = 570
+    s.poll();
+    TEST_ASSERT_EQUAL_INT32(600, s.getFastEma());
+    TEST_ASSERT_EQUAL_INT32(30, s.getTrendEma());
+    TEST_ASSERT_EQUAL_INT32(570, s.getFlank());
 }
 
-void test_filter_all_shifts_converge_correctly() {
-    for (uint8_t s = 1; s <= 6; ++s) {
-        uint32_t accum = 0;
-        // 50 << s iterations gives ~8τ at every shift value
-        const int iterations = 50 << s;
-        for (int i = 0; i < iterations; i++) {
-            accum = accum - (accum >> s) + (2000 << s);
-        }
-        uint16_t output = static_cast<uint16_t>(accum >> (s * 2));
-        // At 8τ, residual error is e^-8 ≈ 0.03%, so ±1 is safe for raw=2000
-        TEST_ASSERT_UINT16_WITHIN(1, 2000, output);
+// ---------------------------------------------------------------------------
+// EMA convergence tests
+// ---------------------------------------------------------------------------
+
+void test_emas_converge_to_constant_input() {
+    MockLightSensor s;
+    s.setRaw(2000);  // Seed EMAs so begin() starts both at 2000
+    s.begin();
+    s.setEmaWeights(400, 20);
+    for (int i = 0; i < 100; i++) {
+        s.injectRaw(2000);
     }
+    // Both EMAs should stay at 2000 (steady-state stability)
+    TEST_ASSERT_EQUAL_INT32(2000, s.getFastEma());
+    TEST_ASSERT_EQUAL_INT32(2000, s.getTrendEma());
 }
 
-void test_filter_no_overshoot_on_step_up() {
-    uint32_t accum = 0;
-    // Settle at 0 for 20 iterations
-    for (int i = 0; i < 20; i++) {
-        accum = accum - (accum >> 2) + (0 << 2);
+void test_flank_near_zero_at_steady_state() {
+    MockLightSensor s;
+    s.setRaw(1500);  // Seed EMAs so both start at 1500
+    s.begin();
+    s.setEmaWeights(400, 20);
+    for (int i = 0; i < 100; i++) {
+        s.injectRaw(1500);
     }
-    // Step up to 3000 – verify output never exceeds 3000
-    for (int i = 0; i < 10; i++) {
-        accum = accum - (accum >> 2) + (3000 << 2);
-        uint16_t output = static_cast<uint16_t>(accum >> 4);
-        TEST_ASSERT_TRUE_MESSAGE(output <= 3000, "Filter overshoot on step up");
-    }
+    // With both EMAs seeded to 1500 and constant input, flank stays 0
+    TEST_ASSERT_EQUAL_INT32(0, s.getFlank());
 }
 
-void test_filter_output_stays_in_adc_range() {
-    uint32_t accum = 0;
-    // Ramp to 4095, output must stay ≤4095
-    for (int i = 0; i < 50; i++) {
-        accum = accum - (accum >> 2) + (4095 << 2);
-        uint16_t output = static_cast<uint16_t>(accum >> 4);
-        TEST_ASSERT_TRUE_MESSAGE(output <= 4095, "Output exceeded 4095 on up-ramp");
+// ---------------------------------------------------------------------------
+// Edge detection tests
+// ---------------------------------------------------------------------------
+
+void test_light_turns_on_when_flank_exceeds_threshold() {
+    MockLightSensor s;
+    s.setRaw(500);  // Seed EMAs to ambient dark level
+    s.begin();
+    s.setBaseThreshold(100);
+    s.setEmaWeights(400, 20);
+    // Confirm stable at dark (both EMAs start at 500, flank=0)
+    TEST_ASSERT_FALSE(s.isLightOn());
+    // Step to 2000: flank = 570 > 100 -> on
+    s.injectRaw(2000);
+    TEST_ASSERT_TRUE(s.isLightOn());
+}
+
+void test_light_turns_off_when_flank_below_negative_threshold() {
+    MockLightSensor s;
+    s.setRaw(500);   // Seed EMAs to dark
+    s.begin();
+    s.setBaseThreshold(100);
+    s.setEmaWeights(400, 20);
+    // Step up to 2000 to trigger ON state
+    s.injectRaw(2000);  // flank = 570 > 100 -> ON
+    TEST_ASSERT_TRUE(s.isLightOn());
+    // Settle at 2000 so trend EMA approaches steady state
+    for (int i = 0; i < 500; i++) s.injectRaw(2000);
+    // Step to 500: fast drops to ~1400, trend lags at ~1921
+    // flank = -521 < -100 -> off
+    s.injectRaw(500);
+    TEST_ASSERT_FALSE(s.isLightOn());
+}
+
+void test_light_stays_on_with_subthreshold_change() {
+    MockLightSensor s;
+    s.setRaw(500);   // Seed EMAs to dark
+    s.begin();
+    s.setBaseThreshold(200);
+    s.setEmaWeights(400, 20);
+    // Step to 2000 to trigger ON state
+    s.injectRaw(2000);
+    TEST_ASSERT_TRUE(s.isLightOn());
+    // Settle so EMAs approach 2000
+    for (int i = 0; i < 500; i++) s.injectRaw(2000);
+    // Small step down from 2000 -> 1800: flank ~ -76 which is > -200 -> stays on
+    s.injectRaw(1800);
+    TEST_ASSERT_TRUE(s.isLightOn());
+}
+
+void test_light_stays_off_with_subthreshold_change() {
+    MockLightSensor s;
+    s.setRaw(500);  // Seed EMAs to dark level
+    s.begin();
+    s.setBaseThreshold(200);
+    s.setEmaWeights(400, 20);
+    for (int i = 0; i < 10; i++) s.injectRaw(500);
+    TEST_ASSERT_FALSE(s.isLightOn());
+    // Small step up: flank ~ 38 which is < 200 -> stays off
+    s.injectRaw(600);
+    TEST_ASSERT_FALSE(s.isLightOn());
+}
+
+void test_slow_ramp_does_not_trigger() {
+    // Gradual changes (clouds, sunset) should NOT trigger state change
+    // because both EMAs track together and flank stays small.
+    // Ramp from 1000 to 2000 over 2000 iterations at avg +0.5/iteration.
+    // At trend alpha=2% (tau=50), steady-state lag ≈ 0.5*50 = 25.
+    // flank ≈ 25 which is < 150 -> no trigger.
+    MockLightSensor s;
+    s.setRaw(1000);  // Seed EMAs to ambient
+    s.begin();
+    s.setBaseThreshold(150);
+    s.setEmaWeights(400, 20);
+    for (int i = 0; i < 10; i++) s.injectRaw(1000);
+    TEST_ASSERT_FALSE(s.isLightOn());
+    // +1 every 2 iterations = avg +0.5/iteration
+    int32_t v = 1000;
+    for (int i = 0; i < 2000; i++) {
+        if (i % 2 == 0) v++;
+        s.injectRaw(v);
     }
-    // Drop to 0, output must stay ≥0 (unsigned so automatic) and ≤4095
-    for (int i = 0; i < 50; i++) {
-        accum = accum - (accum >> 2) + (0 << 2);
-        uint16_t output = static_cast<uint16_t>(accum >> 4);
-        TEST_ASSERT_TRUE_MESSAGE(output <= 4095, "Output exceeded 4095 on down-ramp");
-    }
+    TEST_ASSERT_FALSE(s.isLightOn());
+}
+
+// ---------------------------------------------------------------------------
+// setBaseThreshold validation
+// ---------------------------------------------------------------------------
+
+void test_setBaseThreshold_rejects_negative() {
+    TEST_ASSERT_FALSE(sensor.setBaseThreshold(-1));
+}
+
+void test_setBaseThreshold_accepts_zero() {
+    TEST_ASSERT_TRUE(sensor.setBaseThreshold(0));
+    TEST_ASSERT_EQUAL_INT32(0, sensor.getBaseThreshold());
+}
+
+void test_setBaseThreshold_accepts_positive() {
+    TEST_ASSERT_TRUE(sensor.setBaseThreshold(300));
+    TEST_ASSERT_EQUAL_INT32(300, sensor.getBaseThreshold());
+}
+
+// ---------------------------------------------------------------------------
+// setEmaWeights validation
+// ---------------------------------------------------------------------------
+
+void test_setEmaWeights_rejects_zero_or_negative() {
+    TEST_ASSERT_FALSE(sensor.setEmaWeights(0, 20));
+    TEST_ASSERT_FALSE(sensor.setEmaWeights(400, 0));
+    TEST_ASSERT_FALSE(sensor.setEmaWeights(-1, 20));
+    TEST_ASSERT_FALSE(sensor.setEmaWeights(400, -1));
+}
+
+void test_setEmaWeights_rejects_at_or_above_divisor() {
+    TEST_ASSERT_FALSE(sensor.setEmaWeights(LIGHT_SENSOR_FAST_EMA_DIVISOR, 20));
+    TEST_ASSERT_FALSE(sensor.setEmaWeights(400, LIGHT_SENSOR_TREND_EMA_DIVISOR));
+}
+
+void test_setEmaWeights_rejects_trend_faster_than_fast() {
+    TEST_ASSERT_FALSE(sensor.setEmaWeights(20, 400));
+}
+
+void test_setEmaWeights_rejects_equal_ratios() {
+    TEST_ASSERT_FALSE(sensor.setEmaWeights(200, 200));
+}
+
+void test_setEmaWeights_accepts_trend_slower_than_fast() {
+    TEST_ASSERT_TRUE(sensor.setEmaWeights(400, 20));
+    TEST_ASSERT_EQUAL_INT32(400, sensor.getEmaFastWeight());
+    TEST_ASSERT_EQUAL_INT32(20, sensor.getEmaTrendWeight());
+}
+
+void test_setEmaWeights_accepts_different_divisors() {
+    TEST_ASSERT_TRUE(sensor.setEmaWeights(500, 10));
+    TEST_ASSERT_EQUAL_INT32(500, sensor.getEmaFastWeight());
+    TEST_ASSERT_EQUAL_INT32(10, sensor.getEmaTrendWeight());
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostic getters
+// ---------------------------------------------------------------------------
+
+void test_diagnostic_getters_return_internal_state() {
+    MockLightSensor s;
+    s.begin();
+    s.setEmaWeights(400, 20);
+    s.injectRaw(1000);
+    TEST_ASSERT_EQUAL_INT32(400, s.getFastEma());
+    TEST_ASSERT_EQUAL_INT32(20, s.getTrendEma());
+    TEST_ASSERT_EQUAL_INT32(380, s.getFlank());
 }
 
 }  // namespace
 
+// ---------------------------------------------------------------------------
+// Test runner
+// ---------------------------------------------------------------------------
+
 int main() {
     UNITY_BEGIN();
 
+    // Ported from old tests
     RUN_TEST(test_readRaw_returns_injected_value);
-    RUN_TEST(test_readZone_dark_below_brightToDark);
-    RUN_TEST(test_readZone_bright_above_darkToBright);
-    RUN_TEST(test_readZone_hysteresis_gap_between_thresholds);
-    RUN_TEST(test_readZone_dark_on_boundary_brightToDark);
-    RUN_TEST(test_readZone_bright_on_boundary_darkToBright);
-    RUN_TEST(test_readState_latches_to_bright_and_holds_through_gap);
-    RUN_TEST(test_readState_latches_to_dark_and_holds_through_gap);
-    RUN_TEST(test_readState_default_latch_is_dark);
-    RUN_TEST(test_setThresholds_rejects_btd_greater_than_dtb);
-    RUN_TEST(test_setThresholds_accepts_btd_equal_to_dtb);
-    RUN_TEST(test_setThresholds_accepts_btd_less_than_dtb);
     RUN_TEST(test_setAttenuation_accepts_valid_values);
     RUN_TEST(test_setAttenuation_rejects_invalid_values);
-    RUN_TEST(test_setFilterShift_accepts_valid_range);
-    RUN_TEST(test_setFilterShift_rejects_out_of_range);
     RUN_TEST(test_raw_reading_interval_default_and_set);
-    RUN_TEST(test_filter_gain_is_unity_at_steady_state);
-    RUN_TEST(test_filter_zero_input_converges_to_zero);
-    RUN_TEST(test_filter_fullscale_input_converges);
-    RUN_TEST(test_filter_all_shifts_converge_correctly);
-    RUN_TEST(test_filter_no_overshoot_on_step_up);
-    RUN_TEST(test_filter_output_stays_in_adc_range);
+
+    // Lifecycle
+    RUN_TEST(test_begin_resets_state_and_emas);
+    RUN_TEST(test_default_latch_is_off);
+    RUN_TEST(test_poll_applies_ema_math);
+
+    // EMA convergence
+    RUN_TEST(test_emas_converge_to_constant_input);
+    RUN_TEST(test_flank_near_zero_at_steady_state);
+
+    // Edge detection
+    RUN_TEST(test_light_turns_on_when_flank_exceeds_threshold);
+    RUN_TEST(test_light_turns_off_when_flank_below_negative_threshold);
+    RUN_TEST(test_light_stays_on_with_subthreshold_change);
+    RUN_TEST(test_light_stays_off_with_subthreshold_change);
+    RUN_TEST(test_slow_ramp_does_not_trigger);
+
+    // setBaseThreshold validation
+    RUN_TEST(test_setBaseThreshold_rejects_negative);
+    RUN_TEST(test_setBaseThreshold_accepts_zero);
+    RUN_TEST(test_setBaseThreshold_accepts_positive);
+
+    // setEmaWeights validation
+    RUN_TEST(test_setEmaWeights_rejects_zero_or_negative);
+    RUN_TEST(test_setEmaWeights_rejects_at_or_above_divisor);
+    RUN_TEST(test_setEmaWeights_rejects_trend_faster_than_fast);
+    RUN_TEST(test_setEmaWeights_rejects_equal_ratios);
+    RUN_TEST(test_setEmaWeights_accepts_trend_slower_than_fast);
+    RUN_TEST(test_setEmaWeights_accepts_different_divisors);
+
+    // Diagnostic
+    RUN_TEST(test_diagnostic_getters_return_internal_state);
 
     return UNITY_END();
 }

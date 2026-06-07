@@ -198,7 +198,7 @@ class ILightSensor;
 /** @brief Monitors TEMT6000 light sensor. Required for quorum.
  *  All handleX() complete immediately. poll() reads light state for
  *  use by US-0046 (light-driven transitions). */
-class LightSensorComponent final : public ISystemComponent {
+class LightSensorComponent : public ISystemComponent {
 public:
     explicit LightSensorComponent(ILightSensor& sensor);
     bool setup() override;
@@ -212,6 +212,12 @@ public:
     void poll() override;
     void onTransitionTimeout(uint32_t) override {}
 
-private:
+protected:
     ILightSensor& sensor_;
+    bool lastLightState_      = false;
+    bool baselineEstablished_ = false;
+
+    /// Post a state request to the Supervisor. Factored out so test
+    /// subclasses can override it for verification.
+    virtual void requestState(SystemState target);
 };

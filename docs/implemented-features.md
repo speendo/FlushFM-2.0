@@ -72,9 +72,21 @@
 - Callback message mapping is centralized in a small hardware-free helper (`lib/audio_callback_logging/`) to support native unit tests
 - Production builds remain silent for callback diagnostics, while debug builds keep full callback visibility
 
+## Light Sensor (TEMT6000)
+
+- Light sensor library (`lib/LightSensor/`) with a dual-EMA edge-detection algorithm
+- Two exponential moving averages (fast default 40%, trend default 2%) run in parallel on each ADC sample
+- The difference (flank = FastEMA - TrendEMA) crosses a single configurable threshold (default 150) to detect on/off edges
+- Detects *changes* in ambient brightness, not absolute levels — distinguishes artificial light toggles from natural ambient shifts (clouds, day/night)
+- `poll()` is non-blocking with a configurable sample interval (default 20ms)
+- No arrays, no floating point in the hot path, zero heap allocation
+- Runtime-configurable parameters via CLI: base threshold, EMA weights, attenuation, interval
+- All parameters have typed getters ready for NVS persistence
+- 24 native unit tests covering EMA convergence, edge detection, threshold validation, weight validation, slow-ramp rejection
+- Commands: `light thresh <n>`, `light ema <fast> <trend>`, `light atten <V>`, `light interval <ms>`, `light status`
+
 ## Planned Features
 
 - Station and track info on ILI9341 display
-- Automatic on/off via TEMT6000 light sensor
 - LED state visualization mapped to system state (US-0008)
 - Web configuration UI (ESPAsyncWebServer + LittleFS)

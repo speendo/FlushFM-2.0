@@ -37,7 +37,7 @@ private:
     int     _bck;
     int     _ws;
     int     _dout;
-    uint8_t _volume = 0;
+    uint8_t _volume = 255;
     RuntimeState _runtimeState = RuntimeState::SLEEP;
     std::unique_ptr<Audio> _audio;
 };
