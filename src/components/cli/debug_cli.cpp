@@ -31,6 +31,9 @@ static void printTaskList();
 static void printTransitionStatus();
 static void loadtestTask(void* param);
 static void cmdLightThresh(const char* arg);
+static void cmdLightAtten(const char* arg);
+static void cmdLightInterval(const char* arg);
+static void cmdLightShift(const char* arg);
 static void cmdLightStatus();
 
 // ---------------------------------------------------------------------------
@@ -73,6 +76,15 @@ bool process(const char* cmd, const char* arg) {
         if (strncmp(arg, "thresh ", 7) == 0) {
             cmdLightThresh(arg + 7);
             return true;
+        } else if (strncmp(arg, "atten ", 6) == 0) {
+            cmdLightAtten(arg + 6);
+            return true;
+        } else if (strncmp(arg, "interval ", 9) == 0) {
+            cmdLightInterval(arg + 9);
+            return true;
+        } else if (strncmp(arg, "shift ", 6) == 0) {
+            cmdLightShift(arg + 6);
+            return true;
         } else if (strcmp(arg, "status") == 0) {
             cmdLightStatus();
             return true;
@@ -88,6 +100,9 @@ void printHelp() {
     Serial.println("  loadtest            Run 5s busy-loop on Core 0, check audio stability");
     Serial.println("  tstatus             Show transition and component lifecycle status");
     Serial.println("  light thresh <BTD> <DTB>  Set light sensor thresholds (BTD <= DTB required)");
+    Serial.println("  light atten <V>      Set ADC attenuation (1.1, 1.5, 2.2, 3.3)");
+    Serial.println("  light interval <ms>  Set raw reading interval in milliseconds");
+    Serial.println("  light shift <1-6>    Set filter shift (lower = faster response)");
     Serial.println("  light status        Continuous light sensor readout (send x to exit)");
 }
 
@@ -124,6 +139,47 @@ static void cmdLightThresh(const char* arg) {
     }
 }
 
+static void cmdLightAtten(const char* arg) {
+    if (!s_lightSensor) {
+        ERROR_LOG(kLogSource, "Light sensor not available");
+        return;
+    }
+    float volts = atof(arg);
+    if (s_lightSensor->setAttenuation(volts)) {
+        PROD_LOG(kLogSource, "Attenuation set: %.1f V", (double)s_lightSensor->getAttenuation());
+    } else {
+        ERROR_LOG(kLogSource, "Invalid attenuation: %.1f (valid: 1.1, 1.5, 2.2, 3.3)", (double)volts);
+    }
+}
+
+static void cmdLightInterval(const char* arg) {
+    if (!s_lightSensor) {
+        ERROR_LOG(kLogSource, "Light sensor not available");
+        return;
+    }
+    const long ms = strtol(arg, nullptr, 10);
+    if (ms < 1 || ms > UINT16_MAX) {
+        ERROR_LOG(kLogSource, "Raw reading interval must be 1-65535 ms");
+        return;
+    }
+    s_lightSensor->setRawReadingIntervalMs(static_cast<uint16_t>(ms));
+    PROD_LOG(kLogSource, "Raw reading interval set: %ld ms", ms);
+}
+
+static void cmdLightShift(const char* arg) {
+    if (!s_lightSensor) {
+        ERROR_LOG(kLogSource, "Light sensor not available");
+        return;
+    }
+    const long shift = strtol(arg, nullptr, 10);
+    if (shift < 1 || shift > 6) {
+        ERROR_LOG(kLogSource, "Filter shift must be 1-6");
+        return;
+    }
+    s_lightSensor->setFilterShift(static_cast<uint8_t>(shift));
+    PROD_LOG(kLogSource, "Filter shift set: %ld", shift);
+}
+
 static void cmdLightStatus() {
     if (!s_lightSensor) {
         ERROR_LOG(kLogSource, "Light sensor not available");
@@ -131,10 +187,11 @@ static void cmdLightStatus() {
     }
 
     Serial.println("Light sensor status (send 'x' or 'exit' to stop)");
-    Serial.println("  raw | zone             | state  | BTD   | DTB");
+    Serial.println("  raw | filtered | zone             | state  | BTD   | DTB   | atten | intv | shift");
 
     for (;;) {
         const uint16_t raw = s_lightSensor->readRaw();
+        const uint16_t filtered = s_lightSensor->readFiltered();
 
         LightZone zone = s_lightSensor->readZone();
         const char* zoneStr = "?";
@@ -151,10 +208,13 @@ static void cmdLightStatus() {
             case LightState::BRIGHT: stateStr = "BRIGHT"; break;
         }
 
-        Serial.printf("  %4u | %-16s | %-6s | %4u | %4u\r\n",
-                      raw, zoneStr, stateStr,
+        Serial.printf("  %4u | %8u | %-16s | %-6s | %4u | %4u | %.1f  | %4u | %u\r\n",
+                      raw, filtered, zoneStr, stateStr,
                       (unsigned)s_lightSensor->getBrightToDarkThreshold(),
-                      (unsigned)s_lightSensor->getDarkToBrightThreshold());
+                      (unsigned)s_lightSensor->getDarkToBrightThreshold(),
+                      (double)s_lightSensor->getAttenuation(),
+                      (unsigned)s_lightSensor->getRawReadingIntervalMs(),
+                      (unsigned)s_lightSensor->getFilterShift());
 
         while (Serial.available()) {
             String line = Serial.readStringUntil('\n');
