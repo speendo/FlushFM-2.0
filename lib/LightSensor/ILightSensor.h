@@ -13,47 +13,82 @@ enum class LightState : uint8_t {
     BRIGHT
 };
 
-/// Abstract interface for a two-threshold light sensor.
+/// Abstract interface for a two-threshold light sensor with a configurable
+/// exponential filter, pin-specific ADC attenuation, and a non-blocking sample
+/// interval.
 ///
-/// The sensor exposes two views of the same measurement:
-///   - readZone()  → LightZone  (DARK / HYSTERESIS_GAP / BRIGHT)
-///   - readState() → LightState (DARK / BRIGHT)
+/// Two views of the same measurement:
+///   - readZone()  -> LightZone  (DARK / HYSTERESIS_GAP / BRIGHT)
+///   - readState() -> LightState (DARK / BRIGHT)
 ///
-/// Zone splits the continuous reading into three bands (separated by two
-/// configurable thresholds) so external code can implement Schmitt-trigger
-/// behaviour if desired. State collapses the three-band reading into a
-/// binary DARK/BRIGHT decision suitable for simple on/off control.
+/// Both use readFiltered() internally so thresholds are compared against the
+/// smoothed reading. readRaw() is still available for diagnostics.
 class ILightSensor {
 public:
     virtual ~ILightSensor() = default;
 
-    /// Return the latest raw ADC reading (0–4095 on ESP32-S3).
-    virtual uint16_t readRaw() const = 0;
+    // -- Thresholds ----------------------------------------------------------
 
-    /// Classify the current brightness as DARK, HYSTERESIS_GAP, or BRIGHT.
-    /// HYSTERESIS_GAP means the reading lies between the two thresholds.
-    virtual LightZone readZone() const = 0;
-
-    /// Return the latched stable state: DARK after crossing below
-    /// brightToDark, BRIGHT after crossing above darkToBright, holds the
-    /// previous value while the reading is inside the hysteresis band.
-    virtual LightState readState() const = 0;
-
-    /// Set the pair of switching thresholds.
-    /// @param brightToDark  Reading below this → considered dark (falling edge)
-    /// @param darkToBright  Reading above this → considered bright (rising edge)
-    /// The gap between brightToDark and darkToBright defines the hysteresis
-    /// band that prevents flickering near the switching point.
-    /// Returns false if the thresholds are invalid (e.g. brightToDark > darkToBright).
     virtual bool setThresholds(uint16_t brightToDark, uint16_t darkToBright) = 0;
-
-    /// Return the current bright-to-dark threshold.
     virtual uint16_t getBrightToDarkThreshold() const = 0;
-
-    /// Return the current dark-to-bright threshold.
     virtual uint16_t getDarkToBrightThreshold() const = 0;
 
-    /// Initialise the sensor hardware (ADC pin, etc.).
-    /// Must be called before any read operation.
+    // -- Raw reading ---------------------------------------------------------
+
+    /// Instantaneous, unfiltered ADC reading (0-4095 on ESP32-S3).
+    virtual uint16_t readRaw() const = 0;
+
+    // -- Filtered reading ----------------------------------------------------
+
+    /// Exponentially smoothed reading. Auto-samples a single ADC value when the
+    /// sample interval has elapsed; returns the cached filtered value otherwise.
+    /// Seeds on first call with the current raw reading so no ramp-up from zero.
+    /// Modifies internal filter state (non-const).
+    virtual uint16_t readFiltered() = 0;
+
+    // -- Zone and state (use readFiltered() internally) -----------------------
+
+    /// Instantaneous light zone based on the FILTERED reading vs thresholds.
+    /// non-const because it calls readFiltered().
+    virtual LightZone readZone() = 0;
+
+    /// Latched stable state based on the FILTERED reading vs thresholds.
+    /// non-const because it calls readFiltered().
+    virtual LightState readState() = 0;
+
+    // -- Attenuation ---------------------------------------------------------
+
+    /// Set the ADC input range for the light sensor pin only.
+    /// Accepted values: 1.1, 1.5, 2.2, 3.3 (float volts).
+    /// Applied to the pin immediately if begin() has already been called.
+    /// Returns false if the value is not one of the valid voltages.
+    virtual bool setAttenuation(float volts) = 0;
+
+    /// Return the current attenuation in volts.
+    virtual float getAttenuation() const = 0;
+
+    // -- Filter parameters ---------------------------------------------------
+
+    /// Set the exponential filter shift factor (1-6).
+    /// Lower = faster response, less smoothing (1: alpha=1/2, tau~140ms @100ms).
+    /// Higher = slower but smoother (4: alpha=1/16, tau~1.6s @100ms).
+    /// Default is 2 (alpha=1/4, tau~350ms -- fast enough for room-light changes).
+    /// Returns false if value is outside 1-6.
+    virtual bool setFilterShift(uint8_t shift) = 0;
+
+    /// Return the current filter shift factor.
+    virtual uint8_t getFilterShift() const = 0;
+
+    // -- Sample interval -----------------------------------------------------
+
+    /// Set how often a new ADC sample is taken (milliseconds).
+    virtual void setRawReadingIntervalMs(uint16_t ms) = 0;
+
+    /// Return the current sample interval in milliseconds.
+    virtual uint16_t getRawReadingIntervalMs() const = 0;
+
+    // -- Lifecycle -----------------------------------------------------------
+
+    /// Initialise the sensor hardware (ADC pin, attenuation, filter seed).
     virtual bool begin() = 0;
 };
