@@ -236,6 +236,85 @@ void test_raw_reading_interval_default_and_set() {
     TEST_ASSERT_EQUAL_UINT16(250, sensor.getRawReadingIntervalMs());
 }
 
+// ---------------------------------------------------------------------------
+// Exponential filter math — tests the formula directly (not via mock)
+// Formula: accum = accum - (accum >> shift) + (raw << shift)
+// Output:  accum >> (shift * 2)
+// ---------------------------------------------------------------------------
+
+void test_filter_gain_is_unity_at_steady_state() {
+    // Feed constant raw=1000 for 50 iterations at shift=2 (default)
+    // After 50 iterations (~12τ, τ=4) output must converge to within 1 of 1000
+    uint32_t accum = 0;
+    for (int i = 0; i < 50; i++) {
+        accum = accum - (accum >> 2) + (1000 << 2);
+    }
+    uint16_t output = static_cast<uint16_t>(accum >> 4);
+    TEST_ASSERT_UINT16_WITHIN(1, 1000, output);
+}
+
+void test_filter_zero_input_converges_to_zero() {
+    uint32_t accum = 2000;  // start non-zero
+    for (int i = 0; i < 50; i++) {
+        accum = accum - (accum >> 2) + (0 << 2);
+    }
+    uint16_t output = static_cast<uint16_t>(accum >> 4);
+    TEST_ASSERT_EQUAL_UINT16(0, output);
+}
+
+void test_filter_fullscale_input_converges() {
+    uint32_t accum = 0;
+    for (int i = 0; i < 50; i++) {
+        accum = accum - (accum >> 2) + (4095 << 2);
+    }
+    uint16_t output = static_cast<uint16_t>(accum >> 4);
+    TEST_ASSERT_UINT16_WITHIN(2, 4095, output);
+}
+
+void test_filter_all_shifts_converge_correctly() {
+    for (uint8_t s = 1; s <= 6; ++s) {
+        uint32_t accum = 0;
+        // 50 << s iterations gives ~8τ at every shift value
+        const int iterations = 50 << s;
+        for (int i = 0; i < iterations; i++) {
+            accum = accum - (accum >> s) + (2000 << s);
+        }
+        uint16_t output = static_cast<uint16_t>(accum >> (s * 2));
+        // At 8τ, residual error is e^-8 ≈ 0.03%, so ±1 is safe for raw=2000
+        TEST_ASSERT_UINT16_WITHIN(1, 2000, output);
+    }
+}
+
+void test_filter_no_overshoot_on_step_up() {
+    uint32_t accum = 0;
+    // Settle at 0 for 20 iterations
+    for (int i = 0; i < 20; i++) {
+        accum = accum - (accum >> 2) + (0 << 2);
+    }
+    // Step up to 3000 – verify output never exceeds 3000
+    for (int i = 0; i < 10; i++) {
+        accum = accum - (accum >> 2) + (3000 << 2);
+        uint16_t output = static_cast<uint16_t>(accum >> 4);
+        TEST_ASSERT_TRUE_MESSAGE(output <= 3000, "Filter overshoot on step up");
+    }
+}
+
+void test_filter_output_stays_in_adc_range() {
+    uint32_t accum = 0;
+    // Ramp to 4095, output must stay ≤4095
+    for (int i = 0; i < 50; i++) {
+        accum = accum - (accum >> 2) + (4095 << 2);
+        uint16_t output = static_cast<uint16_t>(accum >> 4);
+        TEST_ASSERT_TRUE_MESSAGE(output <= 4095, "Output exceeded 4095 on up-ramp");
+    }
+    // Drop to 0, output must stay ≥0 (unsigned so automatic) and ≤4095
+    for (int i = 0; i < 50; i++) {
+        accum = accum - (accum >> 2) + (0 << 2);
+        uint16_t output = static_cast<uint16_t>(accum >> 4);
+        TEST_ASSERT_TRUE_MESSAGE(output <= 4095, "Output exceeded 4095 on down-ramp");
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -258,6 +337,12 @@ int main() {
     RUN_TEST(test_setFilterShift_accepts_valid_range);
     RUN_TEST(test_setFilterShift_rejects_out_of_range);
     RUN_TEST(test_raw_reading_interval_default_and_set);
+    RUN_TEST(test_filter_gain_is_unity_at_steady_state);
+    RUN_TEST(test_filter_zero_input_converges_to_zero);
+    RUN_TEST(test_filter_fullscale_input_converges);
+    RUN_TEST(test_filter_all_shifts_converge_correctly);
+    RUN_TEST(test_filter_no_overshoot_on_step_up);
+    RUN_TEST(test_filter_output_stays_in_adc_range);
 
     return UNITY_END();
 }
