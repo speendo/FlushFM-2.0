@@ -5,17 +5,35 @@
 #include <Arduino.h>
 #endif
 
-LightSensor::LightSensor(int pin, uint16_t brightToDark, uint16_t darkToBright)
+#include <math.h>
+
+constexpr float LightSensor::kValidAttenuations[];
+
+LightSensor::LightSensor(int pin,
+                         uint16_t brightToDark,
+                         uint16_t darkToBright,
+                         float attenuation,
+                         uint8_t filterShift,
+                         uint16_t rawReadingIntervalMs)
     : pin_(pin)
     , brightToDarkThreshold_(brightToDark)
     , darkToBrightThreshold_(darkToBright)
     , latchedState_(LightState::DARK)
+    , attenuationVolts_(attenuation)
+    , filterShift_(filterShift)
+    , rawReadingIntervalMs_(rawReadingIntervalMs)
+    , filteredAccum_(0)
+    , lastSampleMs_(0)
+    , seeded_(false)
 {}
 
 bool LightSensor::begin() {
 #if defined(ARDUINO)
     analogReadResolution(12);
-    analogSetAttenuation(ADC_11db);
+    applyAttenuation();
+    filteredAccum_ = static_cast<uint32_t>(analogRead(pin_)) << LIGHT_SENSOR_FILTER_SCALE;
+    lastSampleMs_ = millis();
+    seeded_ = true;
 #endif
     return true;
 }
@@ -28,14 +46,31 @@ uint16_t LightSensor::readRaw() const {
 #endif
 }
 
-LightZone LightSensor::readZone() const {
-    const uint16_t raw = readRaw();
-    if (raw > darkToBrightThreshold_) return LightZone::BRIGHT;
-    if (raw < brightToDarkThreshold_) return LightZone::DARK;
+uint16_t LightSensor::readFiltered() {
+#if defined(ARDUINO)
+    const uint32_t now = millis();
+    if (now - lastSampleMs_ >= rawReadingIntervalMs_ || !seeded_) {
+        const uint32_t raw = static_cast<uint32_t>(analogRead(pin_));
+        filteredAccum_ = filteredAccum_
+                       - (filteredAccum_ >> filterShift_)
+                       + (raw << LIGHT_SENSOR_FILTER_SCALE);
+        lastSampleMs_ = now;
+        seeded_ = true;
+    }
+    return static_cast<uint16_t>(filteredAccum_ >> LIGHT_SENSOR_FILTER_SCALE);
+#else
+    return 0;
+#endif
+}
+
+LightZone LightSensor::readZone() {
+    const uint16_t filtered = readFiltered();
+    if (filtered > darkToBrightThreshold_) return LightZone::BRIGHT;
+    if (filtered < brightToDarkThreshold_) return LightZone::DARK;
     return LightZone::HYSTERESIS_GAP;
 }
 
-LightState LightSensor::readState() const {
+LightState LightSensor::readState() {
     const LightZone zone = readZone();
     if (zone == LightZone::BRIGHT) latchedState_ = LightState::BRIGHT;
     else if (zone == LightZone::DARK) latchedState_ = LightState::DARK;
@@ -47,4 +82,32 @@ bool LightSensor::setThresholds(uint16_t brightToDark, uint16_t darkToBright) {
     brightToDarkThreshold_ = brightToDark;
     darkToBrightThreshold_ = darkToBright;
     return true;
+}
+
+bool LightSensor::setAttenuation(float volts) {
+    for (float v : kValidAttenuations) {
+        if (fabsf(volts - v) < 0.05f) {
+            attenuationVolts_ = v;
+            applyAttenuation();
+            return true;
+        }
+    }
+    return false;
+}
+
+bool LightSensor::setFilterShift(uint8_t shift) {
+    if (shift < 1 || shift > 6) return false;
+    filterShift_ = shift;
+    return true;
+}
+
+void LightSensor::applyAttenuation() {
+#if defined(ARDUINO)
+    adc_attenuation_t atten;
+    if (fabsf(attenuationVolts_ - 1.1f) < 0.05f)      atten = ADC_0db;
+    else if (fabsf(attenuationVolts_ - 1.5f) < 0.05f) atten = ADC_2_5db;
+    else if (fabsf(attenuationVolts_ - 2.2f) < 0.05f) atten = ADC_6db;
+    else                                                atten = ADC_11db;
+    analogSetPinAttenuation(pin_, atten);
+#endif
 }
