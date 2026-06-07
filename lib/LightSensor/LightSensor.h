@@ -44,9 +44,6 @@
 #define LIGHT_SENSOR_DEFAULT_RAW_READING_INTERVAL_MS 20
 #endif
 
-/// Fixed-point scale for the filter accumulator (raw << FILTER_SCALE).
-#define LIGHT_SENSOR_FILTER_SCALE 8
-
 // ---------------------------------------------------------------------------
 
 class LightSensor final : public ILightSensor {

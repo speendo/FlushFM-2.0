@@ -31,7 +31,7 @@ bool LightSensor::begin() {
 #if defined(ARDUINO)
     analogReadResolution(12);
     applyAttenuation();
-    filteredAccum_ = static_cast<uint32_t>(analogRead(pin_)) << LIGHT_SENSOR_FILTER_SCALE;
+    filteredAccum_ = static_cast<uint32_t>(analogRead(pin_)) << (filterShift_ * 2);
     lastSampleMs_ = millis();
     seeded_ = true;
 #endif
@@ -53,11 +53,11 @@ uint16_t LightSensor::readFiltered() {
         const uint32_t raw = static_cast<uint32_t>(analogRead(pin_));
         filteredAccum_ = filteredAccum_
                        - (filteredAccum_ >> filterShift_)
-                       + (raw << LIGHT_SENSOR_FILTER_SCALE);
+                       + (raw << filterShift_);
         lastSampleMs_ = now;
         seeded_ = true;
     }
-    return static_cast<uint16_t>(filteredAccum_ >> LIGHT_SENSOR_FILTER_SCALE);
+    return static_cast<uint16_t>(filteredAccum_ >> (filterShift_ * 2));
 #else
     return 0;
 #endif
